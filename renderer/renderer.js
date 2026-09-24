@@ -1193,9 +1193,11 @@ function renderWeek(stats) {
 }
 
 function applySettingsInputs(settings) {
+  settings = Object.assign({}, settings || {}, settingsOverrides);
+  latestGoalSettings = settings;
+  if (typeof syncWellbeingSettings === 'function') syncWellbeingSettings(settings);
   if (applying) return;
   applying = true;
-  settings = Object.assign({}, settings || {}, settingsOverrides);
   const sec = Number(settings.thresholdSec) || 600;
   if ($('threshold-min') && document.activeElement !== $('threshold-min')) {
     $('threshold-min').value = Math.round((sec / 60) * 10) / 10;
@@ -1232,8 +1234,6 @@ function applySettingsInputs(settings) {
   syncFocusBoostUi(settings);
   syncFocusBoostScheduleUi(settings);
   syncSessionSettingsUi(settings);
-  latestGoalSettings = settings;
-  if (typeof syncWellbeingSettings === 'function') syncWellbeingSettings(settings);
   applying = false;
   applyFocusBoostSchedule(settings).catch(() => {});
 }

@@ -85,13 +85,23 @@ function syncWellbeingSettings(settings) {
   const duck = wellbeingEl('roundup-duck');
   if (duck) duck.classList.toggle('hidden', !settings.duckEnabled);
   const onboard = wellbeingEl('view-onboarding');
+  const views = ['view-home', 'view-roundup', 'view-analytics', 'view-sessions', 'view-tags', 'view-settings'];
   if (onboard) {
     const show = !settings.onboardingComplete;
     onboard.classList.toggle('hidden', !show);
     if (show) {
-      ['view-home', 'view-roundup', 'view-analytics', 'view-sessions', 'view-tags', 'view-settings'].forEach((id) => {
+      views.forEach((id) => {
         const el = wellbeingEl(id);
         if (el) el.classList.add('hidden');
+      });
+    } else if (views.every((id) => {
+      const el = wellbeingEl(id);
+      return !el || el.classList.contains('hidden');
+    })) {
+      const home = wellbeingEl('view-home');
+      if (home) home.classList.remove('hidden');
+      document.querySelectorAll('.nav-btn').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-tab') === 'home');
       });
     }
   }
@@ -303,8 +313,8 @@ function renderMonthFocusScores(days) {
   const week = sydtrackGoals.rollingAverage(days || [], { window: 7, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
   const month = sydtrackGoals.rollingAverage(days || [], { window: 30, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
   if (average) {
-    const weekText = week.latest && week.latest.percent != null ? week.latest.percent + '% over ' + week.latest.samples + ' scored days' : 'not enough scored days';
-    const monthText = month.latest && month.latest.percent != null ? month.latest.percent + '% over ' + month.latest.samples + ' scored days' : 'not enough scored days';
+    const weekText = week.latest && week.latest.percent != null ? week.latest.percent + '% over ' + week.latest.samples + ' scored day' + (week.latest.samples === 1 ? '' : 's') : 'not enough scored days';
+    const monthText = month.latest && month.latest.percent != null ? month.latest.percent + '% over ' + month.latest.samples + ' scored day' + (month.latest.samples === 1 ? '' : 's') : 'not enough scored days';
     average.textContent = '7-day average ' + weekText + '. 30-day average ' + monthText + '. Empty days are skipped, not counted as zero.';
   }
   renderScoreList(list, days || [], 7);
@@ -403,8 +413,13 @@ function bindWellbeing() {
       decompressBreakMinutes: Number(wellbeingEl('onboarding-minutes').value),
       onboardingComplete: true
     });
-    const home = document.querySelector('.nav-btn[data-tab="home"]');
-    if (home) home.click();
+    const onboard = wellbeingEl('view-onboarding');
+    if (onboard) onboard.classList.add('hidden');
+    const homeView = wellbeingEl('view-home');
+    if (homeView) homeView.classList.remove('hidden');
+    document.querySelectorAll('.nav-btn').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-tab') === 'home');
+    });
   });
   on('decompress-start', 'click', async () => {
     if (!window.sydtrack || !window.sydtrack.startBreak) return;
