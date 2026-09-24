@@ -3,6 +3,7 @@ data/stats.json
 data/settings.json
 data/rules.json
 data/ignore.json
+data/browser-keywords.json
 data/history/
 data/rollups/
 data/migration-backups/
