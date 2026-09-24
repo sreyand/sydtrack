@@ -258,6 +258,28 @@ function daysAgo(n) {
   }
 })();
 
+(function journalIsWrittenBeforeUnlink() {
+  const dir = tmp('journal-write');
+  const old = daysAgo(MAX_HISTORY_DAYS + 2);
+  const day = writeRaw(dir, old, 5);
+  const historyDir = path.join(dir, 'history');
+  const rollupDir = path.join(dir, 'rollups');
+  fs.mkdirSync(rollupDir, { recursive: true });
+  const original = fs.unlinkSync;
+  let sawJournal = false;
+  fs.unlinkSync = (filePath) => {
+    if (String(filePath).endsWith(`${old}.json`)) sawJournal = readJournal(dir).includes(old);
+    return original.call(fs, filePath);
+  };
+  try {
+    purgeOne(old, { dataDir: dir, historyDir, rollupDir, readRawDay: () => Object.assign(emptyDay(old), day, { date: old }), buildRollup: toRollup });
+    assert(sawJournal, 'journal is written before the raw file is unlinked');
+  } finally {
+    fs.unlinkSync = original;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+})();
+
 (function journalReplayStandalone() {
   const dir = tmp('replay');
   const old = daysAgo(MAX_HISTORY_DAYS + 3);
@@ -283,12 +305,13 @@ function daysAgo(n) {
 
 (function retentionBoundary() {
   const dir = tmp('boundary');
-  const keep = daysAgo(MAX_HISTORY_DAYS);
-  const drop = daysAgo(MAX_HISTORY_DAYS + 1);
+  const keep = daysAgo(90);
+  const drop = daysAgo(91);
   writeRaw(dir, keep, 11);
   writeRaw(dir, drop, 22);
   const store = createStore(dir);
   store.pruneOldHistory();
+  assert(MAX_HISTORY_DAYS === 90, 'raw retention is 90 days');
   assert(store.listHistoryDates().includes(keep), 'day -90 is kept as raw history');
   assert(!store.listHistoryDates().includes(drop), 'day -91 is purged from raw history');
   assert(store.listRollupDates().includes(drop), 'day -91 survives as a rollup');
