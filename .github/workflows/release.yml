@@ -1,0 +1,49 @@
+name: Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  package:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+          - os: macos-latest
+            script: dist:mac
+          - os: ubuntu-latest
+            script: dist:linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fakeroot dpkg rpm
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+        env:
+          SYDTRACK_SIGN: '0'
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sydtrack-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.msi
+            dist/*.dmg
+            dist/*.pkg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+          retention-days: 14
