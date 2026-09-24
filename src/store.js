@@ -7,6 +7,7 @@ const { buildRollup, writeRollup, readRollup, listRollupDates, dayFromRollup, re
 const { purgeExpiredRaw, clearJournal } = require('./retention');
 const { migrateStorage } = require('./storage-schema');
 const { canonicalAppName } = require('./classifier');
+const { migrateGoalSettings, sanitizeGoalSettings } = require('./goals');
 
 function todayKey(at) {
   const d = at === undefined ? new Date() : new Date(at);
@@ -298,8 +299,12 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     (value) => value !== null && typeof value === 'object' && !Array.isArray(value),
     (report) => { settingsRecovered = true; onRecovery(report); });
   let settings = applyRuntimeEnvironment(Object.assign(defaultSettings(), savedSettings || {}));
+  const hadGoalSchema = !!(savedSettings && Number(savedSettings.goalsSchema) >= 2);
+  settings = migrateGoalSettings(settings, { existingInstall: !!savedSettings });
   if (settingsRecovered) {
     settings.trackingPaused = true;
+    persistSettings();
+  } else if (!hadGoalSchema) {
     persistSettings();
   }
 
@@ -731,6 +736,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function updateSettings(partial) {
     Object.assign(settings, partial);
+    settings = sanitizeGoalSettings(settings);
     if (process.env.SYDTRACK_THRESHOLD_SEC && partial.thresholdSec == null) {
       settings.thresholdSec = Number(process.env.SYDTRACK_THRESHOLD_SEC);
     }
@@ -789,6 +795,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
   function eraseActivityAndSettings() {
     const cleared = clearAllHistory();
     settings = applyRuntimeEnvironment(defaultSettings());
+    settings = migrateGoalSettings(settings, { existingInstall: false });
     persistSettings();
     return { ok: cleared.ok, failed: cleared.failed, stats: snapshot() };
   }
@@ -834,6 +841,27 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     historySummary: (count = 7) => {
       rollIfNeeded();
       return weekSummary(Math.min(90, Math.max(1, Math.floor(Number(count) || 7))));
+    },
+    hourlyHistory: (count = 14) => {
+      rollIfNeeded();
+      const n = Math.min(90, Math.max(1, Math.floor(Number(count) || 14)));
+      const days = [];
+      const now = new Date();
+      for (let i = n - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const dayObj = key === state.date ? state : loadHistoryDay(key);
+        const byHour = dayObj && Array.isArray(dayObj.byHour) ? dayObj.byHour : emptyByHour();
+        days.push({
+          date: key,
+          byHour: byHour.map((bucket) => ({
+            productive: Math.max(0, Number(bucket && bucket.productive) || 0),
+            unproductive: Math.max(0, Number(bucket && bucket.unproductive) || 0),
+            other: Math.max(0, Number(bucket && bucket.other) || 0)
+          }))
+        });
+      }
+      return days;
     },
     updateSettings,
     getSettings,

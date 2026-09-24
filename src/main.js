@@ -3,7 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme, clipboard } = require('electron');
 const { bindTrackingLifecycle } = require('./tracking-lifecycle');
 const { createErrorLog, installErrorLogging } = require('./error-log');
 let errorLog;
@@ -33,6 +33,7 @@ const { createStore } = require('./store');
 const { createTracker } = require('./tracker');
 const { createSessionManager } = require('./sessions');
 const { updateAppSettings } = require('./settings-service');
+const { createDecompressService } = require('./decompress-service');
 const {
   buildExport,
   importBackup,
@@ -88,6 +89,7 @@ let ignoreIsCustom = false;
 /** Last tracker tick — so state:get can return `now` + lastFocused. */
 let lastPayload = { now: null, stats: null, lastFocused: null };
 let servicesStarted = false;
+let decompressService = null;
 let appTray = null;
 let isQuitting = false;
 
@@ -286,6 +288,30 @@ function formatReminderBody(template, payload) {
     .trim();
 }
 
+function fireLocalNotice(title, body, kicker) {
+  const settings = (store && store.getSettings && store.getSettings()) || {};
+  if (settings.notificationsEnabled === false) return;
+  const text = String(body || '').trim();
+  if (!text) return;
+  if (Notification.isSupported()) {
+    try {
+      const n = new Notification({ title: title || 'sydtrack', body: text, silent: false });
+      n.on('click', () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      });
+      n.show();
+    } catch (err) {
+      console.error('[wellbeing] notification failed', err && err.message);
+    }
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('wellbeing:notice', { title, body: text, kicker: kicker || 'Decompress' });
+  }
+}
+
 function fireReminder(payload) {
   const settings = (store && store.getSettings && store.getSettings()) || {};
   // DND / notifications toggle — skip OS toast + in-app banner
@@ -370,6 +396,12 @@ function startServices() {
   loadAppRules();
   loadAppIgnore();
   store = createStore(dataDir(), { onRecovery: reportRecovery });
+  decompressService = createDecompressService({
+    dataDir: dataDir(),
+    getSettings: () => store.getSettings(),
+    getHourlyHistory: (days) => store.hourlyHistory(days),
+    now: () => Date.now()
+  });
   sessionManager = createSessionManager({
     dataDir: dataDir(),
     getSettings: () => store.getSettings(),
@@ -414,6 +446,16 @@ function ensureTrackerStarted() {
     ignoreHolder,
     sessionManager,
     onTick: (payload) => {
+      if (decompressService && payload && payload.stats) {
+        try {
+          const result = decompressService.observe(payload.stats);
+          payload.decompress = result.publicState;
+          if (result.suggest) fireLocalNotice('Time to decompress', result.message, 'Decompress');
+          if (result.breakEnded) fireLocalNotice('Decompress break', 'The break is over.', 'Decompress');
+        } catch (err) {
+          console.error('[decompress] tick failed', err && err.message);
+        }
+      }
       lastPayload = payload;
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('tracker:update', payload);
@@ -511,6 +553,7 @@ ipcMain.handle('state:get', async (event, payload) => {
     now: lastPayload.now || null,
     lastFocused: lastPayload.lastFocused || (tracker && tracker.getLastFocused && tracker.getLastFocused()) || null,
     stats: store ? store.snapshot([], { includeWeek: false }) : lastPayload.stats,
+    decompress: decompressService ? decompressService.publicState() : (lastPayload && lastPayload.decompress) || null,
     session: sessionManager ? sessionManager.getActiveSession() : lastPayload.session || null,
     platform: process.platform
   };
@@ -596,6 +639,38 @@ ipcMain.handle('profiles:activate', async (event, payload) => {
 ipcMain.handle('profiles:delete', async (event, payload) => {
   const id = guardIpc(event, 'profiles:delete', payload);
   return focusProfiles.remove(id);
+});
+
+ipcMain.handle('wellbeing:startBreak', async (event, payload) => {
+  guardIpc(event, 'wellbeing:startBreak', payload);
+  return decompressService ? decompressService.startBreak() : { started: false };
+});
+
+ipcMain.handle('wellbeing:endBreak', async (event, payload) => {
+  guardIpc(event, 'wellbeing:endBreak', payload);
+  return decompressService ? decompressService.endBreak() : { ended: false };
+});
+
+ipcMain.handle('wellbeing:copySummary', async (event, payload) => {
+  const text = guardIpc(event, 'wellbeing:copySummary', payload);
+  clipboard.writeText(String(text || '').slice(0, 4000));
+  return { ok: true };
+});
+
+ipcMain.handle('wellbeing:saveImage', async (event, payload) => {
+  const dataUrl = guardIpc(event, 'wellbeing:saveImage', payload);
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  if (!match || !mainWindow) return { ok: false, error: 'invalid image' };
+  const buffer = Buffer.from(match[1], 'base64');
+  if (!buffer.length || buffer.length > 2 * 1024 * 1024) return { ok: false, error: 'invalid image' };
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save focus summary',
+    defaultPath: 'sydtrack-focus.png',
+    filters: [{ name: 'PNG image', extensions: ['png'] }]
+  });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  fs.writeFileSync(result.filePath, buffer);
+  return { ok: true, filePath: result.filePath };
 });
 
 ipcMain.handle('settings:update', async (event, payload) => {

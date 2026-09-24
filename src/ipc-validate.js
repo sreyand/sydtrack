@@ -16,6 +16,10 @@ const CHANNELS = [
   'profiles:activate',
   'profiles:delete',
   'profiles:import',
+  'wellbeing:startBreak',
+  'wellbeing:endBreak',
+  'wellbeing:copySummary',
+  'wellbeing:saveImage',
   'settings:update',
   'data:export',
   'data:exportCsv',
@@ -216,7 +220,16 @@ const SETTINGS = {
   focusBoostScheduleStart: clock,
   focusBoostScheduleEnd: clock,
   sessionCustomMin: (value) => finiteInt(value, 1, 1440),
-  sessionHistoryEnabled: bool
+  sessionHistoryEnabled: bool,
+  focusShareGoalPct: (value) => finiteInt(value, 50, 100),
+  focusShareIncludeOther: bool,
+  screenTimeLimitEnabled: bool,
+  screenTimeLimitSec: (value) => finiteInt(value, 15 * 60, 16 * 3600),
+  decompressBreaksPerDay: (value) => finiteInt(value, 0, 8),
+  decompressBreakMinutes: (value) => finiteInt(value, 1, 60),
+  gamificationEnabled: bool,
+  duckEnabled: bool,
+  onboardingComplete: bool
 };
 
 function settingsUpdate(payload) {
@@ -280,6 +293,17 @@ function optionalDate(payload) {
   return payload;
 }
 
+function wellbeingText(payload) {
+  if (typeof payload !== 'string' || payload.length > 4000 || payload.includes('\0')) invalid();
+  return payload;
+}
+
+function wellbeingImage(payload) {
+  if (typeof payload !== 'string' || payload.length > 3 * 1024 * 1024 || payload.includes('\0')) invalid();
+  if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(payload)) invalid();
+  return payload;
+}
+
 function sessionDelete(payload) {
   const obj = plainObject(payload);
   assertKeys(obj, ['id', 'dateKey']);
@@ -308,6 +332,10 @@ const VALIDATORS = {
   'profiles:activate': requiredProfileId,
   'profiles:delete': requiredProfileId,
   'profiles:import': noPayload,
+  'wellbeing:startBreak': noPayload,
+  'wellbeing:endBreak': noPayload,
+  'wellbeing:copySummary': wellbeingText,
+  'wellbeing:saveImage': wellbeingImage,
   'settings:update': settingsUpdate,
   'data:export': dataExport,
   'data:exportCsv': noPayload,

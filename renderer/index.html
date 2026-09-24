@@ -6,6 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'" />
   <title>sydtrack</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="wellbeing.css" />
 </head>
 <body>
   <div class="shell">
@@ -61,6 +62,36 @@
         </div>
         <button id="banner-dismiss" type="button">Dismiss</button>
       </div>
+
+      <section id="view-onboarding" class="view hidden">
+        <article class="card">
+          <h1>Daily focus share</h1>
+          <p class="hint">Focus share is productive time divided by productive + unproductive time. Other apps are left out unless you include them. 80% is the recommended starting goal.</p>
+          <label class="field">
+            <span>Focus share goal (%)</span>
+            <input type="number" id="onboarding-goal" min="50" max="100" step="1" value="80" />
+          </label>
+          <label class="switch-row">
+            <div>
+              <div class="switch-title">Include Other apps</div>
+              <div class="hint">Put uncategorized apps in the denominator.</div>
+            </div>
+            <input type="checkbox" id="onboarding-include-other" />
+          </label>
+          <div class="settings-row-2">
+            <label class="field">
+              <span>Decompress breaks per day</span>
+              <input type="number" id="onboarding-breaks" min="0" max="8" step="1" value="3" />
+            </label>
+            <label class="field">
+              <span>Minutes each</span>
+              <input type="number" id="onboarding-minutes" min="1" max="60" step="1" value="10" />
+            </label>
+          </div>
+          <p class="hint">After an hour on track, sydtrack can suggest a local break. Set breaks to 0 if you do not want suggestions. Nothing is uploaded.</p>
+          <button type="button" id="onboarding-start" class="btn primary">Start</button>
+        </article>
+      </section>
 
       <!-- HOME: pie + mood + last focused -->
       <section id="view-home" class="view">
@@ -157,16 +188,60 @@
 
         <article class="card roundup-goal" id="roundup-goal-card">
           <div class="field-label-row roundup-goal-head">
-            <span class="lf-kicker">Daily productivity goal</span>
-                      </div>
+            <span class="lf-kicker">Daily focus share</span>
+          </div>
           <div class="roundup-goal-row">
-            <div id="roundup-goal-value" class="roundup-goal-value">0m / 2h</div>
-            <div id="roundup-goal-pct" class="roundup-goal-pct muted">0%</div>
+            <div id="roundup-goal-value" class="roundup-goal-value">— / 80%</div>
+            <div id="roundup-goal-pct" class="roundup-goal-pct muted">Other excluded</div>
           </div>
           <div class="roundup-goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="roundup-goal-bar">
             <div id="roundup-goal-fill" class="roundup-goal-fill"></div>
           </div>
         </article>
+
+        <article class="card roundup-goal hidden" id="roundup-screen-card">
+          <div class="field-label-row roundup-goal-head">
+            <span class="lf-kicker">Screen time limit</span>
+          </div>
+          <div class="roundup-goal-row">
+            <div id="roundup-screen-value" class="roundup-goal-value">—</div>
+            <div id="roundup-screen-pct" class="roundup-goal-pct muted">Active tracked time</div>
+          </div>
+          <div class="roundup-goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="roundup-screen-bar">
+            <div id="roundup-screen-fill" class="roundup-goal-fill"></div>
+          </div>
+          <p class="hint" id="roundup-screen-note">Counts productive, unproductive, and other time. Idle and ignored time stay out.</p>
+        </article>
+
+        <p class="muted tiny hidden" id="roundup-streak"></p>
+
+        <article class="card hidden" id="roundup-duck">
+          <div class="roundup-duck-row">
+            <svg class="duck" viewBox="0 0 64 64" aria-hidden="true">
+              <ellipse cx="34" cy="40" rx="16" ry="12" fill="currentColor"/>
+              <circle cx="46" cy="28" r="10" fill="currentColor"/>
+              <ellipse cx="54" cy="30" rx="8" ry="3" fill="currentColor" opacity="0.55"/>
+              <circle cx="49" cy="26" r="1.4" fill="var(--panel, #111)"/>
+            </svg>
+            <p id="roundup-duck-line" class="hint">The duck is decoration. It does not change the score.</p>
+          </div>
+        </article>
+
+        <article class="card" id="decompress-card">
+          <div class="lf-kicker">Decompress</div>
+          <p id="decompress-status" class="hint">A break is available any time. Suggestions wait until an hour on track.</p>
+          <p id="decompress-pattern" class="hint"></p>
+          <div class="rules-actions">
+            <button type="button" id="decompress-start" class="btn primary">Start break</button>
+            <button type="button" id="decompress-end" class="btn hidden">End break</button>
+          </div>
+        </article>
+
+        <div class="rules-actions hidden" id="share-actions">
+          <button type="button" id="share-copy" class="btn">Copy summary</button>
+          <button type="button" id="share-image" class="btn">Save image</button>
+          <span id="share-status" class="muted tiny"></span>
+        </div>
 
         <div class="roundup-highlights" id="roundup-highlights">
           <article class="card roundup-chip">
@@ -204,6 +279,7 @@
             <h1>Analytics</h1>
             <p class="muted" id="analytics-subtitle">Today’s hours</p>
             <p id="analytics-loading" class="muted hidden" role="status">Loading history…</p>
+            <p class="muted tiny hidden" id="analytics-gamification-note"></p>
           </div>
         </header>
 
@@ -290,10 +366,24 @@
               <div id="week-focus-sub" class="day-metric-sub muted">Of productive + unproductive</div>
             </article>
           </div>
+          <article class="card" id="week-review">
+            <h3>This week vs last week</h3>
+            <div id="week-review-body" class="hint">Open this tab to compare focus share with the previous 7 days.</div>
+          </article>
+          <article class="card" id="week-focus-scores">
+            <h3>Focus score</h3>
+            <p class="hint">The score is that day’s focus share. The average skips days without enough classified time.</p>
+            <div id="week-focus-score-list"></div>
+          </article>
         </div>
 
         <div id="panel-month" class="analytics-panel hidden" data-panel="month">
           <div id="month-history" aria-live="polite"></div>
+          <article class="card" id="month-focus-scores">
+            <h3>Daily focus score</h3>
+            <p class="hint" id="month-focus-average">Rolling averages appear after history loads.</p>
+            <div id="month-focus-score-list"></div>
+          </article>
         </div>
 
         <div id="panel-apps" class="analytics-panel hidden" data-panel="apps">
@@ -303,6 +393,7 @@
                         <ul id="app-list" class="app-list">
               <li class="empty">No time logged yet</li>
             </ul>
+            <div id="app-drill" class="hint"></div>
           </article>
         </div>
       </section>
@@ -516,12 +607,60 @@
                 <input type="number" id="focusboost-min" min="0.1" step="0.1" value="3" />
               </label>
             </div>
-            <label class="field settings-goal-field">
+            </div>
+
+          <div class="settings-block" id="goals-settings">
+            <div class="settings-block-title">Goals</div>
+            <label class="field">
               <div class="field-label-row">
-                <span>Daily Productivity Goal (hours)</span>
-                <span class="settings-token muted tiny">Used in Roundup</span>
+                <span>Daily focus share goal (%)</span>
+                <span class="settings-token muted tiny">Recommended 80</span>
               </div>
-              <input type="number" id="daily-goal-hours" min="0.25" max="16" step="0.25" value="2" />
+              <input type="number" id="focus-share-goal" min="50" max="100" step="1" value="80" />
+            </label>
+            <p class="hint" id="focus-share-definition">Productive time ÷ (productive + unproductive). Other apps are excluded.</p>
+            <label class="switch-row">
+              <div>
+                <div class="switch-title">Include Other apps</div>
+                <div class="hint">Count uncategorized apps in the focus-share denominator.</div>
+              </div>
+              <input type="checkbox" id="focus-include-other" />
+            </label>
+            <label class="switch-row">
+              <div>
+                <div class="switch-title">Screen time limit</div>
+                <div class="hint" id="screen-limit-hint">Optional and off by default. Active tracked time, not clock time.</div>
+              </div>
+              <input type="checkbox" id="screen-limit-toggle" />
+            </label>
+            <label class="field hidden" id="screen-limit-field">
+              <span>Screen time limit (hours)</span>
+              <input type="number" id="screen-limit-hours" min="0.25" max="16" step="0.25" value="8" />
+            </label>
+            <div class="settings-row-2">
+              <label class="field">
+                <span>Decompress breaks per day</span>
+                <input type="number" id="decompress-count" min="0" max="8" step="1" value="3" />
+              </label>
+              <label class="field">
+                <span>Decompress minutes</span>
+                <input type="number" id="decompress-minutes" min="1" max="60" step="1" value="10" />
+              </label>
+            </div>
+            <p class="hint">Suggestions start after an hour on track with the focus-share goal. Zero breaks turns suggestions off. You can still start a break yourself. Notices stay on this computer.</p>
+            <label class="switch-row">
+              <div>
+                <div class="switch-title">Gamification</div>
+                <div class="hint">Off by default. Streaks, alternate Roundup and Analytics wording, and a local share card.</div>
+              </div>
+              <input type="checkbox" id="gamification-toggle" />
+            </label>
+            <label class="switch-row">
+              <div>
+                <div class="switch-title">Duck mascot</div>
+                <div class="hint">Unserious mode shows a duck. Serious mode hides it. Separate from streaks.</div>
+              </div>
+              <input type="checkbox" id="duck-toggle" />
             </label>
           </div>
 
@@ -596,6 +735,12 @@
   </div>
   <div id="name-tip" class="name-tip pie-tip hidden" role="tooltip"></div>
   <script src="../src/browser-rules.js"></script>
+  <script src="../src/goals.js"></script>
+  <script src="../src/streaks.js"></script>
+  <script src="../src/decompress.js"></script>
+  <script src="../src/insights.js"></script>
+  <script src="../src/gamification.js"></script>
+  <script src="wellbeing-ui.js"></script>
   <script src="renderer.js"></script>
   <script src="focus-profiles-ui.js"></script>
 </body>

@@ -49,7 +49,7 @@ Window titles cannot establish whether a video or research page is useful. Allow
 
 Prefer contextual observations: “YouTube accounted for 18 minutes during your study session” provides more context than a daily app total. It still does not establish that those minutes were wasted. Only display session-level observations when the stored data supports them.
 
-Do not introduce a universal 1–5 activity rating or a single productivity score by default. Weighted scores risk presenting subjective assumptions as precise measurements. Existing focus share should retain an explicit definition: productive time divided by productive plus unproductive time. It is a category ratio, not a measure of personal worth or work quality.
+Do not introduce a universal 1–5 activity rating or a weighted productivity score. The focus score is the day's focus share, not a second scale. Default focus share is productive time divided by productive plus unproductive time. A setting can include uncategorized Other apps, which uses productive time divided by active tracked time. It is a category ratio, not a measure of personal worth or work quality. The daily goal is that percentage (recommended 80%). An optional screen-time limit stays off until enabled. Gamification, including streaks and the duck, stays off until enabled. Streaks skip inactive days. Decompress suggestions are local and use the user's own hourly history. Sharing progress is a local copy or image, never an upload.
 
 Potential future insights include session completion, time aligned with an explicitly selected profile, and prominent interruptions. Define profile changes within sessions and old-record behavior before implementing comparisons. Do not infer causality, motivation, or value from app names.
 
@@ -82,9 +82,8 @@ Current release checkpoint: v1.1.1 portable built locally; source pushed to `gpt
 
 - Automatic browser address capture: prototype remains disabled; title-based tracking is the baseline across browser engines.
 - 90-day raw retention with compact daily rollups and lazy Home/Analytics reads is in place (#9). A further storage rewrite still needs measured failure cases first.
-- Advanced scoring/decompression analytics without agreed semantics (#13).
 - Media inference based only on window titles (#14).
-- Heavy gamification, competitive rankings, or shame-based streaks (#8).
+- Competitive rankings or shame-based streaks. Optional focus-share streaks shipped behind a default-off setting (#8). Focus share, the optional screen-time limit, and decompress breaks shipped with explicit formulas (#13, #16).
 - Cloud sync, accounts, browsing-history dashboards, and employee-monitoring features.
 
 This is a sequence of priorities, not a commitment to complete every item next week. The proposed week plan and completed-work checkpoint are below.
