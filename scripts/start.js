@@ -5,7 +5,18 @@ const path = require('path');
 const { electronLaunchArgs } = require('./launch-args');
 
 const root = path.join(__dirname, '..');
-const bin = require('electron');
+const fs = require('fs');
+let bin;
+try {
+  bin = require('electron');
+} catch (err) {
+  bin = null;
+}
+if (!bin || !fs.existsSync(bin)) {
+  console.error('[sydtrack] Electron binary is missing. Newer npm blocks install scripts unless they are allowlisted.');
+  console.error('Run `npm ci` after package.json lists allowScripts for electron and active-win, then retry.');
+  process.exit(1);
+}
 const extra = process.argv.slice(2);
 const env = Object.assign({}, process.env);
 const launched = electronLaunchArgs({

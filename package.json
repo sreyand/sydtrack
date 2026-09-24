@@ -28,6 +28,10 @@
     "electron": "^28.3.3",
     "electron-builder": "^24.13.3"
   },
+  "allowScripts": {
+    "electron": true,
+    "active-win": true
+  },
   "build": {
     "appId": "com.gitpaperclip.sydtrack",
     "productName": "sydtrack",
