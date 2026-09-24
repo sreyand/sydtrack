@@ -6,6 +6,7 @@ data/ignore.json
 data/history/
 data/rollups/
 data/migration-backups/
+data/import-backups/
 data/storage-schema.json
 data/retention-journal.json
 data/.legacy-import/

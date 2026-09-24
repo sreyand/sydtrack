@@ -237,7 +237,8 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
   const historyDir = path.join(dataDir, 'history');
   fs.mkdirSync(historyDir, { recursive: true });
   const rollupDir = path.join(dataDir, 'rollups');
-  migrateStorage(dataDir, { buildRollup: toRollup });
+  const migration = migrateStorage(dataDir, { buildRollup: toRollup });
+  const retentionArmed = !migration.skipped;
   fs.mkdirSync(rollupDir, { recursive: true });
   const filePath = path.join(dataDir, 'stats.json');
   const settingsPath = path.join(dataDir, 'settings.json');
@@ -540,6 +541,9 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function pruneOldHistory() {
     summaryCache.clear();
+    if (!retentionArmed) {
+      return { purged: [], kept: [], errors: [], skipped: true };
+    }
     try {
       return purgeExpiredRaw({
         dataDir,
@@ -716,29 +720,36 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function clearAllHistory() {
     summaryCache.clear();
-    try {
-      clearJournal(dataDir);
-      if (fs.existsSync(historyDir)) {
-        for (const f of fs.readdirSync(historyDir)) {
-          if (/^\d{4}-\d{2}-\d{2}\.json$/.test(f)) {
-            fs.unlinkSync(path.join(historyDir, f));
-          }
-        }
+    const failed = [];
+    const forget = (filePath) => {
+      try {
+        if (fs.existsSync(filePath)) fs.rmSync(filePath, { recursive: true, force: true });
+      } catch (err) {
+        failed.push({ path: filePath, message: err.message });
       }
-      removeRollups(rollupDir);
-    } catch (err) {
-      console.error('[store] clear history failed', err.message);
+    };
+    try { clearJournal(dataDir); } catch (err) {
+      failed.push({ path: path.join(dataDir, 'retention-journal.json'), message: err.message });
     }
+    if (fs.existsSync(historyDir)) {
+      for (const f of fs.readdirSync(historyDir)) {
+        if (/^\d{4}-\d{2}-\d{2}\.json$/.test(f)) forget(path.join(historyDir, f));
+      }
+    }
+    try { removeRollups(rollupDir); } catch (err) {
+      failed.push({ path: rollupDir, message: err.message });
+    }
+    if (failed.length) console.error('[store] clear history failed', failed.map((item) => item.path).join(', '));
     state = emptyDay(todayKey());
     persistStats();
-    return state;
+    return { ok: failed.length === 0, failed, state };
   }
 
   function eraseActivityAndSettings() {
-    clearAllHistory();
+    const cleared = clearAllHistory();
     settings = applyRuntimeEnvironment(defaultSettings());
     persistSettings();
-    return snapshot();
+    return { ok: cleared.ok, failed: cleared.failed, stats: snapshot() };
   }
 
   /** Raw days within retention, plus rollups for days whose raw file was purged. */
@@ -798,6 +809,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     pruneOldHistory,
     archiveDay,
     getHistoryDir,
+    migration,
     filePath,
     settingsPath,
     dataDir

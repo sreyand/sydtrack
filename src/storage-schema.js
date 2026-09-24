@@ -12,6 +12,10 @@ function schemaPath(dataDir) {
   return path.join(dataDir, SCHEMA_FILE);
 }
 
+function backupsRoot(dataDir) {
+  return path.join(dataDir, 'migration-backups');
+}
+
 function readSchema(dataDir) {
   try {
     const value = JSON.parse(fs.readFileSync(schemaPath(dataDir), 'utf8'));
@@ -35,14 +39,51 @@ function hasLegacyPayload(dataDir) {
   return false;
 }
 
+function listSchema1BackupDirs(dataDir) {
+  const root = backupsRoot(dataDir);
+  if (!fs.existsSync(root)) return [];
+  return fs.readdirSync(root)
+    .filter((name) => name.startsWith('schema-1-'))
+    .map((name) => path.join(root, name))
+    .filter((dir) => {
+      try { return fs.statSync(dir).isDirectory(); } catch (_) { return false; }
+    });
+}
+
+/** Folders without BACKUP_COMPLETE.json are leftover copies, not backups. */
+function cleanupIncompleteBackups(dataDir) {
+  const removed = [];
+  for (const dir of listSchema1BackupDirs(dataDir)) {
+    if (fs.existsSync(path.join(dir, 'BACKUP_COMPLETE.json'))) continue;
+    fs.rmSync(dir, { recursive: true, force: true });
+    removed.push(dir);
+  }
+  return removed;
+}
+
+/**
+ * After schema 2 is on disk and rollups exist, delete the schema-1 copy.
+ * Keeping it would retain raw history past 90 days in a second tree.
+ */
+function pruneVerifiedMigrationBackups(dataDir) {
+  const removed = [];
+  for (const dir of listSchema1BackupDirs(dataDir)) {
+    if (!fs.existsSync(path.join(dir, 'BACKUP_COMPLETE.json'))) continue;
+    fs.rmSync(dir, { recursive: true, force: true });
+    removed.push(dir);
+  }
+  return removed;
+}
+
 /**
  * Copy the data directory before rewriting it. BACKUP_COMPLETE.json is written
  * last, so a crash mid-copy leaves an incomplete directory that the next
  * attempt does not treat as the backup.
  */
 function backupLegacyData(dataDir) {
+  cleanupIncompleteBackups(dataDir);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const dest = path.join(dataDir, 'migration-backups', `schema-1-${stamp}`);
+  const dest = path.join(backupsRoot(dataDir), `schema-1-${stamp}`);
   fs.mkdirSync(dest, { recursive: true });
   for (const name of fs.readdirSync(dataDir)) {
     if (name === 'migration-backups') continue;
@@ -80,17 +121,29 @@ function rollupExistingHistory(dataDir, buildRollup) {
 
 /**
  * Schema 1 is the original per-day history with no version file.
- * Schema 2 adds storage-schema.json and compact rollups. The schema file is
- * written only after the backup marker and the rollups, so a crash retries.
+ * Schema 2 adds storage-schema.json and compact rollups. A failed backup
+ * skips migration and purge for this launch so the app still starts.
  */
 function migrateStorage(dataDir, { buildRollup }) {
   fs.mkdirSync(dataDir, { recursive: true });
   const current = readSchema(dataDir);
   if (current && Number(current.schemaVersion) >= STORAGE_SCHEMA_VERSION) {
-    return { migrated: false, schemaVersion: Number(current.schemaVersion), backupPath: null };
+    cleanupIncompleteBackups(dataDir);
+    pruneVerifiedMigrationBackups(dataDir);
+    return { migrated: false, skipped: false, schemaVersion: Number(current.schemaVersion), backupPath: null };
   }
+  cleanupIncompleteBackups(dataDir);
   const legacy = hasLegacyPayload(dataDir);
-  const backupPath = legacy ? backupLegacyData(dataDir) : null;
+  let backupPath = null;
+  if (legacy) {
+    try {
+      backupPath = backupLegacyData(dataDir);
+    } catch (err) {
+      console.error('[storage] migration backup failed; skipping migration and purge this launch', err.message);
+      cleanupIncompleteBackups(dataDir);
+      return { migrated: false, skipped: true, schemaVersion: 1, backupPath: null, error: err.message };
+    }
+  }
   const failed = legacy ? rollupExistingHistory(dataDir, buildRollup) : [];
   const schema = {
     schemaVersion: STORAGE_SCHEMA_VERSION,
@@ -100,7 +153,8 @@ function migrateStorage(dataDir, { buildRollup }) {
     backup: backupPath ? path.basename(backupPath) : null
   };
   writeJson(schemaPath(dataDir), schema);
-  return { migrated: true, schemaVersion: STORAGE_SCHEMA_VERSION, backupPath, failed };
+  pruneVerifiedMigrationBackups(dataDir);
+  return { migrated: true, skipped: false, schemaVersion: STORAGE_SCHEMA_VERSION, backupPath, failed };
 }
 
 module.exports = {
@@ -109,5 +163,7 @@ module.exports = {
   readSchema,
   hasLegacyPayload,
   backupLegacyData,
-  migrateStorage
+  migrateStorage,
+  cleanupIncompleteBackups,
+  pruneVerifiedMigrationBackups
 };

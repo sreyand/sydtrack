@@ -252,35 +252,31 @@ let historyRequest = 0;
 let historicalWeek = null;
 let fullHistoryCache = null;
 let fullHistoryPromise = null;
-let homeWeekDate = null;
 
 function setHistoryLoading(on, message) {
-  for (const id of ['analytics-loading', 'roundup-loading']) {
-    const el = $(id);
-    if (!el) continue;
-    if (on) {
-      el.textContent = message || 'Loading history…';
-      el.classList.remove('hidden');
-    } else if (message) {
-      el.textContent = message;
-      el.classList.remove('hidden');
-    } else el.classList.add('hidden');
-  }
+  const el = $('analytics-loading');
+  if (!el) return;
+  if (on) {
+    el.textContent = message || 'Loading history…';
+    el.classList.remove('hidden');
+  } else if (message) {
+    el.textContent = message;
+    el.classList.remove('hidden');
+  } else el.classList.add('hidden');
 }
 
 function invalidateHistoryViews() {
   fullHistoryCache = null;
   fullHistoryPromise = null;
   historicalWeek = null;
-  homeWeekDate = null;
 }
 
-async function ensureFullHistory() {
+async function ensureFullHistory(fetchHistory = api && api.getHistorySummary) {
   if (fullHistoryCache) return fullHistoryCache;
-  if (!api || !api.getHistorySummary) return null;
+  if (!fetchHistory) return null;
   if (!fullHistoryPromise) {
     setHistoryLoading(true, 'Loading history…');
-    fullHistoryPromise = api.getHistorySummary(90).then((days) => {
+    fullHistoryPromise = Promise.resolve(fetchHistory(90)).then((days) => {
       fullHistoryCache = Array.isArray(days) ? days : [];
       setHistoryLoading(false);
       return fullHistoryCache;
@@ -293,23 +289,6 @@ async function ensureFullHistory() {
   return fullHistoryPromise;
 }
 
-async function loadHomeWeek() {
-  if (!api || !api.getHistorySummary) return;
-  const el = $('home-week-loading');
-  if (el) {
-    el.textContent = 'Loading this week…';
-    el.classList.remove('hidden');
-  }
-  try {
-    const days = await api.getHistorySummary(7);
-    historicalWeek = Array.isArray(days) ? days : [];
-    renderHomeWeekBars({ week: historicalWeek });
-    if (el) el.classList.add('hidden');
-  } catch (_) {
-    if (el) el.textContent = 'Could not load this week.';
-  }
-}
-
 async function loadAnalyticsHistory(fetchHistory = api && api.getHistorySummary) {
   if (!fetchHistory || !['week', 'month'].includes(analyticsSegment)) return;
   const request = ++historyRequest;
@@ -317,8 +296,9 @@ async function loadAnalyticsHistory(fetchHistory = api && api.getHistorySummary)
   const target = segment === 'week' ? $('week-chart') : $('month-history');
   if (target) target.textContent = 'Loading history…';
   try {
-    const days = await fetchHistory(segment === 'week' ? 7 : 30);
+    const all = await ensureFullHistory(fetchHistory);
     if (request !== historyRequest || analyticsSegment !== segment) return;
+    const days = (all || []).slice(segment === 'week' ? -7 : -30);
     if (segment === 'week') { historicalWeek = days; renderWeek({ week: days }); }
     else if (target) target.innerHTML = monthMarkup(days);
   } catch (_) { if (request === historyRequest && target) target.textContent = 'Could not load history. Reopen this tab to retry.'; }
@@ -402,11 +382,7 @@ document.querySelectorAll('.nav-btn').forEach((btn) => {
     const tagsView = $('view-tags');
     if (tagsView) tagsView.classList.toggle('hidden', tab !== 'tags' && tab !== 'focus-tags');
     $('view-settings').classList.toggle('hidden', tab !== 'settings');
-    if (tab === 'analytics') {
-      setAnalyticsSegment(analyticsSegment);
-      ensureFullHistory().catch(() => {});
-    }
-    if (tab === 'roundup') ensureFullHistory().catch(() => {});
+    if (tab === 'analytics') setAnalyticsSegment(analyticsSegment);
     if (tab === 'sessions') refreshSessionLog();
     if ((tab === 'tags' || tab === 'focus-tags') && !window.sydtrackProfilesUI) loadRulesAndIgnore();
   });
@@ -1809,12 +1785,6 @@ function renderRoundup(stats) {
 
 function renderStats(stats) {
   if (!stats) return;
-  if (stats.date && stats.date !== homeWeekDate) {
-    homeWeekDate = stats.date;
-    fullHistoryCache = null;
-    fullHistoryPromise = null;
-    loadHomeWeek();
-  }
   renderMood(stats);
   renderPie(
     liveDisplayCategories
@@ -2361,21 +2331,6 @@ async function tagsQuickAdd(target) {
   updateTagsQuickStatus();
 })();
 
-if ($('data-export-csv')) {
-  $('data-export-csv').addEventListener('click', async () => {
-    if (!api || !api.exportCsv) return;
-    $('data-status').textContent = 'Exporting…';
-    try {
-      const res = await api.exportCsv();
-      if (res && res.canceled) $('data-status').textContent = 'Export canceled';
-      else if (res && res.ok) $('data-status').textContent = 'Exported CSV';
-      else $('data-status').textContent = (res && res.error) || 'Export failed';
-    } catch (_) {
-      $('data-status').textContent = 'Export failed';
-    }
-  });
-}
-
 if ($('data-export')) {
   $('data-export').addEventListener('click', async () => {
     if (!api || !api.exportData) return;
@@ -2448,7 +2403,7 @@ if ($('data-clear-all')) {
 if ($('data-delete-all')) {
   $('data-delete-all').addEventListener('click', async () => {
     if (!api || !api.deleteAllMyData) return;
-    if (!confirm('Delete all local SydTrack data on this device?\n\nThis removes activity, daily rollups, sessions, settings, Focus profiles, tags, and error logs. Nothing is uploaded. This cannot be undone.')) return;
+    if (!confirm('Delete all local SydTrack data on this device?\n\nThis removes activity, daily rollups, sessions, settings, Focus profiles, tags, error logs, migration backups, and the leftover focusflow data folder. Nothing is uploaded. This cannot be undone.')) return;
     const res = await api.deleteAllMyData();
     if (res && res.ok) {
       $('data-status').textContent = 'All local data deleted';
@@ -2457,7 +2412,12 @@ if ($('data-delete-all')) {
       await loadRulesAndIgnore();
       if (window.sydtrackProfilesUI) await window.sydtrackProfilesUI.reload(true, true);
       refreshSessionLog();
-    } else $('data-status').textContent = (res && res.error) || 'Delete failed';
+    } else {
+      const leftover = (res && res.failed || []).map((item) => item.path).filter(Boolean);
+      $('data-status').textContent = leftover.length
+        ? 'Delete failed: ' + leftover.join(', ')
+        : (res && res.error) || 'Delete failed';
+    }
   });
 }
 

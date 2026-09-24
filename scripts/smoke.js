@@ -146,6 +146,10 @@ assert(
   isIgnored({ owner: { name: 'SydTrack' }, title: 'Today' }, ignore) === true,
   'sydtrack process name is ignored'
 );
+assert(
+  isIgnored({ owner: { name: 'FocusFlow' }, title: 'Today' }, ignore) === true,
+  'previous focusflow process name is ignored after the rename'
+);
 
 // Browsers must not be in productive defaults
 for (const b of ['chrome', 'msedge', 'firefox', 'brave', 'opera', 'chromium']) {
@@ -1007,28 +1011,40 @@ function infrastructureChecks() {
 async function historyLoadingChecks() {
   const vm = require('vm');
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer/renderer.js'), 'utf8');
-  const targets = { 'week-chart': {}, 'month-history': {} };
+  const targets = {
+    'week-chart': {},
+    'month-history': {},
+    'analytics-loading': { classList: { add() {}, remove() {} } }
+  };
   const requests = [];
   let rendered = 0;
-  const context = vm.createContext({ historyRequest: 0, historicalWeek: null, analyticsSegment: 'week',
+  const context = vm.createContext({
+    historyRequest: 0, historicalWeek: null, analyticsSegment: 'week',
+    fullHistoryCache: null, fullHistoryPromise: null,
     $: id => targets[id], renderWeek: () => rendered++, esc: value => String(value).replaceAll('<', '&lt;'), fmtFriendly: String,
-    api: { getHistorySummary: days => new Promise((resolve, reject) => requests.push({ days, resolve, reject })) } });
-  vm.runInContext(source.slice(source.indexOf('async function loadAnalyticsHistory'), source.indexOf('const ANALYTICS_SUBTITLES')), context);
+    api: { getHistorySummary: days => new Promise((resolve, reject) => requests.push({ days, resolve, reject })) }
+  });
+  vm.runInContext(source.slice(source.indexOf('function setHistoryLoading'), source.indexOf('const ANALYTICS_SUBTITLES')), context);
   const first = context.loadAnalyticsHistory();
-  assert(targets['week-chart'].textContent === 'Loading history…' && requests[0].days === 7, '#9 week loading is visible and requests only seven days');
+  assert(targets['week-chart'].textContent === 'Loading history…' && requests[0].days === 90, '#9 Analytics loads the 90-day window once');
   context.analyticsSegment = 'month';
   const second = context.loadAnalyticsHistory();
-  requests[0].resolve([]); await first;
-  assert(rendered === 0, '#9 late week responses cannot overwrite a newer segment');
-  requests[1].resolve([{ date: '<test>', byCategory: { productive: 1, unproductive: 2, other: 3 } }]); await second;
-  assert(requests[1].days === 30 && targets['month-history'].innerHTML.includes('33%'), '#9 month requests 30 days and calculates focus share excluding Other');
+  requests[0].resolve([{ date: '2026-09-01', byCategory: { productive: 1, unproductive: 2, other: 3 } }]);
+  await first;
+  await second;
+  assert(rendered === 0 && requests.length === 1, '#9 late week responses cannot overwrite a newer segment and reuse the full-history read');
+  assert(targets['month-history'].innerHTML.includes('33%'), '#9 month slices the cached 90-day read and calculates focus share excluding Other');
   const markup = context.monthMarkup([{ byCategory: { productive: 10, unproductive: 10, other: 80 }, apps: [
     { name: '<editor>', seconds: 10, category: 'productive' }, { name: '<editor>', seconds: 5, category: 'unproductive' },
     { name: 'ignored-app', seconds: 999, category: 'ignored' }] }]);
   assert(markup.includes('50%') && markup.includes('&lt;editor>') && markup.includes('15') && !markup.includes('ignored-app'), 'Month merges app categories, escapes labels, and excludes ignored apps');
   assert(context.monthMarkup([]).includes('—'), 'Empty month shows no fabricated focus percentage');
-  const error = context.loadAnalyticsHistory(); requests[2].reject(new Error('test')); await error;
-  assert(targets['month-history'].textContent.includes('retry'), '#9 history failures show a retry instruction');
+  context.fullHistoryCache = null;
+  context.fullHistoryPromise = null;
+  const error = context.loadAnalyticsHistory();
+  requests[1].reject(new Error('test'));
+  await error;
+  assert(targets['month-history'].textContent.includes('retry') || (targets['analytics-loading'].textContent || '').includes('retry'), '#9 history failures show a retry instruction');
 }
 
 async function focusProfileChecks() {

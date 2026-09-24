@@ -36,7 +36,7 @@
     "active-win": true
   },
   "build": {
-    "appId": "app.sydtrack",
+    "appId": "com.gitpaperclip.sydtrack",
     "productName": "sydtrack",
     "directories": {
       "output": "dist",

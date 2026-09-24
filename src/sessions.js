@@ -493,16 +493,15 @@ function createSessionManager({ dataDir, getSettings, onRecovery = () => {} }) {
     eraseAll() {
       active = null;
       pendingCompletions.length = 0;
-      try {
-        if (fs.existsSync(activePath)) fs.unlinkSync(activePath);
-      } catch (err) {
-        console.error('[sessions] erase active failed', err.message);
-      }
-      for (const key of listSessionDates()) {
-        try { fs.unlinkSync(dayPath(key)); } catch (err) {
-          console.error('[sessions] erase day failed', err.message);
-        }
-      }
+      const failed = [];
+      const forget = (filePath) => {
+        try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); }
+        catch (err) { failed.push({ path: filePath, message: err.message }); }
+      };
+      forget(activePath);
+      for (const key of listSessionDates()) forget(dayPath(key));
+      if (failed.length) console.error('[sessions] erase failed', failed.map((item) => item.path).join(', '));
+      return { ok: failed.length === 0, failed };
     },
     checkExpiry,
     MODE_DEFS,

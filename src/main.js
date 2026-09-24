@@ -35,7 +35,7 @@ const {
   readBackupFile
 } = require('./backup');
 const { buildCsvExport, importCsv } = require('./data-export');
-const { deleteAllMyData } = require('./data-ownership');
+const { deleteAllMyData, backupUserConfig } = require('./data-ownership');
 const { migrateLegacyUserData } = require('./legacy-data-dir');
 const APP_ID = require('../package.json').build.appId;
 const {
@@ -656,6 +656,9 @@ ipcMain.handle('data:import', async (event, payload) => {
   }
 
   const chosen = result.filePaths[0];
+  try { backupUserConfig(dataDir()); } catch (err) {
+    return { ok: false, error: 'Could not back up settings before import: ' + err.message };
+  }
   if (chosen.toLowerCase().endsWith('.csv')) {
     try {
       const imported = importCsv(store, fs.readFileSync(chosen, 'utf8'), {
@@ -806,7 +809,7 @@ ipcMain.handle('data:deleteAll', async (event, payload) => {
     saveAppIdentities,
     DEFAULT_APP_IDENTITIES_PATH
   } = require('./classifier');
-  deleteAllMyData({
+  const deleted = deleteAllMyData({
     dataDir: dataDir(),
     store,
     sessionManager,
@@ -814,11 +817,16 @@ ipcMain.handle('data:deleteAll', async (event, payload) => {
     profileDefaults: require('./default-focus-profiles.json'),
     identitiesPath: userAppIdentitiesPath(),
     defaultIdentities: loadAppIdentitiesFrom(DEFAULT_APP_IDENTITIES_PATH),
-    saveIdentities: saveAppIdentities
+    saveIdentities: saveAppIdentities,
+    appData: app.getPath('appData')
   });
   loadAppIdentities();
   if (tracker) tracker.invalidateClassification();
-  return { ok: true, stats: store.snapshot() };
+  return {
+    ...deleted,
+    stats: store.snapshot(),
+    error: deleted.ok ? undefined : (deleted.failed || []).map((item) => item.path).join(', ') || 'Delete failed'
+  };
 });
 
 ipcMain.handle('session:start', async (event, payload) => {

@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { writeJson, validDateKey, readRecoverableJson } = require('./json-file');
-const { writeRollup, readRollup, totalsMatch } = require('./rollups');
+const rollups = require('./rollups');
 
 const JOURNAL_NAME = 'retention-journal.json';
 
@@ -41,10 +41,10 @@ function purgeOne(dateKey, { dataDir, historyDir, rollupDir, readRawDay, buildRo
     return 'dropped';
   }
   const rollup = buildRollup(day);
-  if (!totalsMatch(day, rollup)) throw new Error('Rollup totals did not match ' + dateKey);
-  writeRollup(rollupDir, rollup);
-  const stored = readRollup(rollupDir, dateKey);
-  if (!stored || !totalsMatch(day, stored)) throw new Error('Rollup verify failed for ' + dateKey);
+  if (!rollups.totalsMatch(day, rollup)) throw new Error('Rollup totals did not match ' + dateKey);
+  rollups.writeRollup(rollupDir, rollup);
+  const stored = rollups.readRollup(rollupDir, dateKey);
+  if (!stored || !rollups.totalsMatch(day, stored)) throw new Error('Rollup verify failed for ' + dateKey);
   const pending = readJournal(dataDir);
   if (!pending.includes(dateKey)) pending.push(dateKey);
   writeJournal(dataDir, pending);
@@ -59,11 +59,11 @@ function replayJournal({ dataDir, historyDir, rollupDir, readRawDay, buildRollup
   const stillPending = [];
   for (const dateKey of pending) {
     try {
-      const stored = readRollup(rollupDir, dateKey);
+      const stored = rollups.readRollup(rollupDir, dateKey);
       const filePath = rawPath(historyDir, dateKey);
       if (!fs.existsSync(filePath)) continue;
       const day = readRawDay(dateKey);
-      if (stored && day && totalsMatch(day, stored)) {
+      if (stored && day && rollups.totalsMatch(day, stored)) {
         fs.unlinkSync(filePath);
         continue;
       }
@@ -120,6 +120,7 @@ function clearJournal(dataDir) {
 
 module.exports = {
   JOURNAL_NAME,
+  purgeOne,
   purgeExpiredRaw,
   replayJournal,
   readJournal,

@@ -265,6 +265,30 @@ function importCsv(store, text, opts) {
     }
   }
 
+  let profileSnapshot = null;
+  if (profiles.size) {
+    try {
+      const { validateProfiles } = require('./focus-profiles');
+      const active = activeId && profiles.has(activeId)
+        ? activeId
+        : (profiles.has('default') ? 'default' : profiles.keys().next().value);
+      profileSnapshot = validateProfiles({
+        schemaVersion: 1,
+        activeId: active,
+        profiles: Array.from(profiles.values())
+      });
+    } catch (err) {
+      result.error = err.message || 'Invalid CSV profiles';
+      return result;
+    }
+  }
+  try {
+    result.backupPath = require('./data-ownership').backupUserConfig(store.dataDir);
+  } catch (err) {
+    result.error = 'Could not back up settings before import: ' + err.message;
+    return result;
+  }
+
   for (const [date, day] of days) {
     const migrated = migrateDay(day);
     if (date === require('./store').todayKey()) {
@@ -285,14 +309,7 @@ function importCsv(store, text, opts) {
   }
   if ((rules.productive.length || rules.unproductive.length) && options.onRules) options.onRules(rules);
   if (ignore.length && options.onIgnore) options.onIgnore(ignore);
-  if (profiles.size && options.focusProfiles) {
-    const snapshot = {
-      schemaVersion: 1,
-      activeId: activeId && profiles.has(activeId) ? activeId : (profiles.has('default') ? 'default' : profiles.keys().next().value),
-      profiles: Array.from(profiles.values())
-    };
-    options.focusProfiles.restore(snapshot);
-  }
+  if (profileSnapshot && options.focusProfiles) options.focusProfiles.restore(profileSnapshot);
   store.pruneOldHistory();
   result.ok = true;
   return result;
