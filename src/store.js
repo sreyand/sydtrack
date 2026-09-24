@@ -196,6 +196,8 @@ function defaultSettings() {
     trackingPaused: false,
     reminderCooldownSec: 90,
     idleTimeoutSec: 300,
+    trackMusicWhileIdle: false,
+    trackVideoWhileIdle: false,
     pollMs: 750,
     focusBoost: false,
     focusBoostRestoreSec: null,

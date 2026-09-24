@@ -60,7 +60,14 @@ function createWindowsBackend({ experimentalAddressCapture = false, run = execFi
           try {
             const parsed = JSON.parse(jsonText);
             if (parsed.window) parsed.window.url = experimentalAddressCapture ? await readBrowserAddress(parsed.window, run) : '';
-            resolve({ window: parsed.window || null, idleSec: Number(parsed.idleSec) || 0, error: parsed.error || null });
+            const idleValue = parsed.idleSec == null || parsed.idleSec === '' ? null : Number(parsed.idleSec);
+            resolve({
+              window: parsed.window || null,
+              idleSec: Number.isFinite(idleValue) ? Math.max(0, idleValue) : null,
+              screenOff: parsed.screenOff === true,
+              media: parsed.media && typeof parsed.media === 'object' ? parsed.media : null,
+              error: parsed.error || null
+            });
           } catch (parseErr) {
             resolve({
               window: null,

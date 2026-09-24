@@ -2,6 +2,9 @@
 
 const { createDemoBackend } = require('./demo-windows');
 const { classify, classifyWithReason, appLabel, isIgnored, isBrowserProcess } = require('./classifier');
+const { decideSample } = require('./tracking-decision');
+const { normalizeMediaReport } = require('./media-signal');
+const { attachPlatformSignals } = require('./media-probe');
 
 function createActiveWinBackend() {
   let impl = null;
@@ -72,13 +75,22 @@ function createRealBackend() {
         useActiveWin = true;
       }
       if (!activeWin) activeWin = createActiveWinBackend();
-      return activeWin.getActiveWindow();
+      const fallback = await activeWin.getActiveWindow();
+      try { return await attachPlatformSignals(fallback); }
+      catch (_) { return fallback; }
     }
 
     return { getActiveWindow };
   }
 
-  return createActiveWinBackend();
+  const active = createActiveWinBackend();
+  return {
+    async getActiveWindow() {
+      const result = await active.getActiveWindow();
+      try { return await attachPlatformSignals(result); }
+      catch (_) { return result; }
+    }
+  };
 }
 
 /**
@@ -86,7 +98,7 @@ function createRealBackend() {
  * Mutable so IPC can hot-reload without restarting tracker.
  * Also accepts legacy `rules` / `ignore` plain values for smoke/tests.
  */
-function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessionManager, onTick, onReminder, backend, now: clock = Date.now }) {
+function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessionManager, onTick, onReminder, backend, now: clock = Date.now, readIdleTime }) {
   const rHolder = rulesHolder || { rules: rules };
   const iHolder = ignoreHolder || { ignore: ignore || [] };
   const real = backend || createRealBackend();
@@ -141,6 +153,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     let source = 'idle';
     let trackingError = null;
     let idleSec = 0;
+    let sample = null;
 
     if (settings.demoMode) {
       win = demo.getActiveWindow();
@@ -148,10 +161,17 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       trackingError = null;
     } else {
       // Real mode only — do not silently fall back to demo
-      const result = await real.getActiveWindow();
-      win = result.window;
-      idleSec = Math.max(0, Number(result.idleSec) || 0);
-      trackingError = result.error || null;
+      sample = await real.getActiveWindow();
+      win = sample.window;
+      if (sample.idleSec != null && sample.idleSec !== '' && Number.isFinite(Number(sample.idleSec))) {
+        idleSec = Math.max(0, Number(sample.idleSec));
+      } else if (typeof readIdleTime === 'function') {
+        try {
+          const reported = Number(readIdleTime());
+          if (Number.isFinite(reported)) idleSec = Math.max(0, reported);
+        } catch (_) {}
+      }
+      trackingError = sample.error || null;
       source = win ? 'real' : 'idle';
     }
 
@@ -166,10 +186,25 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     const selfIgnored = win && isIgnored(win, [], {});
     const ignored = selfIgnored || (correction ? correction === 'ignored' : win ? isIgnored(win, iHolder.ignore || [], rHolder.rules && rHolder.rules.identities) : false);
     const idleTimeoutSec = Math.max(0, Number(settings.idleTimeoutSec) || 0);
-    const idle = !settings.demoMode && idleTimeoutSec > 0 && idleSec >= idleTimeoutSec;
     // Pause at the timeout. Never subtract accumulated idle time from earned history.
     // Show in Now viewing; do not log time or affect streaks when ignored
     const category = !win ? 'other' : ignored ? 'ignored' : correction || classify(win, rHolder.rules);
+    const media = settings.demoMode ? null : normalizeMediaReport(sample && sample.media, win);
+    const decision = decideSample({
+      elapsedSec: elapsed,
+      idleSec,
+      idleTimeoutSec,
+      demoMode: !!settings.demoMode,
+      paused: !!settings.trackingPaused,
+      ignored,
+      hasWindow: !!win,
+      screenOff: !!(sample && sample.screenOff === true),
+      category,
+      media,
+      trackMusicWhileIdle: settings.trackMusicWhileIdle === true,
+      trackVideoWhileIdle: settings.trackVideoWhileIdle === true
+    });
+    const idle = decision.idle;
     const app = win
       ? appLabel(win)
       : trackingError
@@ -207,10 +242,10 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       current.source = 'idle';
     }
 
-    // NEVER count ignored toward totals or streaks; never log while paused
-    if (win && !ignored && !paused && !idle) {
-      if (store.addInterval && elapsed > 0) store.addInterval(app, category, intervalStart, now, activity);
-      else store.addSeconds(app, category, elapsed, activity);
+    // One foreground sample per tick. Sessions and reminders use this same decision.
+    if (decision.count && decision.elapsedSec > 0) {
+      if (store.addInterval) store.addInterval(app, category, intervalStart, now, activity);
+      else store.addSeconds(app, category, decision.elapsedSec, activity);
     } else if (store.resetStreak) {
       store.resetStreak();
     }
@@ -221,13 +256,13 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       sessionInfo = sessionManager.onTrackerTick({
         app,
         category,
-        elapsedSec: win && !ignored && !paused && !idle ? elapsed : 0
+        elapsedSec: decision.count ? decision.elapsedSec : 0
       });
     }
 
     // Remember last real focused app (not ignored / not self) for Home "Last focused"
     // Freeze lastFocused while paused so the Home bar stays put
-    if (win && !ignored && !paused && !idle) {
+    if (decision.count && win && decision.elapsedSec > 0) {
       lastFocused = {
         app,
         title,
@@ -240,10 +275,8 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     }
 
     if (
-      win &&
-      !ignored &&
-      !paused &&
-      !idle &&
+      decision.count &&
+      decision.elapsedSec > 0 &&
       settings.notificationsEnabled !== false &&
       store.shouldRemind() &&
       category === 'unproductive'
@@ -273,6 +306,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
           source,
           ignored,
           idle,
+          idleReason: decision.reason,
           idleSec,
           url: (win && win.url) || '',
           elapsedSec: Math.round((now - current.since) / 1000),

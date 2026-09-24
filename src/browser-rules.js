@@ -54,18 +54,25 @@
   }
 
   function classifySite(url, rules) { return siteMatch(url, rules)?.category || null; }
-  function browserMatch(entry, rules) {
-    const site = siteMatch(entry.url, rules);
-    if (site) return site;
-    const text = `${entry.title || ''} ${entry.url || ''}`.toLowerCase();
+  function keywordMatch(text, rules) {
+    if (!rules) return null;
     for (const type of ['unproductive', 'productive']) {
-      const match = ((rules && rules[type]) || []).find((tag) => {
+      const match = (rules[type] || []).find((tag) => {
         const key = String(tag || '').trim().toLowerCase();
         return key && !key.startsWith('site:') && text.includes(key);
       });
       if (match) return { category: type, reason: String(match).trim().toLowerCase() };
     }
-    return { category: 'productive', reason: 'Browser default' };
+    return null;
+  }
+
+  // Focus profile tags win. The browser keyword list applies only when those tags miss.
+  function browserMatch(entry, rules) {
+    const site = siteMatch(entry && entry.url, rules);
+    if (site) return site;
+    const text = `${(entry && entry.title) || ''} ${(entry && entry.url) || ''}`.toLowerCase();
+    return keywordMatch(text, rules) || keywordMatch(text, rules && rules.browserKeywords) ||
+      { category: 'productive', reason: 'Browser default' };
   }
   function classifyBrowser(entry, rules) { return browserMatch(entry, rules).category; }
 

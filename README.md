@@ -73,10 +73,11 @@ Classification checks process names, window titles, URLs, and configured keyword
 1. Ignored process identities are excluded from tracking.
 2. For non-browser apps, an explicit unproductive process-name tag wins; otherwise productive process identities take precedence over window titles and URLs.
 3. For browsers with a captured address, `site:` tags take precedence over keywords. The most specific matching domain wins; the same domain in both lists is unproductive. For example, productive `site:learn.youtube.com` overrides unproductive `site:youtube.com` on that subdomain only. Rules match domain boundaries, never a domain mentioned in a page title or URL path.
-4. Unproductive keyword matches take priority over ordinary productive keywords.
-5. Productive keyword matches are applied next.
-6. Recognized browsers with no matching keyword default to productive.
-7. Unknown applications without a match are other.
+4. Unproductive keyword matches in the active Focus profile take priority over ordinary productive keywords.
+5. Productive keyword matches in the active Focus profile are applied next.
+6. If the focused window is a browser and the profile did not match, the editable browser keyword list is checked. Unproductive keywords in that list win over productive ones. The list ships with a local default, can be edited on Focus Tags, and can be imported or exported as a `.sydtrack-browser` file. It does not apply to native apps.
+7. Recognized browsers with no matching keyword default to productive.
+8. Unknown applications without a match are other.
 
 Add website tags to the existing Productive or Unproductive lists (one per line). Use a domain without a path or wildcard, such as `site:youtube.com`. Ignore still applies to whole applications. Website tags travel with existing backups and profile packs; no data migration is needed. Older app versions preserve these strings but do not interpret them as website rules.
 
@@ -90,7 +91,9 @@ The address-bar prototype remains disabled in production: live Chrome testing ex
 
 Browser activity is stored by category, so switching from a productive GitHub tab to an unproductive YouTube tab does not reclassify the earlier time.
 
-Idle tracking pauses at the configured timeout and retains time earned before that timeout. Paused or idle ticks do not add session distractions. Sessions that expire while the app is closed finish at their original deadline.
+Idle tracking pauses at the configured timeout and retains time earned before that timeout. That timeout remains the default for music and video. Two separate settings, both off by default, can keep counting when the focused app itself is playing media: **Track music while idle** and **Track video while idle**. Paused or stopped playback never counts. Playback in a different app does not keep the focused window active. Sleep and the lock screen never count, even when media is playing. A confirmed screen-off counts only opted-in foreground music. Productive and unproductive tags still choose the category; media only decides whether the idle sample is kept. Sessions and reminders use that same decision. Paused or idle ticks do not add session distractions. Sessions that expire while the app is closed finish at their original deadline.
+
+Playback state comes from a local signal, never from the window title alone. Windows reads System Media Transport Controls in the same foreground probe and treats a probe failure as “no playback.” macOS asks Music, Spotify, TV, and VLC through local AppleScript for playing versus paused; there is no stable public Now Playing query, so other players fall back to the idle timeout. Linux reads MPRIS `PlaybackStatus` over the session D-Bus. Screen-off uses the Windows screensaver flag, macOS display power when IODisplayWrangler reports it, and X11 `xset` monitor state. If a platform cannot answer, SydTrack keeps the idle timeout and does not guess.
 
 System sleep and screen lock suspend capture independently of your idle timeout. Waking while still locked keeps capture suspended, and waking never changes a manual tracking pause. Interrupted probes are discarded; sleep, lock, and tracker startup clear old reminder streaks. Focus sessions keep their wall-clock deadlines, but away time is not added to their app totals.
 

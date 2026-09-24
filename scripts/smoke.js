@@ -1214,7 +1214,7 @@ async function activityReasonChecks() {
   assert(rows.find(row => row.reason === 'youtube').seconds > 20 && rows.find(row => row.reason === 'reddit').category === 'unproductive', 'Live row override does not make all browser tabs productive');
 }
 
-regressionChecks().then(lifecycleChecks).then(infrastructureChecks).then(historyLoadingChecks).then(focusProfileChecks).then(appCorrectionChecks).then(activityReasonChecks).then(browserProbeChecks).then(() => {
+regressionChecks().then(lifecycleChecks).then(infrastructureChecks).then(historyLoadingChecks).then(focusProfileChecks).then(appCorrectionChecks).then(activityReasonChecks).then(browserProbeChecks).then(() => require('./test-tracking-decisions').run()).then(() => {
   console.log(failed ? `\n${failed} failed` : '\nall smoke checks passed');
   process.exitCode = failed ? 1 : 0;
 }).catch((err) => { console.error(err); process.exitCode = 1; });

@@ -14,7 +14,7 @@ Allow about 10–15 minutes, plus an optional natural hour/midnight check. These
 - Keep the chosen app foreground for 20–30 seconds and confirm its total grows.
 - Press **Win+L**, wait 60 seconds, then unlock.
 - Return to the same app for 20–30 seconds and compare its total.
-- Pass: activity resumes, the locked minute is not added, previous totals remain, and no error dialog/crash occurs. Repeat once with the idle timeout longer than the lock period to distinguish lock handling from idle handling.
+- Pass: activity resumes, the locked minute is not added, previous totals remain, and no error dialog/crash occurs. Repeat once with the idle timeout longer than the lock period to distinguish lock handling from idle handling. Leave **Track music while idle** and **Track video while idle** off for this check. Those settings are off by default; a playing video still goes idle, and sleep or the lock screen is excluded even if media is playing.
 
 ## 2. Sleep, wake, then unlock (about three minutes)
 

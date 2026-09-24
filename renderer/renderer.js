@@ -1189,6 +1189,12 @@ function applySettingsInputs(settings) {
     const idleSec = Number(settings.idleTimeoutSec);
     $('idle-timeout-min').value = Math.round(((Number.isFinite(idleSec) ? idleSec : 300) / 60) * 10) / 10;
   }
+  if ($('track-music-idle') && document.activeElement !== $('track-music-idle')) {
+    $('track-music-idle').checked = settings.trackMusicWhileIdle === true;
+  }
+  if ($('track-video-idle') && document.activeElement !== $('track-video-idle')) {
+    $('track-video-idle').checked = settings.trackVideoWhileIdle === true;
+  }
   if ($('reminder-message') && document.activeElement !== $('reminder-message')) {
     $('reminder-message').value = settings.reminderMessage || "You've been on {app} for a while... maybe it's time to get back?";
   }
@@ -1887,6 +1893,16 @@ if ($('idle-timeout-min')) {
   };
   $('idle-timeout-min').addEventListener('change', saveIdleTimeout);
 }
+if ($('track-music-idle')) {
+  $('track-music-idle').addEventListener('change', () => {
+    pushSettings({ trackMusicWhileIdle: $('track-music-idle').checked === true });
+  });
+}
+if ($('track-video-idle')) {
+  $('track-video-idle').addEventListener('change', () => {
+    pushSettings({ trackVideoWhileIdle: $('track-video-idle').checked === true });
+  });
+}
 if ($('reminder-message')) {
   const saveReminderMsg = () => {
     const text = String($('reminder-message').value || '').trim() || "You've been on {app} for a while... maybe it's time to get back?";
@@ -2062,6 +2078,23 @@ function fillIgnoreEditor(payload) {
   updateTagsQuickStatus();
 }
 
+function fillBrowserKeywordEditors(payload) {
+  if (!payload) return;
+  const productive = $('browser-kw-prod');
+  const unproductive = $('browser-kw-unprod');
+  if (productive && document.activeElement !== productive) productive.value = (payload.productive || []).join('\n');
+  if (unproductive && document.activeElement !== unproductive) unproductive.value = (payload.unproductive || []).join('\n');
+}
+
+async function loadBrowserKeywordEditors() {
+  if (!api || !api.getBrowserKeywords || tagsQuickSaving) return;
+  try {
+    fillBrowserKeywordEditors(await api.getBrowserKeywords());
+  } catch (_) {
+    if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Failed to load browser keywords';
+  }
+}
+
 async function loadRulesAndIgnore() {
   if (!api || tagsQuickSaving) return;
   try {
@@ -2076,6 +2109,7 @@ async function loadRulesAndIgnore() {
       fillIgnoreEditor(ign);
     }
   } catch (_) {}
+  await loadBrowserKeywordEditors();
 }
 
 async function saveRulesFromEditors(statusId) {
@@ -2155,6 +2189,69 @@ if ($('ignore-reset')) {
       $('ignore-status').textContent = 'Defaults restored';
     } catch (err) {
       $('ignore-status').textContent = 'Reset failed';
+    } finally { tagsQuickSaving = false; }
+  });
+}
+
+function browserKeywordDraft() {
+  return {
+    productive: linesToList(($('browser-kw-prod') && $('browser-kw-prod').value) || ''),
+    unproductive: linesToList(($('browser-kw-unprod') && $('browser-kw-unprod').value) || '')
+  };
+}
+
+if ($('browser-kw-save')) {
+  $('browser-kw-save').addEventListener('click', async () => {
+    if (!api || !api.setBrowserKeywords || tagsQuickSaving) return;
+    tagsQuickSaving = true;
+    if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Saving…';
+    try {
+      const next = await api.setBrowserKeywords(browserKeywordDraft());
+      fillBrowserKeywordEditors(next);
+      if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Saved — live now';
+    } catch (_) {
+      if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Save failed';
+    } finally { tagsQuickSaving = false; }
+  });
+}
+
+if ($('browser-kw-reset')) {
+  $('browser-kw-reset').addEventListener('click', async () => {
+    if (!api || !api.resetBrowserKeywords || tagsQuickSaving) return;
+    tagsQuickSaving = true;
+    if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Resetting…';
+    try {
+      const next = await api.resetBrowserKeywords();
+      fillBrowserKeywordEditors(next);
+      if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Defaults restored';
+    } catch (_) {
+      if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Reset failed';
+    } finally { tagsQuickSaving = false; }
+  });
+}
+
+if ($('browser-kw-export')) {
+  $('browser-kw-export').addEventListener('click', async () => {
+    if (!api || !api.exportBrowserKeywords) return;
+    const result = await api.exportBrowserKeywords();
+    if ($('browser-kw-status')) $('browser-kw-status').textContent = result && result.ok ? 'Exported' : result && result.canceled ? '' : 'Export failed';
+  });
+}
+
+if ($('browser-kw-import')) {
+  $('browser-kw-import').addEventListener('click', async () => {
+    if (!api || !api.importBrowserKeywords || tagsQuickSaving) return;
+    tagsQuickSaving = true;
+    try {
+      const result = await api.importBrowserKeywords();
+      if (result && result.ok) {
+        fillBrowserKeywordEditors(result);
+        if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Imported — live now';
+      } else if ($('browser-kw-status') && result && result.error) {
+        $('browser-kw-status').textContent = result.error;
+      }
+    } catch (_) {
+      if ($('browser-kw-status')) $('browser-kw-status').textContent = 'Import failed';
     } finally { tagsQuickSaving = false; }
   });
 }
