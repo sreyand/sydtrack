@@ -586,7 +586,7 @@ ipcMain.handle('data:export', async (event, payload) => {
   });
   if (result.canceled || !result.filePath) return { ok: false, canceled: true };
 
-  const payload = buildExport(store, {
+  const exportData = buildExport(store, {
     includeSettings: options.includeSettings !== false,
     includeRules: options.includeRules !== false,
     includeIgnore: options.includeIgnore !== false,
@@ -596,7 +596,7 @@ ipcMain.handle('data:export', async (event, payload) => {
     identities: identitiesHolder.identities,
     focusProfiles
   });
-  writeBackupFile(result.filePath, payload);
+  writeBackupFile(result.filePath, exportData);
   return { ok: true, path: result.filePath };
 });
 
