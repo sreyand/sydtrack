@@ -106,6 +106,7 @@
             <li><span class="swatch other"></span> Other <strong id="other-val">0:00</strong></li>
           </ul>
 
+          <p id="home-week-loading" class="muted tiny hidden" role="status">Loading this week…</p>
           <div id="week-bars" class="week-bars" hidden></div>
 
           <div id="last-focused" class="last-focused">
@@ -142,6 +143,7 @@
           <div>
             <h1>Roundup</h1>
             <p class="muted" id="roundup-date">Today</p>
+            <p id="roundup-loading" class="muted hidden" role="status">Loading history…</p>
           </div>
         </header>
 
@@ -203,6 +205,7 @@
           <div>
             <h1>Analytics</h1>
             <p class="muted" id="analytics-subtitle">Today’s hours</p>
+            <p id="analytics-loading" class="muted hidden" role="status">Loading history…</p>
           </div>
         </header>
 
@@ -555,13 +558,14 @@
           <h3>Data</h3>
           <div class="privacy-warning" role="note">
             <strong>Privacy warning</strong>
-            <p>Exports include app names, window titles, and time history. Treat a <code>.sydtrack</code> file like a personal diary. There is <em>no cloud sync</em> — only you choose where to save or open a backup on this machine (or copy the file yourself between PCs).</p>
+            <p>Exports include app names, window titles, and time history. Treat a <code>.sydtrack</code> or CSV file like a personal diary. There is <em>no cloud sync</em> — only you choose where to save or open a file on this machine.</p>
           </div>
-          <p class="hint">Includes activity, sessions, settings, Focus Tags, and app identities. Import adds activity totals; matching session IDs are kept once. A running session is exported as a stopped checkpoint and never auto-started on import.</p>
+          <p class="hint">JSON backups include activity, sessions, settings, Focus Tags, and app identities. CSV is a spreadsheet of the same local data. Import adds activity totals; matching session IDs are kept once. A running session is exported as a stopped checkpoint and never auto-started on import.</p>
           <p class="hint">Local error logs are kept in the <code>logs</code> folder inside the Data location above (two files, approximately 256 KB each). Logs are never uploaded or included in backups.</p>
           <div class="rules-actions data-actions">
-            <button type="button" id="data-export" class="btn primary">Export backup…</button>
-            <button type="button" id="data-import" class="btn">Import backup…</button>
+            <button type="button" id="data-export" class="btn primary">Export JSON…</button>
+            <button type="button" id="data-export-csv" class="btn">Export CSV…</button>
+            <button type="button" id="data-import" class="btn">Import…</button>
             <span id="data-status" class="muted tiny"></span>
           </div>
           <div class="danger-zone">
@@ -570,6 +574,7 @@
             <div class="rules-actions">
               <button type="button" id="data-clear-today" class="btn danger-outline">Clear today</button>
               <button type="button" id="data-clear-all" class="btn danger">Clear all history</button>
+              <button type="button" id="data-delete-all" class="btn danger">Delete all my data</button>
             </div>
           </div>
         </article>

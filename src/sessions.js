@@ -490,6 +490,20 @@ function createSessionManager({ dataDir, getSettings, onRecovery = () => {} }) {
     getRecentSessionDays,
     applyHistorySetting,
     deleteSession,
+    eraseAll() {
+      active = null;
+      pendingCompletions.length = 0;
+      try {
+        if (fs.existsSync(activePath)) fs.unlinkSync(activePath);
+      } catch (err) {
+        console.error('[sessions] erase active failed', err.message);
+      }
+      for (const key of listSessionDates()) {
+        try { fs.unlinkSync(dayPath(key)); } catch (err) {
+          console.error('[sessions] erase day failed', err.message);
+        }
+      }
+    },
     checkExpiry,
     MODE_DEFS,
     sessionsDir,

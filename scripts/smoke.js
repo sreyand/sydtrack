@@ -244,6 +244,7 @@ assert(rules.unproductive.includes('youtube'), 'youtube still in unproductive de
 assert(ignore.includes('explorer'), 'ignore defaults include explorer');
 assert(ignore.includes('shellexperiencehost'), 'ignore defaults include shellexperiencehost');
 assert(ignore.includes('sydtrack'), 'ignore defaults include sydtrack');
+assert(ignore.includes('focusflow'), 'ignore defaults include the previous focusflow process name');
 
 // ——— byHour increments ———
 const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-hour-'));
@@ -321,6 +322,7 @@ const payload = buildExport(store4, {
   ignore: ['explorer']
 });
 assert(payload.format === 'sydtrack-backup', 'export format sydtrack-backup');
+assert(importBackup(createStore(fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-legacy-format-'))), Object.assign({}, payload, { format: 'focusflow-backup' })).ok, 'focusflow-backup format still imports');
 assert(payload.schemaVersion === 1, 'export schemaVersion 1');
 assert(typeof payload.exportedAt === 'string' && payload.exportedAt.includes('T'), 'export exportedAt ISO');
 assert(typeof payload.appVersion === 'string', 'export appVersion present');

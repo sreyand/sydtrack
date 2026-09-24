@@ -81,7 +81,7 @@ Current release checkpoint: v1.1.1 portable built locally; source pushed to `gpt
 ### Deferred unless evidence changes the priority
 
 - Automatic browser address capture: prototype remains disabled; title-based tracking is the baseline across browser engines.
-- Storage architecture replacement: measure performance and failure cases first (#9).
+- 90-day raw retention with compact daily rollups and lazy Home/Analytics reads is in place (#9). A further storage rewrite still needs measured failure cases first.
 - Advanced scoring/decompression analytics without agreed semantics (#13).
 - Media inference based only on window titles (#14).
 - Heavy gamification, competitive rankings, or shame-based streaks (#8).
@@ -229,8 +229,8 @@ Check startup and steady-state tracking cost, history loading, narrow layouts, l
 - Session distractions are transitions into unproductive activity, not every tick. Ignored or zero-time ticks must not create false transitions. Timer reads must not consume completion events; tray refresh must not replay them.
 - Browser titles do not establish process identity. Experimental address capture exposed unsubmitted-address capture and unreliable resumption after the focus guard. New live evidence is required before enabling it.
 - Keep archive reads bounded and outside live polling. Measure CPU, memory, startup, and probe latency before architectural changes; historical informal memory estimates are not measurements.
-- Windows x64 remains the target. Mac/Linux, rebranding, adaptive profiles, reminder-history analytics, onboarding, and extra privacy/data controls remain parked ideas, not commitments. Preserve stable IDs, data paths, and export formats.
-- Issue numbers describe scoped work, not permission to close issues. #1/#3/#4/#11 have targeted fixes; #7/#9/#13/#14 remain partly or wholly deferred. #10 external bot configuration requires identifying its owner, not renaming the app.
+- Windows x64 remains the target. Mac/Linux, adaptive profiles, reminder-history analytics, and onboarding remain parked ideas, not commitments. Backup format `sydtrack-backup` stays stable. Packaged data lives in the `sydtrack` user-data directory; an existing `focusflow` directory is copied once.
+- Issue numbers describe scoped work, not permission to close issues. #9 keeps 90 days of raw activity and rollups after that. #10: leftover `gitpaperclip` app id and the old `focusflow` data directory are migrated; the product name stays sydtrack.
 - Run focused regressions with `npm test`; use relevant syntax and diff checks. Isolated UI checks: `npm run test:ui` and `npm run test:profiles-ui`. Packaging: `npm run pack` or `npm run dist:portable`. Output is unsigned and Git-ignored.
 - Verify branch, release state, and executable version before release work. External publication requires user authorization. Repository LICENSE is authoritative; obsolete MIT wording in previous goals is not a licensing decision.
 

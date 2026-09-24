@@ -4,6 +4,11 @@ data/settings.json
 data/rules.json
 data/ignore.json
 data/history/
+data/rollups/
+data/migration-backups/
+data/storage-schema.json
+data/retention-journal.json
+data/.legacy-import/
 *.log
 *.sydtrack
 dist/

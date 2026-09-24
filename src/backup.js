@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { migrateDay, todayKey, emptyDay } = require('./store');
+const { LEGACY_BACKUP_FORMAT } = require('./legacy-data-dir');
 const { writeJson, validDateKey } = require('./json-file');
 const { validateProfiles } = require('./focus-profiles');
 
@@ -69,6 +70,7 @@ function importBackup(store, obj, opts) {
     appliedIgnore: false
   };
 
+  if (obj && obj.format === LEGACY_BACKUP_FORMAT) obj = Object.assign({}, obj, { format: 'sydtrack-backup' });
   if (!obj || obj.format !== 'sydtrack-backup') {
     result.error = 'Invalid backup: missing format sydtrack-backup';
     return result;
