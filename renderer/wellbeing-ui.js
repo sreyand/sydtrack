@@ -142,13 +142,13 @@ function renderScoreList(target, days, windowSize) {
     target.textContent = 'No days to score yet.';
     return;
   }
-  target.innerHTML = rolling.days.map((day, index) => {
-    const avg = rolling.series[index];
-    return '<div class="focus-score-row"><span>' + wellbeingEsc(day.date || '') + '</span><span>' +
-      (day.scored ? day.percent + '%' : '—') + '</span><span class="muted">' +
-      (avg && avg.percent != null ? avg.percent + '% over ' + avg.samples + ' scored day' + (avg.samples === 1 ? '' : 's') : '—') +
-      '</span></div>';
-  }).join('');
+  target.innerHTML = '<div class="week-score-grid">' + rolling.days.map((day) => {
+    const date = String(day.date || '');
+    const label = date.length >= 10 ? date.slice(5, 7) + '/' + date.slice(8, 10) : date;
+    return '<div class="week-score-day" data-hit="' + (day.scored ? (day.hit ? 'yes' : 'no') : 'na') +
+      '" title="' + wellbeingEsc(date + ': ' + (day.scored ? day.percent + '% focus' : 'no score')) +
+      '"><span>' + wellbeingEsc(label) + '</span><strong>' + (day.scored ? day.percent + '%' : '—') + '</strong></div>';
+  }).join('') + '</div>';
 }
 
 function renderWeekWellbeing() {
@@ -168,17 +168,10 @@ function renderWeekWellbeing() {
 }
 
 function renderMonthFocusScores(days) {
-  const average = wellbeingEl('month-focus-average');
   const list = wellbeingEl('month-focus-score-list');
   if (typeof sydtrackGoals === 'undefined') return;
   const prefs = goalPrefs();
-  const week = sydtrackGoals.rollingAverage(days || [], { window: 7, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
   const month = sydtrackGoals.rollingAverage(days || [], { window: 30, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
-  if (average) {
-    const weekText = week.latest && week.latest.percent != null ? week.latest.percent + '% (' + week.latest.samples + ' scored)' : '—';
-    const monthText = month.latest && month.latest.percent != null ? month.latest.percent + '% (' + month.latest.samples + ' scored)' : '—';
-    average.textContent = '7-day ' + weekText + ' · 30-day ' + monthText + '. Empty days are skipped.';
-  }
   if (!list) return;
   list.innerHTML = '<div class="month-score-grid">' + month.days.map((day, index) => {
     const avg = month.series[index];

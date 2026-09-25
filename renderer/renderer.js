@@ -1658,30 +1658,13 @@ function formatRoundupDate(dateKey) {
 function roundupHeadlines(moodId, hit, thin) {
   if (thin) {
     return {
-      headline: 'Quiet start',
-      sub: 'Not enough tracked time yet for a full wrap. Keep working — Roundup fills in as the day goes.'
+      headline: 'Today so far',
+      sub: 'Not enough activity yet.'
     };
   }
-  if (hit) {
-    const map = {
-      thriving: ['Goal crushed', 'You killed it today! 🥳'],
-      focused: ['Goal hit', 'Solid focus day — you met the focus-share goal.'],
-      meh: ['Goal hit, mixed vibe', 'You made the focus-share goal even if the mix wasn’t perfect.'],
-      distracted: ['Goal hit, rough edges', 'You still cleared the focus-share goal despite some drift.'],
-      doomscroll: ['Goal hit somehow', 'Focus-share goal cleared — maybe tighten Focus Tags next.']
-    };
-    const row = map[moodId] || map.meh;
-    return { headline: row[0], sub: row[1] };
-  }
-  const map = {
-    thriving: ['Almost there', "Let's finish strong! 💪"],
-    focused: ['Close call', 'Good focus day. Nudge the goal or keep the focus share up.'],
-    meh: ['Mixed day', 'Some focus, some drift. Tags and FocusBoost can tighten tomorrow.'],
-    distracted: ['Drift day', 'Unproductive time led. Tag distractions and arm FocusBoost.'],
-    doomscroll: ['Doomscroll o’clock', 'Heavy unproductive stretch. Reset with Focus Tags + Boost.']
-  };
-  const row = map[moodId] || map.meh;
-  return { headline: row[0], sub: row[1] };
+  return hit
+    ? { headline: 'Goal reached', sub: 'Your focus share is on target.' }
+    : { headline: 'Below goal', sub: 'Your focus share is under today’s target.' };
 }
 
 function renderRoundup(stats) {
@@ -1778,33 +1761,20 @@ function renderRoundup(stats) {
     'Detail'
   );
 
-  const denom = focus ? focus.denominator : prod + unp;
-  setAppTrunc($('ru-share'), denom > 0 && focus && focus.percent != null ? focus.percent + '%' : '—', 'Focus share');
-  setAppTrunc(
-    $('ru-share-sub'),
-    denom > 0
-      ? (focus && focus.includeOther
-          ? 'Of active tracked time'
-          : 'Of productive + unproductive')
-      : 'Of productive + unproductive',
-    'Detail'
-  );
-
   const story = $('roundup-story');
   if (story) {
     if (thin) {
-      story.textContent =
-        'Start using apps and Roundup will write a short wrap for today.';
+      story.textContent = 'Your daily summary will appear once there’s enough activity.';
       story.classList.add('muted');
     } else {
       const lines = [];
       if (topP) {
         lines.push(
-          'Most of your deep work was in <span class="story-app story-app-prod app-trunc" data-full="' +
+          '<span class="story-app story-app-prod app-trunc" data-full="' +
             esc(topP.name) +
             '">' +
             esc(topP.name) +
-            '</span>.'
+            '</span> was your top focus app.'
         );
       }
       if (topU) {
@@ -1813,24 +1783,11 @@ function renderRoundup(stats) {
             esc(topU.name) +
             '">' +
             esc(topU.name) +
-            '</span> led distractions.'
-        );
-      }
-      if (focus && !focus.thin && focus.percent != null) {
-        lines.push(
-          'Focus share: <span class="story-goal story-goal-' +
-            (hit ? 'hit' : 'far') +
-            '">' +
-            focus.percent +
-            '%</span> of a ' +
-            goalPct +
-            '% goal (' +
-            (focus.includeOther ? 'active tracked time' : 'productive + unproductive') +
-            ').'
+            '</span> was your biggest distraction.'
         );
       }
       if (!lines.length) {
-        story.textContent = 'Keep going — Roundup will fill in as Focus Tags learn your day.';
+        story.textContent = 'No app highlights yet.';
         story.classList.add('muted');
       } else {
         story.innerHTML = lines.map((l) => '<p class="story-line">' + l + '</p>').join('');

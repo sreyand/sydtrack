@@ -2244,7 +2244,7 @@ body[data-boost="on"]::after {
 }
 .roundup-highlights {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
 }
@@ -2847,12 +2847,17 @@ body[data-boost="on"]::after {
 .month-dot.productive { background: var(--prod); }
 .month-dot.unproductive { background: var(--unprod); }
 .month-dot.other { background: var(--other); }
-.month-summary { display: grid; grid-template-columns: 1fr; gap: 16px; }
-.month-summary > .card { min-width: 0; }
+.month-summary { display: grid; grid-template-columns: 1fr; grid-template-rows: auto 1fr; gap: 16px; min-height: 100%; }
+.month-summary > .card { min-width: 0; margin: 0; }
+.month-summary > .card:last-child { display: flex; flex-direction: column; }
+.month-summary > .card:last-child .month-stat { flex: 1; align-items: center; }
 .month-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 9px 0; font-size: 13px; }
 .month-stat strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .month-app { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 #month-focus-scores { margin-top: 16px; }
+.focus-score-wordmark { display: inline-flex; gap: 0; margin-bottom: 16px; letter-spacing: -0.03em; }
+.focus-score-wordmark span:first-child { font-weight: 700; }
+.focus-score-wordmark span:last-child { font-weight: 400; }
 .month-score-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 .month-score-day { min-width: 0; min-height: 54px; padding: 8px 10px; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface-sunken); font-variant-numeric: tabular-nums; }
 .month-score-day strong { font-size: 14px; color: var(--color-ink); }

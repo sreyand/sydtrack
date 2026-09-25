@@ -149,8 +149,8 @@
           <div class="roundup-hero-top">
             <span id="roundup-emoji" class="roundup-emoji" aria-hidden="true">😐</span>
             <div class="roundup-hero-copy">
-              <div id="roundup-headline" class="roundup-headline">Quiet start</div>
-              <div id="roundup-sub" class="roundup-sub muted">Not enough tracked time yet for a full wrap.</div>
+              <div id="roundup-headline" class="roundup-headline">Today so far</div>
+              <div id="roundup-sub" class="roundup-sub muted">Not enough activity yet.</div>
             </div>
           </div>
         </article>
@@ -184,7 +184,6 @@
           <div class="roundup-goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="roundup-screen-bar">
             <div id="roundup-screen-fill" class="roundup-goal-fill"></div>
           </div>
-          <p class="hint" id="roundup-screen-note">Counts productive, unproductive, and other time. Idle and ignored time stay out.</p>
         </article>
 
         <div class="roundup-highlights" id="roundup-highlights">
@@ -203,16 +202,11 @@
             <div id="ru-peak" class="roundup-chip-value app-trunc">—</div>
             <div id="ru-peak-sub" class="roundup-chip-sub muted tiny app-trunc">Most productive hour</div>
           </article>
-          <article class="card roundup-chip">
-            <div class="lf-kicker app-trunc" data-full="Focus share" data-tip-label="Label">Focus share</div>
-            <div id="ru-share" class="roundup-chip-value app-trunc">—</div>
-            <div id="ru-share-sub" class="roundup-chip-sub muted tiny app-trunc">Of productive + unproductive</div>
-          </article>
         </div>
 
         <article class="card roundup-story">
-          <div class="lf-kicker">The story</div>
-          <div id="roundup-story" class="roundup-story-body muted">Start using apps and Roundup will write a short wrap for today.</div>
+          <div class="lf-kicker">Summary</div>
+          <div id="roundup-story" class="roundup-story-body muted">Your daily summary will appear once there’s enough activity.</div>
         </article>
       </section>
 
@@ -308,12 +302,11 @@
             </article>
           </div>
           <article class="card" id="week-review">
-            <h3>This week vs last week</h3>
-            <div id="week-review-body" class="hint">Open this tab to compare focus share with the previous 7 days.</div>
+            <h3>Week over week</h3>
+            <div id="week-review-body" class="hint">Not enough activity to compare yet.</div>
           </article>
           <article class="card" id="week-focus-scores">
-            <h3>Focus score</h3>
-            <p class="hint">The score is that day’s focus share. The average skips days without enough classified time.</p>
+            <h3 class="focus-score-wordmark"><span>focus</span><span>score</span></h3>
             <div id="week-focus-score-list"></div>
           </article>
         </div>
@@ -321,8 +314,7 @@
         <div id="panel-month" class="analytics-panel hidden" data-panel="month">
           <div id="month-history" aria-live="polite"></div>
           <article class="card" id="month-focus-scores">
-            <h3>Daily focus score</h3>
-            <p class="hint" id="month-focus-average">Rolling averages appear after history loads.</p>
+            <h3 class="focus-score-wordmark"><span>focus</span><span>score</span></h3>
             <div id="month-focus-score-list"></div>
           </article>
         </div>

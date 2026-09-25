@@ -51,7 +51,7 @@ throws(() => hardenedWebPreferences('preload.js'), 'relative preload path is rej
 
 const win = buildBrowserWindowOptions({
   preloadPath: preload,
-  iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png'),
+  iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico'),
   platform: 'linux'
 });
 assert(win.webPreferences === prefs || (
@@ -107,6 +107,12 @@ assert(!/>Actual</.test(html), 'Daily focus share card does not show an Actual l
 assert(!/>Other excluded</.test(html) && !html.includes('id="roundup-goal-scope"'), 'Daily focus share card does not show Other excluded');
 assert(/id="roundup-goal-card"[^>]*class="[^"]*has-tip/.test(html) || /class="[^"]*has-tip[^"]*"[^>]*id="roundup-goal-card"/.test(html), 'Daily focus share card uses the existing hover tip pattern');
 assert(/data-full="[^"]*Other is excluded/.test(html), 'Daily focus share tip explains the default Other-excluded metric');
+assert(!html.includes('id="ru-share"') && !html.includes('Focus share: 73%'), 'Roundup does not repeat the focus-share card in its highlights or summary');
+assert(!html.includes('month-focus-average') && !html.includes('The score is that day'), 'Focus score cards omit explanatory subtitles');
+assert((html.match(/class="focus-score-wordmark"/g) || []).length === 2, 'week and month use the focusscore wordmark');
+assert(/<span class="logo-mark"[^>]*>S<\/span>/.test(html), 'sidebar keeps the S wordmark');
+const iconPath = path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico');
+assert(fs.existsSync(iconPath) && fs.readFileSync(iconPath).readUInt16LE(2) === 1, 'Windows icon is a valid ICO asset');
 assert(!html.includes('id="app-drill"') && !html.includes('app-hours-btn'), 'app hour-breakdown detail is not in the UI');
 const wellbeingUi = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'wellbeing-ui.js'), 'utf8');
 assert(!wellbeingUi.includes('of active tracked time today'), 'app hour-breakdown copy is not rendered');
@@ -244,7 +250,7 @@ assert(headless.headless && headless.args.includes('--no-sandbox'), 'headless Li
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 assert(pkg.build.publish === null, 'electron-builder publish is disabled');
 assert(pkg.build.linux.maintainer === 'SydTrack <noreply@sydtrack.app>', 'Linux deb maintainer is set');
-assert(pkg.build.win.signAndEditExecutable === false, 'Windows signing is off by default');
+assert(pkg.build.win.signAndEditExecutable === true, 'Windows resource editing stays on for product icon and metadata');
 assert(pkg.build.mac && pkg.build.linux, 'macOS and Linux package targets exist');
 const builder = require('../build/electron-builder.config.js');
 assert(builder.publish === null, 'builder config publish is null');

@@ -3,7 +3,7 @@
 const path = require('path');
 const { Tray, Menu, nativeImage } = require('electron');
 
-const LOGO_PATH = path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png');
+const LOGO_PATH = path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico');
 
 function focusBoostSecFromSettings(settings) {
   const n = Number(settings && settings.focusBoostSec);

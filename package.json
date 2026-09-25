@@ -1,6 +1,6 @@
 {
   "name": "sydtrack",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Desktop productivity tracker — active window time, classification, and focus reminders",
   "main": "src/main.js",
   "author": "SydTrack",
@@ -64,7 +64,7 @@
     ],
     "win": {
       "icon": "renderer/assets/sydtrack.ico",
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "target": [
         {
           "target": "nsis",

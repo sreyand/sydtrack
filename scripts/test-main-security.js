@@ -6,6 +6,7 @@ const path = require('path');
 const Module = require('module');
 const { channels } = require('../src/ipc-validate');
 const { APP_PAGE_URL, windowBackgroundColor } = require('../src/window-security');
+const { APP_ID } = require('../src/app-identity');
 
 let failed = 0;
 function assert(cond, msg) {
@@ -29,6 +30,7 @@ async function throws(fn, msg) {
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-main-sec-'));
 const handlers = new Map();
 const switches = [];
+let appliedAppId = null;
 const appListeners = {};
 let readyResolve;
 const ready = new Promise((resolve) => { readyResolve = resolve; });
@@ -87,7 +89,7 @@ const electron = {
     getPath: () => userData,
     getAppPath: () => path.join(__dirname, '..'),
     setName() {},
-    setAppUserModelId() {}
+    setAppUserModelId(value) { appliedAppId = value; }
   },
   BrowserWindow: Object.assign(function BrowserWindow(opts) {
     windowOpts = opts;
@@ -137,6 +139,7 @@ require('../src/main.js');
 
 async function run() {
   assert(!switches.includes('no-sandbox'), 'main does not append no-sandbox');
+  assert(appliedAppId === APP_ID, 'main uses the stable packaged application identity');
   assert(handlers.size === channels.length, 'every known IPC channel is registered');
 
   readyResolve();
@@ -182,6 +185,7 @@ async function run() {
   assert(!Object.values(exposed.sydtrack).includes(ipcRenderer), 'preload does not leak the raw ipcRenderer object');
 
   const builder = require('../build/electron-builder.config.js');
+  assert(builder.appId === APP_ID, 'builder and runtime application identities match');
   assert(builder.publish === null, 'builder config has publish: null');
   assert(!builder.publish || builder.publish.provider !== 'github', 'builder config does not publish to GitHub');
 }

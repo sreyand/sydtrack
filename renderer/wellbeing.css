@@ -1,10 +1,30 @@
-.focus-score-row {
+.week-score-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.week-score-day {
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 12px;
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
-  gap: 12px;
-  padding: 4px 0;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
   font-variant-numeric: tabular-nums;
 }
+
+.week-score-day span { font-size: 11px; color: var(--color-ink-muted); }
+.week-score-day strong { font-size: 15px; color: var(--color-ink); }
+.week-score-day[data-hit="yes"] { background: var(--color-productive-tint); border-color: color-mix(in srgb, var(--color-data-productive) 45%, var(--color-border)); }
+.week-score-day[data-hit="no"] { background: var(--color-unproductive-tint); border-color: color-mix(in srgb, var(--color-data-unproductive) 40%, var(--color-border)); }
+.week-score-day[data-hit="na"] strong { color: var(--color-ink-faint); font-weight: 400; }
+
+@media (max-width: 900px) { .week-score-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 /* —— Lane B: Roundup + Analytics layout (scoped) —— */
 

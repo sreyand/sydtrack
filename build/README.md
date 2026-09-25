@@ -14,7 +14,7 @@ npm run dist:portable # Windows portable exe only
 
 ## Signing later
 
-Leave secrets out of the repo. When you have certificates, set `SYDTRACK_SIGN=1` and the builder config turns Windows metadata signing and macOS hardened runtime back on.
+Leave secrets out of the repo. When you have certificates, set `SYDTRACK_SIGN=1` and the builder config turns Windows signing and macOS hardened runtime on.
 
 Windows (Authenticode):
 
@@ -27,4 +27,4 @@ macOS (Developer ID):
 - `build/entitlements.mac.plist` is applied only when `SYDTRACK_SIGN=1`
 - Notarization is left off. To notarize later, set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`, and change `notarize` in `build/electron-builder.config.js`
 
-Without `SYDTRACK_SIGN=1`, macOS uses `identity: null` and Windows sets `signAndEditExecutable` to false so the build does not need a certificate.
+Without `SYDTRACK_SIGN=1`, macOS uses `identity: null` and Windows remains unsigned. Windows resource editing stays enabled so the executable still receives SydTrack’s icon and version metadata; it does not require a certificate.

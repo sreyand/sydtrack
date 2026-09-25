@@ -98,23 +98,23 @@
   function weekSentences(info) {
     const lines = [];
     if (!info.thisFocus || info.thisFocus.percent == null || info.thisFocus.thin) {
-      lines.push('No scored focus share this week yet. A day needs at least a minute of the focus-share denominator.');
+      lines.push('Not enough activity to compare yet.');
       return lines;
     }
     if (!info.hasPrevious || !info.comparable) {
-      lines.push('Focus share this week is ' + info.thisFocus.percent + '% (' + info.definition + '). Last week does not have enough classified time to compare.');
+      lines.push(info.thisFocus.percent + '% focus this week. Not enough activity last week to compare.');
     } else if (info.deltaPoints === 0) {
-      lines.push('Focus share this week is ' + info.thisFocus.percent + '%, the same as last week (' + info.definition + ').');
+      lines.push('Unchanged from last week at ' + info.thisFocus.percent + '%.');
     } else {
-      const direction = info.deltaPoints > 0 ? 'above' : 'below';
+      const direction = info.deltaPoints > 0 ? 'Up' : 'Down';
       lines.push(
-        'Focus share this week is ' + info.thisFocus.percent + '%, ' +
+        direction + ' ' +
         Math.abs(info.deltaPoints) + ' point' + (Math.abs(info.deltaPoints) === 1 ? '' : 's') +
-        ' ' + direction + ' last week\'s ' + info.lastFocus.percent + '% (' + info.definition + ').'
+        ' from last week.'
       );
     }
     if (info.thisDistraction) {
-      lines.push(info.thisDistraction.name + ' is the largest unproductive app this week.');
+      lines.push(info.thisDistraction.name + ' took the most unproductive time.');
     }
     return lines;
   }

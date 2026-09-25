@@ -42,7 +42,7 @@ const {
 const { buildCsvExport, importCsv } = require('./data-export');
 const { deleteAllMyData, backupUserConfig } = require('./data-ownership');
 const { migrateLegacyUserData } = require('./legacy-data-dir');
-const APP_ID = require('../package.json').build.appId;
+const { APP_ID } = require('./app-identity');
 const {
   buildProfilePack,
   writeProfilePackFile,
@@ -214,7 +214,7 @@ function guardIpc(event, channel, payload) {
 function createWindow() {
   const winOpts = buildBrowserWindowOptions({
     preloadPath: path.join(__dirname, 'preload.js'),
-    iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png'),
+    iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico'),
     platform: process.platform,
     backgroundColor: windowBackgroundColor(store && store.getSettings ? store.getSettings().theme : 'midnight')
   });
@@ -305,7 +305,7 @@ function fireReminder(payload) {
     body = formatReminderBody(standardTemplate, payload);
   }
 
-  const iconPath = path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png');
+  const iconPath = path.join(__dirname, '..', 'renderer', 'assets', 'logo-mark.png');
 
   // OS toast — the real light nudge (works even when SydTrack is in the background).
   if (Notification.isSupported()) {
