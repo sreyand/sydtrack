@@ -84,6 +84,7 @@ function parseProfilePack(objOrString) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
     throw new Error('Invalid profile pack: expected an object');
   }
+  if (obj.format === 'focusflow-profile') obj = Object.assign({}, obj, { format: FORMAT_ID });
   if (obj.format !== FORMAT_ID) {
     throw new Error(
       `Invalid profile pack: expected format ${FORMAT_ID}, got ${obj.format || '(missing)'}`

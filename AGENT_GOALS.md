@@ -81,7 +81,7 @@ Current release checkpoint: v1.1.1 portable built locally; source pushed to `gpt
 ### Deferred unless evidence changes the priority
 
 - Automatic browser address capture: prototype remains disabled; title-based tracking is the baseline across browser engines.
-- Storage architecture replacement: measure performance and failure cases first (#9).
+- 90-day raw retention with compact daily rollups and lazy Home/Analytics reads is in place (#9). A further storage rewrite still needs measured failure cases first.
 - Advanced scoring/decompression analytics without agreed semantics (#13).
 - Media inference based only on window titles (#14).
 - Heavy gamification, competitive rankings, or shame-based streaks (#8).

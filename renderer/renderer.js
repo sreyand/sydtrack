@@ -250,6 +250,45 @@ const reduceMotion =
 let analyticsSegment = 'day';
 let historyRequest = 0;
 let historicalWeek = null;
+let fullHistoryCache = null;
+let fullHistoryPromise = null;
+
+function setHistoryLoading(on, message) {
+  const el = $('analytics-loading');
+  if (!el) return;
+  if (on) {
+    el.textContent = message || 'Loading history…';
+    el.classList.remove('hidden');
+  } else if (message) {
+    el.textContent = message;
+    el.classList.remove('hidden');
+  } else el.classList.add('hidden');
+}
+
+function invalidateHistoryViews() {
+  fullHistoryCache = null;
+  fullHistoryPromise = null;
+  historicalWeek = null;
+}
+
+async function ensureFullHistory(fetchHistory = api && api.getHistorySummary) {
+  if (fullHistoryCache) return fullHistoryCache;
+  if (!fetchHistory) return null;
+  if (!fullHistoryPromise) {
+    setHistoryLoading(true, 'Loading history…');
+    fullHistoryPromise = Promise.resolve(fetchHistory(90)).then((days) => {
+      fullHistoryCache = Array.isArray(days) ? days : [];
+      setHistoryLoading(false);
+      return fullHistoryCache;
+    }).catch(() => {
+      fullHistoryPromise = null;
+      setHistoryLoading(false, 'Could not load history. Reopen this tab to retry.');
+      return null;
+    });
+  }
+  return fullHistoryPromise;
+}
+
 async function loadAnalyticsHistory(fetchHistory = api && api.getHistorySummary) {
   if (!fetchHistory || !['week', 'month'].includes(analyticsSegment)) return;
   const request = ++historyRequest;
@@ -257,8 +296,9 @@ async function loadAnalyticsHistory(fetchHistory = api && api.getHistorySummary)
   const target = segment === 'week' ? $('week-chart') : $('month-history');
   if (target) target.textContent = 'Loading history…';
   try {
-    const days = await fetchHistory(segment === 'week' ? 7 : 30);
+    const all = await ensureFullHistory(fetchHistory);
     if (request !== historyRequest || analyticsSegment !== segment) return;
+    const days = (all || []).slice(segment === 'week' ? -7 : -30);
     if (segment === 'week') { historicalWeek = days; renderWeek({ week: days }); }
     else if (target) target.innerHTML = monthMarkup(days);
   } catch (_) { if (request === historyRequest && target) target.textContent = 'Could not load history. Reopen this tab to retry.'; }
@@ -2320,7 +2360,7 @@ if ($('data-import')) {
       if (res && res.canceled) $('data-status').textContent = 'Import canceled';
       else if (res && res.ok) {
         $('data-status').textContent = 'Imported ' + (res.daysImported || 0) + ' day(s), ' + (res.sessionsImported || 0) + ' session(s) added or updated';
-        historicalWeek = null;
+        invalidateHistoryViews();
         historyRequest++;
         const state = await api.getState();
         if (state) renderStats(state.stats);
@@ -2354,7 +2394,29 @@ if ($('data-clear-all')) {
     const res = await api.clearAllHistory();
     if (res && res.ok) {
       $('data-status').textContent = 'All history cleared';
+      invalidateHistoryViews();
       renderStats(res.stats);
+    }
+  });
+}
+
+if ($('data-delete-all')) {
+  $('data-delete-all').addEventListener('click', async () => {
+    if (!api || !api.deleteAllMyData) return;
+    if (!confirm('Delete all local SydTrack data on this device?\n\nThis removes activity, daily rollups, sessions, settings, Focus profiles, tags, error logs, migration backups, and the leftover focusflow data folder. Nothing is uploaded. This cannot be undone.')) return;
+    const res = await api.deleteAllMyData();
+    if (res && res.ok) {
+      $('data-status').textContent = 'All local data deleted';
+      invalidateHistoryViews();
+      renderStats(res.stats);
+      await loadRulesAndIgnore();
+      if (window.sydtrackProfilesUI) await window.sydtrackProfilesUI.reload(true, true);
+      refreshSessionLog();
+    } else {
+      const leftover = (res && res.failed || []).map((item) => item.path).filter(Boolean);
+      $('data-status').textContent = leftover.length
+        ? 'Delete failed: ' + leftover.join(', ')
+        : (res && res.error) || 'Delete failed';
     }
   });
 }

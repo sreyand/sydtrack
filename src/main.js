@@ -34,6 +34,10 @@ const {
   writeBackupFile,
   readBackupFile
 } = require('./backup');
+const { buildCsvExport, importCsv } = require('./data-export');
+const { deleteAllMyData, backupUserConfig } = require('./data-ownership');
+const { migrateLegacyUserData } = require('./legacy-data-dir');
+const APP_ID = require('../package.json').build.appId;
 const {
   buildProfilePack,
   writeProfilePackFile,
@@ -60,7 +64,7 @@ app.commandLine.appendSwitch('disable-dev-shm-usage');
 // Required on Windows so Electron toasts show under a real app identity (dev + packaged).
 if (process.platform === 'win32') {
   app.setName('sydtrack');
-  app.setAppUserModelId('com.gitpaperclip.sydtrack');
+  app.setAppUserModelId(APP_ID);
 }
 
 let mainWindow = null;
@@ -82,12 +86,21 @@ let appTray = null;
 let isQuitting = false;
 
 function dataDir() {
+  let dir;
   try {
-    if (app.isPackaged) return app.getPath('userData');
+    if (app.isPackaged) dir = app.getPath('userData');
   } catch (_) {}
-  const local = path.join(__dirname, '..', 'data');
-  fs.mkdirSync(local, { recursive: true });
-  return local;
+  if (!dir) {
+    dir = path.join(__dirname, '..', 'data');
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  try {
+    const result = migrateLegacyUserData(dir, { appData: app.getPath('appData') });
+    if (result.migrated) console.log('[sydtrack] Copied existing focusflow data into', dir);
+  } catch (err) {
+    console.error('[main] legacy data directory migration failed', err.message);
+  }
+  return dir;
 }
 
 function userRulesPath() {
@@ -202,7 +215,7 @@ function createWindow() {
       ? `"${executable}"`
       : `"${executable}" "${app.getAppPath()}" --disable-gpu`;
     mainWindow.setAppDetails({
-      appId: 'com.gitpaperclip.sydtrack',
+      appId: APP_ID,
       appIconPath: app.isPackaged
         ? path.join(process.resourcesPath, 'sydtrack.ico')
         : path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico'),
@@ -602,6 +615,30 @@ ipcMain.handle('data:export', async (event, payload) => {
   return { ok: true, path: result.filePath };
 });
 
+ipcMain.handle('data:exportCsv', async (event, payload) => {
+  guardIpc(event, 'data:exportCsv', payload);
+  if (!store || !mainWindow) return { ok: false, error: 'not ready' };
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export SydTrack CSV',
+    defaultPath: `sydtrack-export-${new Date().toISOString().slice(0, 10)}.csv`,
+    filters: [
+      { name: 'CSV', extensions: ['csv'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  const csv = buildCsvExport(store, {
+    includeSettings: true,
+    rules: rulesHolder.rules,
+    ignore: ignoreHolder.ignore,
+    sessionManager,
+    focusProfiles
+  });
+  fs.mkdirSync(path.dirname(result.filePath), { recursive: true });
+  fs.writeFileSync(result.filePath, csv, 'utf8');
+  return { ok: true, path: result.filePath };
+});
+
 ipcMain.handle('data:import', async (event, payload) => {
   const options = guardIpc(event, 'data:import', payload);
   if (!store || !mainWindow) return { ok: false, error: 'not ready' };
@@ -610,6 +647,7 @@ ipcMain.handle('data:import', async (event, payload) => {
     properties: ['openFile'],
     filters: [
       { name: 'SydTrack backup', extensions: ['sydtrack', 'json'] },
+      { name: 'CSV', extensions: ['csv'] },
       { name: 'All files', extensions: ['*'] }
     ]
   });
@@ -617,9 +655,32 @@ ipcMain.handle('data:import', async (event, payload) => {
     return { ok: false, canceled: true };
   }
 
+  const chosen = result.filePaths[0];
+  try { backupUserConfig(dataDir()); } catch (err) {
+    return { ok: false, error: 'Could not back up settings before import: ' + err.message };
+  }
+  if (chosen.toLowerCase().endsWith('.csv')) {
+    try {
+      const imported = importCsv(store, fs.readFileSync(chosen, 'utf8'), {
+        sessionManager,
+        focusProfiles,
+        onSettings: applySettings,
+        onRules: (rules) => {
+          focusProfiles.save('default', { productive: rules.productive, unproductive: rules.unproductive });
+        },
+        onIgnore: (list) => {
+          focusProfiles.save('default', { ignore: list });
+        }
+      });
+      return { ...imported, path: chosen };
+    } catch (err) {
+      return { ok: false, error: err.message || 'Failed to import CSV' };
+    }
+  }
+
   let obj;
   try {
-    obj = readBackupFile(result.filePaths[0]);
+    obj = readBackupFile(chosen);
   } catch (err) {
     return { ok: false, error: err.message || 'Failed to read backup' };
   }
@@ -738,6 +799,34 @@ ipcMain.handle('data:clearAll', async (event, payload) => {
   if (!store) return { ok: false };
   store.clearAllHistory();
   return { ok: true, stats: store.snapshot() };
+});
+
+ipcMain.handle('data:deleteAll', async (event, payload) => {
+  guardIpc(event, 'data:deleteAll', payload);
+  if (!store) return { ok: false, error: 'not ready' };
+  const {
+    loadAppIdentitiesFrom,
+    saveAppIdentities,
+    DEFAULT_APP_IDENTITIES_PATH
+  } = require('./classifier');
+  const deleted = deleteAllMyData({
+    dataDir: dataDir(),
+    store,
+    sessionManager,
+    focusProfiles,
+    profileDefaults: require('./default-focus-profiles.json'),
+    identitiesPath: userAppIdentitiesPath(),
+    defaultIdentities: loadAppIdentitiesFrom(DEFAULT_APP_IDENTITIES_PATH),
+    saveIdentities: saveAppIdentities,
+    appData: app.getPath('appData')
+  });
+  loadAppIdentities();
+  if (tracker) tracker.invalidateClassification();
+  return {
+    ...deleted,
+    stats: store.snapshot(),
+    error: deleted.ok ? undefined : (deleted.failed || []).map((item) => item.path).join(', ') || 'Delete failed'
+  };
 });
 
 ipcMain.handle('session:start', async (event, payload) => {

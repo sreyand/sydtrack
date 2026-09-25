@@ -1,0 +1,27 @@
+{
+  "generatedDays": 111,
+  "rawRetentionDays": 90,
+  "host": "linux-cloud-agent",
+  "before": {
+    "fullParseMs": 2.6,
+    "weekFromFullParseMs": 2.93,
+    "bytes": 435054,
+    "rawFiles": 110
+  },
+  "after": {
+    "firstOpenMigrateMs": 32.23,
+    "reopenMs": 0.51,
+    "todaySnapshotMs": 1.19,
+    "weekSummaryMs": 0.81,
+    "analytics90Ms": 4.17,
+    "liveBytes": 657722,
+    "bytesWithMigrationBackup": 1093049,
+    "rawFiles": 90,
+    "rollupFiles": 110
+  },
+  "speedup": {
+    "todayVsFullParse": 2.2,
+    "weekVsFullParse": 3.6,
+    "analyticsVsFullParse": 0.6
+  }
+}
