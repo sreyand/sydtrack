@@ -322,6 +322,15 @@ function run(assert) {
     !/src="\.\.\/src\/(goals|streaks|decompress|insights|gamification)\.js"/.test(html),
     'renderer does not load wellbeing modules from src/'
   );
+  assert(
+    html.includes('data-tab="decompress"') && html.includes('id="view-decompress"') && html.includes('id="decompress-log"'),
+    'Decompress has its own nav entry, view, and past-breaks list'
+  );
+  const roundupChunk = html.slice(html.indexOf('id="view-roundup"'), html.indexOf('id="view-analytics"'));
+  assert(
+    !!roundupChunk && !roundupChunk.includes('decompress-card') && !roundupChunk.includes('decompress-start'),
+    'Roundup no longer owns Decompress UI'
+  );
 
   assert(needsGoalSettingsMigration(null) && needsGoalSettingsMigration({ dailyGoalSec: 5400 }), 'missing goalsSchema still needs migration');
   assert(!needsGoalSettingsMigration({ goalsSchema: 2 }), 'schema 2 settings skip goal migration');
@@ -404,9 +413,21 @@ function run(assert) {
     assert(!repeat.suggest, 'service does not repeat a suggestion for the same stretch');
     const started = service.startBreak();
     assert(started.started && started.publicState.active && started.publicState.active.durationSec === 600, 'service starts a local break');
+    assert(
+      started.publicState.sessions &&
+        started.publicState.sessions[0] &&
+        started.publicState.sessions[0].status === 'open',
+      'started breaks appear in the decompress session log'
+    );
     clock += 600000;
     const finished = service.observe({ date: '2026-09-24', byCategory: { productive: 4000, unproductive: 0, other: 0 } });
     assert(finished.breakEnded && finished.publicState.active === null, 'service completes the break from the clock');
+    assert(
+      finished.publicState.sessions &&
+        finished.publicState.sessions[0] &&
+        finished.publicState.sessions[0].status === 'done',
+      'finished breaks stay in the decompress session log'
+    );
     const reloaded = createDecompressService({
       dataDir: root,
       getSettings: () => ({ decompressBreaksPerDay: 3, decompressBreakMinutes: 10, focusShareGoalPct: 80 }),
@@ -416,6 +437,8 @@ function run(assert) {
     assert(reloaded.publicState().breaksUsed === 1, 'break count persists locally');
     const decompressPath = path.join(root, 'decompress.json');
     assert(fs.existsSync(decompressPath), 'started breaks are stored in decompress.json');
+    const stored = JSON.parse(fs.readFileSync(decompressPath, 'utf8'));
+    assert(Array.isArray(stored.sessions) && stored.sessions.length >= 1, 'decompress.json keeps past breaks');
     const mtime = fs.statSync(decompressPath).mtimeMs;
     reloaded.observe({ date: '2026-09-24', byCategory: { productive: 4000, unproductive: 0, other: 0 } });
     reloaded.observe({ date: '2026-09-24', byCategory: { productive: 4100, unproductive: 0, other: 0 } });

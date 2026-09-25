@@ -399,11 +399,16 @@ document.querySelectorAll('.nav-btn').forEach((btn) => {
     if (roundupView) roundupView.classList.toggle('hidden', tab !== 'roundup');
     const sessionsView = $('view-sessions');
     if (sessionsView) sessionsView.classList.toggle('hidden', tab !== 'sessions');
+    const decompressView = $('view-decompress');
+    if (decompressView) decompressView.classList.toggle('hidden', tab !== 'decompress');
     const tagsView = $('view-tags');
     if (tagsView) tagsView.classList.toggle('hidden', tab !== 'tags' && tab !== 'focus-tags');
     $('view-settings').classList.toggle('hidden', tab !== 'settings');
     if (tab === 'analytics') setAnalyticsSegment(analyticsSegment);
     if (tab === 'sessions') refreshSessionLog();
+    if (tab === 'decompress' && typeof renderDecompress === 'function' && typeof wellbeingDecompress !== 'undefined' && wellbeingDecompress) {
+      renderDecompress(wellbeingDecompress);
+    }
     if ((tab === 'tags' || tab === 'focus-tags') && !window.sydtrackProfilesUI) loadRulesAndIgnore();
   });
 });
