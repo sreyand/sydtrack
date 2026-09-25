@@ -219,7 +219,7 @@ function createWindow() {
     preloadPath: path.join(__dirname, 'preload.js'),
     iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png'),
     platform: process.platform,
-    backgroundColor: windowBackgroundColor(store && store.getSettings ? store.getSettings().theme : 'graphite')
+    backgroundColor: windowBackgroundColor(store && store.getSettings ? store.getSettings().theme : 'midnight')
   });
   mainWindow = new BrowserWindow(winOpts);
   installNavigationGuards(mainWindow.webContents);
