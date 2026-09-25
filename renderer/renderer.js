@@ -38,6 +38,15 @@ function fmtFriendly(s) {
   return sec === 1 ? '1 second' : sec + ' seconds';
 }
 
+/** Home donut readout: 43 min, 1h 12m — calmer than the abrupt 43m. */
+function fmtPieDuration(s) {
+  s = Math.max(0, Math.floor(+s || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h >= 1) return m ? h + 'h ' + m + 'm' : h + 'h';
+  return m + ' min';
+}
+
 /** Compact goal display: 1h 12m, 2h, 45m */
 function fmtGoalShort(s) {
   s = Math.max(0, Math.floor(+s || 0));
@@ -82,7 +91,7 @@ function hideNameTip() {
 }
 
 function showNameTip(ev) {
-  const el = ev.target && ev.target.closest && ev.target.closest('.app-trunc');
+  const el = ev.target && ev.target.closest && ev.target.closest('.app-trunc, .has-tip');
   const tip = $('name-tip');
   if (!el || !tip) {
     hideNameTip();
@@ -93,9 +102,9 @@ function showNameTip(ev) {
     hideNameTip();
     return;
   }
-  // Only show when actually truncated
+  const always = el.classList.contains('has-tip');
   const truncated = el.scrollWidth > el.clientWidth + 1;
-  if (!truncated) {
+  if (!always && !truncated) {
     hideNameTip();
     return;
   }
@@ -808,7 +817,7 @@ function renderPie(stats) {
   $('prod-val').textContent = fmtDuration(prod);
   $('unprod-val').textContent = fmtDuration(unp);
   $('other-val').textContent = fmtDuration(oth);
-  if ($('pie-total')) $('pie-total').textContent = fmtDuration(total);
+  if ($('pie-total')) $('pie-total').textContent = fmtPieDuration(total);
 
   pieHoverState = {
     total,
@@ -1726,8 +1735,13 @@ function renderRoundup(stats) {
   if ($('roundup-goal-pct')) {
     $('roundup-goal-pct').textContent = 'Goal ' + goalPct + '%';
   }
-  if ($('roundup-goal-scope')) {
-    $('roundup-goal-scope').textContent = focus && focus.includeOther ? 'Including Other' : 'Other excluded';
+  if (goalCard) {
+    goalCard.setAttribute(
+      'data-full',
+      focus && focus.includeOther
+        ? 'Productive time as a share of all active tracked time, versus your goal. Other is included.'
+        : 'Productive time as a share of productive + unproductive, versus your goal. Other is excluded.'
+    );
   }
   const fill = $('roundup-goal-fill');
   const bar = $('roundup-goal-bar');
@@ -1735,7 +1749,7 @@ function renderRoundup(stats) {
   if (fill) fill.style.width = actualPct + '%';
   if (bar) {
     bar.setAttribute('aria-valuenow', String(actualPct));
-    bar.setAttribute('aria-valuetext', (focusPct == null ? 'No focus share yet' : focusPct + '% actual') + ', ' + goalPct + '% goal');
+    bar.setAttribute('aria-valuetext', (focusPct == null ? 'No focus share yet' : focusPct + '%') + ', ' + goalPct + '% goal');
   }
   if (mark) {
     const showMark = focusPct != null && goalPct > 0 && goalPct < 100;
@@ -1863,7 +1877,6 @@ function renderAppList(stats) {
   const apps = (stats && (stats.activityRows || stats.topApps)) || [];
   if (!apps.length) {
     list.innerHTML = '<li class="empty">No time logged yet</li>';
-    if (typeof renderAppDrilldown === 'function') renderAppDrilldown(stats);
     return;
   }
   list.innerHTML = apps.map(a => {
@@ -1880,12 +1893,10 @@ function renderAppList(stats) {
         '<button type="button" class="btn-mini ' + cls + (category === value ? ' selected' : '') + '" aria-pressed="' + (category === value) +
         '" data-action="' + value + '" title="' + (value === 'ignored' && category === 'ignored' ? 'Unignore for today' : 'Mark this activity ' + value + ' for today') + '">' + label + '</button>').join('') +
       '</span>' +
-      '<button type="button" class="app-hours-btn" data-drill="' + esc(a.name) + '">Hours</button>' +
       '<span class="' + chip.className + '">' + chip.label + '</span>' +
       '<span class="secs">' + fmt(a.seconds) + '</span>' +
       '</div></li>';
   }).join('');
-  if (typeof renderAppDrilldown === 'function') renderAppDrilldown(stats);
 }
 
 $('app-list').addEventListener('click', async ev => {
@@ -3160,7 +3171,7 @@ if (weekChartEl) {
 }
 
 document.addEventListener('mousemove', (ev) => {
-  if (ev.target && ev.target.closest && ev.target.closest('.app-trunc')) showNameTip(ev);
+  if (ev.target && ev.target.closest && ev.target.closest('.app-trunc, .has-tip')) showNameTip(ev);
   else hideNameTip();
 });
 

@@ -3114,6 +3114,11 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
 }
 .home-side .profile-menu,
 .home-focus-actions .profile-menu {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+.home-side .profile-menu.profile-menu-up,
+.home-focus-actions .profile-menu.profile-menu-up {
   top: auto;
   bottom: calc(100% + 4px);
 }
@@ -3346,6 +3351,18 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
 @media (max-width: 900px) {
   #view-home .home-layout {
     grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+  }
+  #view-home .home-focus.card,
+  #view-home .chart-card.home-focus,
+  #view-home .home-side {
+    width: 100%;
+    max-width: none;
   }
   #view-home .mood-pill .mood-label {
     white-space: normal;
@@ -3353,4 +3370,138 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
   #view-home .home-side .last-focused {
     flex: 0 0 auto;
   }
+}
+
+/* —— Home cluster, dropdown, donut readout (post-#25 review). Scoped. —— */
+#view-home {
+  gap: var(--space-3);
+  align-items: stretch;
+}
+#view-home .page-head {
+  align-self: stretch;
+  width: 100%;
+  margin-bottom: 0;
+}
+#view-home .home-layout {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--space-3);
+  width: fit-content;
+  max-width: 100%;
+  /* Slight left pad: cluster sits center-right of the content pane. */
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: clamp(var(--space-4), 6vw, var(--space-8));
+}
+#view-home .home-focus.card,
+#view-home .chart-card.home-focus {
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: min(22rem, 100%);
+  padding: var(--space-3);
+  gap: var(--space-2);
+  margin: 0;
+  justify-content: flex-start;
+}
+#view-home .pie-wrap {
+  width: clamp(140px, min(24vh, 20vmin), 220px);
+  height: clamp(140px, min(24vh, 20vmin), 220px);
+  margin: 0 auto;
+}
+#view-home .pie-legend {
+  margin: 0;
+}
+#view-home .pie-total {
+  font-family: var(--font-data);
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--color-ink-muted);
+}
+#view-home .pie-total-label {
+  font: var(--caption);
+  font-weight: 400;
+  color: var(--color-ink-faint);
+}
+#view-home .home-side {
+  flex: 0 1 18rem;
+  width: min(18rem, 100%);
+  justify-content: flex-start;
+  gap: var(--space-2);
+  overflow: visible;
+}
+#view-home .home-side .home-focus-actions {
+  overflow: visible;
+}
+#view-home .home-side .last-focused {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+#view-home,
+#view-home .home-focus.card,
+#view-home .chart-card.home-focus {
+  overflow: visible;
+}
+#view-home .pie-legend li {
+  font: var(--caption);
+  font-weight: 400;
+  color: var(--color-ink-faint);
+}
+#view-home .pie-legend strong {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  #view-home .home-layout {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+  }
+  #view-home .home-focus.card,
+  #view-home .chart-card.home-focus,
+  #view-home .home-side {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+/* Analytics Day/Week/Month/Apps: active reads, inactive recedes. */
+#view-analytics .analytics-toolbar .segment-control {
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  padding: 3px;
+  gap: 2px;
+}
+#view-analytics .analytics-toolbar .segment-btn {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--color-ink-faint);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+#view-analytics .analytics-toolbar .segment-btn:hover {
+  color: var(--color-ink-muted);
+  background: transparent;
+  box-shadow: none;
+}
+#view-analytics .analytics-toolbar .segment-btn.active {
+  font-weight: 700;
+  color: var(--color-ink);
+  background: var(--color-accent-tint);
+  border-color: var(--color-accent);
+  box-shadow: none;
 }
