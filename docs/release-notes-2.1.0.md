@@ -23,6 +23,8 @@ SydTrack now starts with Windows by default and lets you choose how quickly it n
 - A duplicate hidden startup launch no longer surfaces an already-running SydTrack window.
 - Startup registration supports installed and portable Windows builds and macOS login items; unsupported Linux builds hide the setting.
 - Corrected cross-platform security checks so macOS and Ubuntu CI validate platform-appropriate application identity behavior.
+- Resetting the bundled Focus profiles now keeps General active instead of unexpectedly switching to Coding.
+- Removed unused demo media and wordmark assets from packaged builds, reducing each Windows download by about 7 MB.
 
 ## Upgrade note
 

@@ -107,7 +107,7 @@ function buildDefaults() {
   const make = (id, name, productive) => ({ id, name, productive, unproductive: distractions, ignore: windowsIgnore });
   return {
     schemaVersion: 1,
-    activeId: 'coding',
+    activeId: 'default',
     profiles: [
       make('default', 'General', general),
       make('coding', 'Coding', coding),

@@ -181,8 +181,16 @@ assert(resolveAppFile('sydtrack://app/renderer/../src/main.js', root) == null, '
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-sec-'));
 const outside = path.join(os.tmpdir(), `sydtrack-outside-${process.pid}.txt`);
 fs.writeFileSync(outside, 'nope');
-fs.symlinkSync(outside, path.join(tmp, 'renderer'));
-assert(resolveAppFile('sydtrack://app/renderer/index.html', tmp) == null, 'symlink escape is rejected');
+try {
+  fs.symlinkSync(outside, path.join(tmp, 'renderer'));
+  assert(resolveAppFile('sydtrack://app/renderer/index.html', tmp) == null, 'symlink escape is rejected');
+} catch (err) {
+  if (!err || (err.code !== 'EPERM' && err.code !== 'EACCES')) throw err;
+  console.log('skip symlink escape check (symlink permission unavailable)');
+} finally {
+  fs.rmSync(tmp, { recursive: true, force: true });
+  fs.rmSync(outside, { force: true });
+}
 
 throws(() => assertIpcSender({}, { webContents: true }), 'IPC without a matching sender is rejected');
 throws(() => assertIpcSender({ sender: {} }, { webContents: true }), 'IPC from a different contents is rejected');

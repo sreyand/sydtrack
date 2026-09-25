@@ -4,7 +4,7 @@
 // Platform probes only supply facts. This module decides whether a sample counts.
 
 function toleranceMs(pollMs) {
-  return Math.max(5000, (Number(pollMs) || 1500) * 3);
+  return Math.max(5000, (Number(pollMs) || 3000) * 3);
 }
 
 /**

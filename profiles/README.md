@@ -1,6 +1,6 @@
 # Included Focus profiles
 
-These five downloadable profile packs match the starter profiles bundled in the native app. Fresh installs start on **General**. Existing installations retain their active selection and custom profiles; empty slots are filled once. The repository's development data has **Coding** selected.
+These five downloadable profile packs match the starter profiles bundled in the native app. Fresh installs start on **General**. Existing installations retain their active selection and custom profiles; empty slots are filled once.
 
 | Profile | Productive focus | Intentional tradeoff |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ These five downloadable profile packs match the starter profiles bundled in the 
 | Study | Coursework, notes, research, flashcards, and document tools | Video remains unproductive because titles cannot distinguish lectures from entertainment. |
 | Creative | Design, editing, and creative tools | Video/social titles remain unproductive; adjust if tutorials are part of work. |
 
-These are assumptions based on the former demo list; review them before relying on them. No browser `site:` tags are included because ordinary Windows tracking uses page titles rather than reliable addresses. General retains its full Ignore list; the other profiles use global app identities and self-exclusion, so they do not inherit General's Ignore list.
+These are editable starting points; review them before relying on them. No browser `site:` tags are included because ordinary Windows tracking uses page titles rather than reliable addresses. Every bundled profile includes the same Windows Ignore baseline for shell surfaces, capture overlays, and SydTrack itself.
 
 Download a file using GitHub's **Download raw file**, then open **Focus Tags → Import profile…**. Import requires an empty slot and a unique name, and activates the imported profile. No import is needed if it is already installed. To edit existing profiles, use Focus Tags directly.
 
