@@ -14,8 +14,10 @@ SydTrack is a local-first Windows productivity tracker that watches your active 
 - **Portable website rules:** existing `site:example.com` tags are retained, but require a captured address. Normal Windows tracking currently uses title keywords; automatic address capture remains experimental and disabled.
 - **Separate app categories:** the same app can appear in both productive and unproductive analytics with separate time totals.
 - **Home:** mood, time pie, last-focused app, FocusBoost, and quick productive/unproductive/ignore actions.
-- **Analytics:** day, week, month, hourly, and app views.
-- **Roundup:** daily goal progress, top focus, biggest distraction, peak hour, focus share, and a daily story.
+- **Analytics:** day, week, month, hourly, and app views, plus a weekly comparison and per-app hours.
+- **Roundup:** daily focus-share goal, optional screen-time limit, top focus, biggest distraction, peak hour, and a daily story.
+- **Decompress breaks:** local suggestions after an hour on track, or a break you start yourself.
+- **Gamification (off by default):** focus-share streaks, alternate wording, a duck mascot, and a local share card. Nothing is uploaded.
 - **Focus sessions:** Pomodoro, deep work, or custom timers with session history and distraction counts.
 - **Focus Tags:** editable productive, unproductive, and ignore keywords.
 - **Focus profiles:** five slots, a Home chooser below FocusBoost, and management on Focus Tags. New installs include General, Coding, Writing, Study, and Creative. Existing profiles are preserved, and empty slots are filled once on upgrade. Deleted starter profiles stay deleted on later launches.
@@ -179,4 +181,16 @@ P/U/ign applies to that activity row only: today’s recorded category totals an
 
 Matched keywords are stored locally alongside the existing app aggregates; no extra titles, URLs, network capture, or browser-specific instrumentation is added. Existing files and backups load without fabricated attribution.
 
-Analytics → Month shows the last 30 days as a Home-style pie with focus share in the center (productive divided by productive + unproductive). Below are total tracked time, active days, average per active day, and the five most-used apps across the full period. Ignored time is excluded. Reopen Month to refresh the summary.
+Analytics → Month shows the last 30 days as a Home-style pie with focus share in the center. By default that is productive divided by productive + unproductive. Settings can include uncategorized Other apps, which changes the denominator to active tracked time. Below are total tracked time, active days, average per active day, the five most-used apps, and a day-by-day focus score with 7- and 30-day averages. Ignored time is excluded. Reopen Month to refresh the summary.
+
+## Goals and breaks
+
+The daily goal is a focus share, recommended at 80%. It is a category ratio, not a grade. A day meets the goal when the rounded percentage is at least the goal. Days under one minute of the denominator are too thin to score. Rolling averages skip those days instead of treating them as zero.
+
+An optional screen-time limit is off until you enable it. It counts active tracked time (productive + unproductive + other). Idle and ignored time are already excluded. Roundup shows it next to the focus-share goal only while it is on.
+
+A previous productivity-hours goal is not converted into a percentage. If you had changed it from the 2 hour default, that number becomes the starting value for the screen-time limit and the limit stays off. The old field is kept so older versions and backups can still read it.
+
+Decompress suggestions use tracked time, not the clock. After 60 minutes of the focus-share denominator while the rounded share stays at or above the goal, sydtrack can suggest a break. The default is 3 breaks of 10 minutes. Other apps do not count toward that hour unless Other is included in focus share. The suggested clock time comes from your own history: the next hour where focus share usually drops by at least 5 points, seen on at least 3 days. You can start a break even after the daily suggestions are used. Notices stay on this computer.
+
+Gamification is off by default. Streaks count a day only after 15 minutes of the focus-share denominator. A qualified day under the goal resets the streak. A day with less tracked time does not. The duck is a separate unserious-mode toggle. Share copies text to the clipboard or saves a PNG you choose. There is no upload.

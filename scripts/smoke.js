@@ -1215,6 +1215,8 @@ async function activityReasonChecks() {
 }
 
 regressionChecks().then(lifecycleChecks).then(infrastructureChecks).then(historyLoadingChecks).then(focusProfileChecks).then(appCorrectionChecks).then(activityReasonChecks).then(browserProbeChecks).then(() => require('./test-tracking-decisions').run()).then(() => {
+  require('./test-goals').run(assert);
+}).then(() => {
   console.log(failed ? `\n${failed} failed` : '\nall smoke checks passed');
   process.exitCode = failed ? 1 : 0;
 }).catch((err) => { console.error(err); process.exitCode = 1; });

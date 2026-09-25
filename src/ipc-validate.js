@@ -16,6 +16,7 @@ const CHANNELS = [
   'profiles:activate',
   'profiles:delete',
   'profiles:import',
+  'wellbeing',
   'settings:update',
   'data:export',
   'data:exportCsv',
@@ -216,7 +217,15 @@ const SETTINGS = {
   focusBoostScheduleStart: clock,
   focusBoostScheduleEnd: clock,
   sessionCustomMin: (value) => finiteInt(value, 1, 1440),
-  sessionHistoryEnabled: bool
+  sessionHistoryEnabled: bool,
+  focusShareGoalPct: (value) => finiteInt(value, 50, 100),
+  focusShareIncludeOther: bool,
+  screenTimeLimitEnabled: bool,
+  screenTimeLimitSec: (value) => finiteInt(value, 15 * 60, 16 * 3600),
+  decompressBreaksPerDay: (value) => finiteInt(value, 0, 8),
+  decompressBreakMinutes: (value) => finiteInt(value, 1, 60),
+  gamificationEnabled: bool,
+  duckEnabled: bool
 };
 
 function settingsUpdate(payload) {
@@ -280,6 +289,27 @@ function optionalDate(payload) {
   return payload;
 }
 
+function wellbeingText(payload) {
+  if (typeof payload !== 'string' || payload.length > 4000 || payload.includes('\0')) invalid();
+  return payload;
+}
+
+function wellbeingImage(payload) {
+  if (typeof payload !== 'string' || payload.length > 3 * 1024 * 1024 || payload.includes('\0')) invalid();
+  if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(payload)) invalid();
+  return payload;
+}
+
+function wellbeingMessage(payload) {
+  const obj = plainObject(payload);
+  assertKeys(obj, ['action', 'payload']);
+  if (typeof obj.action !== 'string') invalid();
+  if (obj.action === 'startBreak' || obj.action === 'endBreak') return { action: obj.action };
+  if (obj.action === 'copySummary') return { action: obj.action, payload: wellbeingText(obj.payload) };
+  if (obj.action === 'saveImage') return { action: obj.action, payload: wellbeingImage(obj.payload) };
+  invalid();
+}
+
 function sessionDelete(payload) {
   const obj = plainObject(payload);
   assertKeys(obj, ['id', 'dateKey']);
@@ -308,6 +338,7 @@ const VALIDATORS = {
   'profiles:activate': requiredProfileId,
   'profiles:delete': requiredProfileId,
   'profiles:import': noPayload,
+  'wellbeing': wellbeingMessage,
   'settings:update': settingsUpdate,
   'data:export': dataExport,
   'data:exportCsv': noPayload,

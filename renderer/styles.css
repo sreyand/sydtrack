@@ -2153,9 +2153,6 @@ body[data-boost="on"]::after {
 .pause-settings-row .pause-power {
   flex: 0 0 auto;
 }
-.settings-goal-field {
-  margin-top: 4px;
-}
 
 /* iOS-style switch polish (pill + knob) */
 .switch-row input[type="checkbox"] {

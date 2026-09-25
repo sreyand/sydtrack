@@ -7,6 +7,7 @@ const { buildRollup, writeRollup, readRollup, listRollupDates, dayFromRollup, re
 const { purgeExpiredRaw, clearJournal } = require('./retention');
 const { migrateStorage } = require('./storage-schema');
 const { canonicalAppName } = require('./classifier');
+const { migrateGoalSettings } = require('../renderer/lib/goals');
 
 function todayKey(at) {
   const d = at === undefined ? new Date() : new Date(at);
@@ -17,6 +18,7 @@ function todayKey(at) {
 }
 
 const MAX_HISTORY_DAYS = 90;
+const SETTINGS_BACKUP_KEEP = 3;
 
 function emptyHour() {
   return { productive: 0, unproductive: 0, other: 0, byApp: Object.create(null) };
@@ -298,10 +300,13 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     (value) => value !== null && typeof value === 'object' && !Array.isArray(value),
     (report) => { settingsRecovered = true; onRecovery(report); });
   let settings = applyRuntimeEnvironment(Object.assign(defaultSettings(), savedSettings || {}));
-  if (settingsRecovered) {
-    settings.trackingPaused = true;
-    persistSettings();
-  }
+  const needsGoalMigration = needsGoalSettingsMigration(savedSettings);
+  if (needsGoalMigration && savedSettings) backupSettingsFile(settingsPath);
+  settings = applyGoalMigration(settings, savedSettings);
+  const dropOnboarding = !!(savedSettings && Object.prototype.hasOwnProperty.call(savedSettings, 'onboardingComplete'));
+  delete settings.onboardingComplete;
+  if (settingsRecovered) settings.trackingPaused = true;
+  if (settingsRecovered || needsGoalMigration || dropOnboarding) persistSettings();
 
   function archiveDay(day) {
     summaryCache.clear();
@@ -328,6 +333,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function persistSettings() {
     try {
+      delete settings.onboardingComplete;
       writeJson(settingsPath, settings);
     } catch (err) {
       console.error('[store] persist settings failed', err.message);
@@ -738,6 +744,24 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     return { ...settings };
   }
 
+  function applyImportedSettings(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...settings };
+    if (needsGoalSettingsMigration(raw)) {
+      if (fs.existsSync(settingsPath)) backupSettingsFile(settingsPath);
+      // Migrate the imported snapshot itself. Merging current schema-2
+      // fields first would hide dailyGoalSec-only backups.
+      settings = Object.assign(
+        {},
+        settings,
+        migrateGoalSettings(Object.assign({}, raw, { goalsSchema: 0 }), { existingInstall: true })
+      );
+    } else {
+      settings = Object.assign({}, settings, raw);
+    }
+    persistSettings();
+    return { ...settings };
+  }
+
   function getSettings() {
     return { ...settings };
   }
@@ -756,6 +780,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
   function clearToday() {
     state = emptyDay(todayKey());
     persistStats();
+    resetDecompressFile(dataDir);
     return state;
   }
 
@@ -783,12 +808,14 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     if (failed.length) console.error('[store] clear history failed', failed.map((item) => item.path).join(', '));
     state = emptyDay(todayKey());
     persistStats();
+    resetDecompressFile(dataDir);
     return { ok: failed.length === 0, failed, state };
   }
 
   function eraseActivityAndSettings() {
     const cleared = clearAllHistory();
     settings = applyRuntimeEnvironment(defaultSettings());
+    settings = migrateGoalSettings(settings, { existingInstall: false });
     persistSettings();
     return { ok: cleared.ok, failed: cleared.failed, stats: snapshot() };
   }
@@ -835,7 +862,15 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
       rollIfNeeded();
       return weekSummary(Math.min(90, Math.max(1, Math.floor(Number(count) || 7))));
     },
+    hourlyHistory: (count = 14) => {
+      rollIfNeeded();
+      return hourlyHistoryDays(count, {
+        today: new Date(),
+        loadDay: (key) => (key === state.date ? state : loadHistoryDay(key))
+      });
+    },
     updateSettings,
+    applyImportedSettings,
     getSettings,
     getState,
     replaceToday,
@@ -855,6 +890,72 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     settingsPath,
     dataDir
   };
+}
+
+function needsGoalSettingsMigration(saved) {
+  // Missing or non-numeric schema must migrate. Number(undefined) < 2 is false.
+  return !saved || !(Number(saved.goalsSchema) >= 2);
+}
+
+function applyGoalMigration(settings, savedSettings) {
+  return migrateGoalSettings(settings, { existingInstall: !!savedSettings });
+}
+
+function listSettingsBackups(settingsPath) {
+  if (!settingsPath) return [];
+  const dir = path.dirname(settingsPath);
+  const prefix = path.basename(settingsPath) + '.';
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((name) => name.startsWith(prefix) && name.endsWith('.bak'))
+    .map((name) => path.join(dir, name))
+    .sort();
+}
+
+function pruneSettingsBackups(settingsPath, keep) {
+  const retain = Number.isFinite(Number(keep)) ? Math.max(0, Math.floor(Number(keep))) : SETTINGS_BACKUP_KEEP;
+  const files = listSettingsBackups(settingsPath);
+  const extra = files.slice(0, Math.max(0, files.length - retain));
+  for (const file of extra) {
+    try { fs.unlinkSync(file); } catch (_) {}
+  }
+  return extra;
+}
+
+function backupSettingsFile(settingsPath, at) {
+  if (!settingsPath || !fs.existsSync(settingsPath)) return null;
+  const stamp = (at || new Date()).toISOString().replace(/[:.]/g, '-');
+  const dest = settingsPath + '.' + stamp + '.bak';
+  fs.copyFileSync(settingsPath, dest);
+  pruneSettingsBackups(settingsPath, SETTINGS_BACKUP_KEEP);
+  return dest;
+}
+
+function hourlyHistoryDays(count, { today, loadDay } = {}) {
+  const n = Math.min(90, Math.max(1, Math.floor(Number(count) || 14)));
+  const now = today || new Date();
+  const days = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dayObj = loadDay ? loadDay(key) : null;
+    const byHour = dayObj && Array.isArray(dayObj.byHour) ? dayObj.byHour : emptyByHour();
+    days.push({
+      date: key,
+      byHour: byHour.map((bucket) => ({
+        productive: Math.max(0, Number(bucket && bucket.productive) || 0),
+        unproductive: Math.max(0, Number(bucket && bucket.unproductive) || 0),
+        other: Math.max(0, Number(bucket && bucket.other) || 0)
+      }))
+    });
+  }
+  return days;
+}
+
+function resetDecompressFile(dir) {
+  const filePath = path.join(dir, 'decompress.json');
+  try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
+  return filePath;
 }
 
 function defaultThresholdSec() {
@@ -885,10 +986,17 @@ module.exports = {
   migrateDay,
   moodFromCategories,
   MAX_HISTORY_DAYS,
+  SETTINGS_BACKUP_KEEP,
   appEntryName,
   appCategoryKey,
   activityKey,
   toRollup,
   retentionCutoffKey,
-  defaultSettings
+  defaultSettings,
+  needsGoalSettingsMigration,
+  applyGoalMigration,
+  backupSettingsFile,
+  pruneSettingsBackups,
+  hourlyHistoryDays,
+  resetDecompressFile
 };

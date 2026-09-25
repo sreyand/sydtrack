@@ -1,0 +1,25 @@
+.roundup-duck-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.duck {
+  width: 64px;
+  height: 64px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.focus-score-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+#share-actions,
+#decompress-card .rules-actions {
+  margin-top: 12px;
+}

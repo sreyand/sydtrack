@@ -248,6 +248,14 @@ const reduceMotion =
 
 /** Session-only Analytics segment (day | week | month | apps). */
 let analyticsSegment = 'day';
+let latestGoalSettings = null;
+
+function describeFocus(byCategory) {
+  const includeOther = !!(latestGoalSettings && latestGoalSettings.focusShareIncludeOther);
+  const goalPct = Number(latestGoalSettings && latestGoalSettings.focusShareGoalPct) || 80;
+  if (typeof sydtrackGoals === 'undefined') return null;
+  return sydtrackGoals.focusShareStatus(byCategory, { includeOther, goalPct });
+}
 let historyRequest = 0;
 let historicalWeek = null;
 let fullHistoryCache = null;
@@ -301,6 +309,8 @@ async function loadAnalyticsHistory(fetchHistory = api && api.getHistorySummary)
     const days = (all || []).slice(segment === 'week' ? -7 : -30);
     if (segment === 'week') { historicalWeek = days; renderWeek({ week: days }); }
     else if (target) target.innerHTML = monthMarkup(days);
+    if (segment === 'week' && typeof renderWeekWellbeing === 'function') renderWeekWellbeing(days);
+    if (segment === 'month' && typeof renderMonthFocusScores === 'function') renderMonthFocusScores(days);
   } catch (_) { if (request === historyRequest && target) target.textContent = 'Could not load history. Reopen this tab to retry.'; }
 }
 
@@ -321,14 +331,16 @@ function monthMarkup(days) {
   }
   const total = totals.productive + totals.unproductive + totals.other;
   const classified = totals.productive + totals.unproductive;
-  const share = classified ? Math.round(totals.productive / classified * 100) + '%' : '—';
+  const includeOther = typeof latestGoalSettings !== 'undefined' && latestGoalSettings && !!latestGoalSettings.focusShareIncludeOther;
+  const focusDenom = includeOther ? total : classified;
+  const share = focusDenom ? Math.round(totals.productive / focusDenom * 100) + '%' : '—';
   const p = total ? totals.productive / total * 360 : 0;
   const u = total ? (totals.productive + totals.unproductive) / total * 360 : 0;
   const gradient = total ? 'conic-gradient(var(--prod) 0deg ' + p + 'deg,var(--unprod) ' + p + 'deg ' + u + 'deg,var(--other) ' + u + 'deg 360deg)' : 'var(--line-strong)';
   const top = [...apps.values()].sort((a, b) => b.seconds - a.seconds).slice(0, 5);
   return '<article class="card month-pie-card"><div class="month-pie-wrap"><div class="pie-chart" role="img" aria-label="Last 30 days: ' + share + ' focus share" style="background:' + gradient + '"></div>' +
     '<div class="pie-center"><div id="month-focus-share" class="pie-total">' + share + '</div><div class="muted tiny">focus share</div></div></div>' +
-    '<p class="muted tiny">Of productive + unproductive time</p><div class="month-legend">' +
+    '<p class="muted tiny">' + (includeOther ? 'Of active tracked time, including Other' : 'Of productive + unproductive time') + '</p><div class="month-legend">' +
     [['productive', 'Productive'], ['unproductive', 'Unproductive'], ['other', 'Other']].map(([key, label]) => '<span><i class="month-dot ' + key + '"></i>' + label + ' <strong>' + esc(fmtFriendly(totals[key])) + '</strong></span>').join('') +
     '</div></article><div class="month-summary"><article class="card"><h3>Last 30 days</h3><div class="month-stat"><span class="muted">Total tracked</span><strong>' + esc(fmtFriendly(total)) + '</strong></div>' +
     '<div class="month-stat"><span class="muted">Days with activity</span><strong>' + activeDays + '</strong></div>' +
@@ -413,9 +425,11 @@ function hideBanner() {
     bannerHideTimer = null;
   }
 }
-function showBanner(text) {
+function showBanner(text, kicker) {
   const b = $('banner');
   if (!b) return;
+  const kickerEl = b.querySelector('.banner-kicker');
+  if (kickerEl) kickerEl.textContent = kicker || 'Refocus';
   if ($('banner-text')) $('banner-text').textContent = text || 'Time to refocus.';
   b.classList.remove('hidden');
   if (bannerHideTimer) clearTimeout(bannerHideTimer);
@@ -1062,6 +1076,7 @@ function renderWeek(stats) {
   let total = 0;
   let prodSum = 0;
   let unpSum = 0;
+  let othSum = 0;
   let bestIdx = -1;
   let bestProd = -1;
   const days = week.map((d) => {
@@ -1089,6 +1104,7 @@ function renderWeek(stats) {
     total += sum;
     prodSum += h.productive;
     unpSum += h.unproductive;
+    othSum += h.other;
     if (sum > max) max = sum;
     if (h.productive > bestProd) {
       bestProd = h.productive;
@@ -1156,12 +1172,14 @@ function renderWeek(stats) {
     bestProd > 0 && bestIdx >= 0
       ? formatWeekDateLabel(days[bestIdx].date)
       : 'No productive time yet';
-  const focusDenom = prodSum + unpSum;
+  const weekFocus = describeFocus({ productive: prodSum, unproductive: unpSum, other: othSum });
+  const focusDenom = weekFocus ? weekFocus.denominator : prodSum + unpSum;
   let focusShare = '—';
-  let focusSub = 'Of productive + unproductive';
+  let focusSub = weekFocus && weekFocus.includeOther ? 'Of active tracked time' : 'Of productive + unproductive';
   if (focusDenom > 0) {
-    focusShare = Math.round((prodSum / focusDenom) * 100) + '%';
-    focusSub = fmtFriendly(prodSum) + ' productive · ' + fmtFriendly(unpSum) + ' unproductive';
+    focusShare = (weekFocus ? weekFocus.percent : Math.round((prodSum / focusDenom) * 100)) + '%';
+    focusSub = fmtFriendly(prodSum) + ' productive · ' + fmtFriendly(unpSum) + ' unproductive' +
+      (weekFocus && weekFocus.includeOther ? ' · ' + fmtFriendly(othSum) + ' other' : '');
   }
   setMetrics(
     bestVal,
@@ -1174,9 +1192,11 @@ function renderWeek(stats) {
 }
 
 function applySettingsInputs(settings) {
+  settings = Object.assign({}, settings || {}, settingsOverrides);
+  latestGoalSettings = settings;
+  if (typeof syncWellbeingSettings === 'function') syncWellbeingSettings(settings);
   if (applying) return;
   applying = true;
-  settings = Object.assign({}, settings || {}, settingsOverrides);
   const sec = Number(settings.thresholdSec) || 600;
   if ($('threshold-min') && document.activeElement !== $('threshold-min')) {
     $('threshold-min').value = Math.round((sec / 60) * 10) / 10;
@@ -1201,12 +1221,6 @@ function applySettingsInputs(settings) {
   if ($('focusboost-message') && document.activeElement !== $('focusboost-message')) {
     $('focusboost-message').value =
       settings.focusBoostReminderMessage || "Hey! focusboost is enabled. Maybe it's time to refocus?";
-  }
-  let goalSec = Number(settings.dailyGoalSec);
-  if (!Number.isFinite(goalSec) || goalSec <= 0) goalSec = 7200;
-  const hoursVal = Math.round((goalSec / 3600) * 100) / 100;
-  if ($('daily-goal-hours') && document.activeElement !== $('daily-goal-hours')) {
-    $('daily-goal-hours').value = hoursVal;
   }
   syncPauseUi(settings);
   syncNotifUi(settings);
@@ -1595,15 +1609,19 @@ function renderDay(stats) {
   let focusSub = 'Of productive + unproductive';
   let prodSum = 0;
   let unpSum = 0;
+  let othSum = 0;
   for (let i = 0; i < 24; i++) {
     prodSum += hours[i].productive;
     unpSum += hours[i].unproductive;
+    othSum += hours[i].other;
   }
-  const focusDenom = prodSum + unpSum;
+  const dayFocus = describeFocus({ productive: prodSum, unproductive: unpSum, other: othSum });
+  const focusDenom = dayFocus ? dayFocus.denominator : prodSum + unpSum;
+  if (dayFocus && dayFocus.includeOther) focusSub = 'Of active tracked time';
   if (focusDenom > 0) {
-    const pct = Math.round((prodSum / focusDenom) * 100);
-    focusShare = pct + '%';
-    focusSub = fmtFriendly(prodSum) + ' productive · ' + fmtFriendly(unpSum) + ' unproductive';
+    focusShare = (dayFocus ? dayFocus.percent : Math.round((prodSum / focusDenom) * 100)) + '%';
+    focusSub = fmtFriendly(prodSum) + ' productive · ' + fmtFriendly(unpSum) + ' unproductive' +
+      (dayFocus && dayFocus.includeOther ? ' · ' + fmtFriendly(othSum) + ' other' : '');
   }
   const shareEl = $('day-focus-share');
   if (shareEl) shareEl.textContent = focusShare;
@@ -1638,17 +1656,17 @@ function roundupHeadlines(moodId, hit, thin) {
   if (hit) {
     const map = {
       thriving: ['Goal crushed', 'You killed it today! 🥳'],
-      focused: ['Goal hit', 'Solid focus day — you met the productive target.'],
-      meh: ['Goal hit, mixed vibe', 'You made the productive goal even if the mix wasn’t perfect.'],
-      distracted: ['Goal hit, rough edges', 'You still cleared the target despite some drift.'],
-      doomscroll: ['Goal hit somehow', 'Productive target cleared — maybe tighten Focus Tags next.']
+      focused: ['Goal hit', 'Solid focus day — you met the focus-share goal.'],
+      meh: ['Goal hit, mixed vibe', 'You made the focus-share goal even if the mix wasn’t perfect.'],
+      distracted: ['Goal hit, rough edges', 'You still cleared the focus-share goal despite some drift.'],
+      doomscroll: ['Goal hit somehow', 'Focus-share goal cleared — maybe tighten Focus Tags next.']
     };
     const row = map[moodId] || map.meh;
     return { headline: row[0], sub: row[1] };
   }
   const map = {
     thriving: ['Almost there', "Let's finish strong! 💪"],
-    focused: ['Close call', 'Good focus day. Nudge the goal or keep stacking productive time.'],
+    focused: ['Close call', 'Good focus day. Nudge the goal or keep the focus share up.'],
     meh: ['Mixed day', 'Some focus, some drift. Tags and FocusBoost can tighten tomorrow.'],
     distracted: ['Drift day', 'Unproductive time led. Tag distractions and arm FocusBoost.'],
     doomscroll: ['Doomscroll o’clock', 'Heavy unproductive stretch. Reset with Focus Tags + Boost.']
@@ -1667,11 +1685,10 @@ function renderRoundup(stats) {
   const thin = total < 60;
   const mood = (stats && stats.mood) || { id: 'meh', emoji: '😐', label: 'Meh' };
   const settings = (stats && stats.settings) || {};
-  let goalSec = Number(settings.dailyGoalSec);
-  if (!Number.isFinite(goalSec) || goalSec <= 0) goalSec = 7200;
-  const pct = Math.min(100, Math.round((prod / goalSec) * 100));
-  const hit = prod >= goalSec;
-  const left = Math.max(0, goalSec - prod);
+  if (settings && Object.keys(settings).length) latestGoalSettings = Object.assign({}, latestGoalSettings, settings);
+  const focus = describeFocus(cats);
+  const hit = !!(focus && focus.hit);
+  const goalPct = focus ? focus.goalPct : 80;
 
   const dateEl = $('roundup-date');
   if (dateEl) dateEl.textContent = formatRoundupDate(stats && stats.date);
@@ -1684,16 +1701,21 @@ function renderRoundup(stats) {
   if ($('roundup-sub')) $('roundup-sub').textContent = copy.sub;
 
   const goalCard = $('roundup-goal-card');
-  if (goalCard) goalCard.setAttribute('data-hit', thin ? 'na' : hit ? 'yes' : 'no');
-
+  const focusPct = focus && focus.percent != null ? focus.percent : null;
+  const barPct = focusPct == null ? 0 : Math.min(100, Math.round((focusPct / goalPct) * 100));
+  if (goalCard) goalCard.setAttribute('data-hit', !focus || focus.thin ? 'na' : hit ? 'yes' : 'no');
+  const goalKicker = goalCard && goalCard.querySelector('.lf-kicker');
+  if (goalKicker) goalKicker.textContent = 'Daily focus share';
   if ($('roundup-goal-value')) {
-    $('roundup-goal-value').textContent = fmtGoalShort(prod) + ' / ' + fmtGoalShort(goalSec);
+    $('roundup-goal-value').textContent = (focusPct == null ? '—' : focusPct + '%') + ' / ' + goalPct + '%';
   }
-  if ($('roundup-goal-pct')) $('roundup-goal-pct').textContent = pct + '%';
+  if ($('roundup-goal-pct')) {
+    $('roundup-goal-pct').textContent = focus && focus.includeOther ? 'Including Other' : 'Other excluded';
+  }
   const fill = $('roundup-goal-fill');
   const bar = $('roundup-goal-bar');
-  if (fill) fill.style.width = pct + '%';
-  if (bar) bar.setAttribute('aria-valuenow', String(pct));
+  if (fill) fill.style.width = barPct + '%';
+  if (bar) bar.setAttribute('aria-valuenow', String(barPct));
   const apps = (stats && stats.topApps) || [];
   const topP = apps.find((a) => a.category === 'productive');
   const topU = apps.find((a) => a.category === 'unproductive');
@@ -1725,12 +1747,14 @@ function renderRoundup(stats) {
     'Detail'
   );
 
-  const denom = prod + unp;
-  setAppTrunc($('ru-share'), denom > 0 ? Math.round((prod / denom) * 100) + '%' : '—', 'Focus share');
+  const denom = focus ? focus.denominator : prod + unp;
+  setAppTrunc($('ru-share'), denom > 0 && focus && focus.percent != null ? focus.percent + '%' : '—', 'Focus share');
   setAppTrunc(
     $('ru-share-sub'),
     denom > 0
-      ? fmtFriendly(prod) + ' productive · ' + fmtFriendly(unp) + ' unproductive'
+      ? (focus && focus.includeOther
+          ? 'Of active tracked time'
+          : 'Of productive + unproductive')
       : 'Of productive + unproductive',
     'Detail'
   );
@@ -1761,21 +1785,17 @@ function renderRoundup(stats) {
             '</span> led distractions.'
         );
       }
-      if (hit) {
+      if (focus && !focus.thin && focus.percent != null) {
         lines.push(
-          'Daily productivity goal: <span class="story-goal story-goal-hit">cleared</span>.'
-        );
-      } else {
-        const leftRatio = goalSec > 0 ? left / goalSec : 1;
-        let goalTone = 'far';
-        if (leftRatio <= 0.25) goalTone = 'near';
-        else if (leftRatio <= 0.55) goalTone = 'mid';
-        lines.push(
-          'Daily productivity goal: <span class="story-goal story-goal-' +
-            goalTone +
+          'Focus share: <span class="story-goal story-goal-' +
+            (hit ? 'hit' : 'far') +
             '">' +
-            esc(fmtGoalShort(left)) +
-            '</span> to go.'
+            focus.percent +
+            '%</span> of a ' +
+            goalPct +
+            '% goal (' +
+            (focus.includeOther ? 'active tracked time' : 'productive + unproductive') +
+            ').'
         );
       }
       if (!lines.length) {
@@ -1787,10 +1807,12 @@ function renderRoundup(stats) {
       }
     }
   }
+  if (typeof renderWellbeing === 'function') renderWellbeing(stats);
 }
 
 function renderStats(stats) {
   if (!stats) return;
+  if (stats.settings) latestGoalSettings = Object.assign({}, latestGoalSettings, stats.settings);
   renderMood(stats);
   renderPie(
     liveDisplayCategories
@@ -1817,17 +1839,23 @@ function renderAppList(stats) {
   const list = $('app-list');
   if (!list) return;
   const apps = (stats && (stats.activityRows || stats.topApps)) || [];
-  if (!apps.length) { list.innerHTML = '<li class="empty">No time logged yet</li>'; return; }
+  if (!apps.length) {
+    list.innerHTML = '<li class="empty">No time logged yet</li>';
+    if (typeof renderAppDrilldown === 'function') renderAppDrilldown(stats);
+    return;
+  }
   list.innerHTML = apps.map(a => {
     const category = a.category;
     const chip = category === 'mixed' ? { className: 'chip other', label: 'mixed' } : chipDisplay(category, a.name);
     return '<li class="app-row"><span class="app-name app-trunc" title="' + esc(a.name) + '">' + esc(a.name) + '<small class="app-match-reason">' + esc(a.reason || 'Keyword not recorded') + '</small></span>' +
+      '<button type="button" class="btn-mini" data-drill="' + esc(a.name) + '">Hours</button>' +
       '<span class="' + chip.className + '">' + chip.label + '</span><span class="secs">' + fmt(a.seconds) + '</span>' +
       '<span class="reclass" data-app="' + encodeURIComponent(a.id || '') + '">' +
       [['productive', 'prod', 'P'], ['unproductive', 'unprod', 'U'], ['ignored', 'ignore', 'ign']].map(([value, cls, label]) =>
         '<button type="button" class="btn-mini ' + cls + (category === value ? ' selected' : '') + '" aria-pressed="' + (category === value) +
         '" data-action="' + value + '" title="' + (value === 'ignored' && category === 'ignored' ? 'Unignore for today' : 'Mark this activity ' + value + ' for today') + '">' + label + '</button>').join('') + '</span></li>';
   }).join('');
+  if (typeof renderAppDrilldown === 'function') renderAppDrilldown(stats);
 }
 
 $('app-list').addEventListener('click', async ev => {
@@ -1917,25 +1945,6 @@ if ($('focusboost-message')) {
     pushSettings({ focusBoostReminderMessage: text });
   };
   $('focusboost-message').addEventListener('change', saveBoostMsg);
-}
-
-function clampGoalHours(h) {
-  if (!Number.isFinite(h) || h <= 0) return null;
-  return Math.min(16, Math.max(0.25, Math.round(h * 100) / 100));
-}
-
-async function persistDailyGoalHours(hours) {
-  const h = clampGoalHours(hours);
-  if (h == null) return;
-  const sec = Math.round(h * 3600);
-  return pushSettings({ dailyGoalSec: sec });
-}
-
-
-if ($('daily-goal-hours')) {
-  $('daily-goal-hours').addEventListener('change', () => {
-    persistDailyGoalHours(Number($('daily-goal-hours').value));
-  });
 }
 
 async function setTrackingPaused(paused) {
@@ -2879,6 +2888,7 @@ async function boot() {
       renderLastFocused(state.lastFocused, state.now);
       setLiveStats(state.stats, state.now);
       renderStats(state.stats);
+      if (typeof noteWellbeingPayload === 'function') noteWellbeingPayload(state);
       if (state.session) renderActiveSession(state.session);
       else if (api.getActiveSession) {
         const s = await api.getActiveSession().catch(() => null);
@@ -2893,6 +2903,7 @@ async function boot() {
     renderLastFocused(payload.lastFocused, payload.now);
     setLiveStats(payload.stats, payload.now);
     renderStats(payload.stats);
+    if (typeof noteWellbeingPayload === 'function') noteWellbeingPayload(payload);
     if (payload.session !== undefined) {
       renderActiveSession(payload.session);
     }

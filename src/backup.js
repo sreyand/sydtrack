@@ -121,8 +121,10 @@ function importBackup(store, obj, opts) {
   }
 
   if (obj.settings && typeof obj.settings === 'object' && options.applySettings !== false) {
-    if (options.onSettings) options.onSettings(obj.settings);
-    else store.updateSettings(obj.settings);
+    const next = store.applyImportedSettings
+      ? store.applyImportedSettings(obj.settings)
+      : store.updateSettings(obj.settings);
+    if (options.onSettings) options.onSettings(next);
     result.appliedSettings = true;
   }
 
