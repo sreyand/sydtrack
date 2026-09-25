@@ -100,6 +100,7 @@ assert(/#view-home \.pie-total[\s\S]{0,200}font-weight:\s*500/.test(homeCss), 'H
 assert(!/#view-home \.pie-total[^{]*\{[^}]*--display-1/.test(homeCss), 'Home donut time is not the display-1 billboard');
 assert(/#view-home \.pie-legend strong[\s\S]{0,40}display:\s*none/.test(homeCss), 'Home pie legend hides the giant duration numbers');
 assert(!/>Actual</.test(html), 'Daily focus share card does not show an Actual label');
+assert(!/>Other excluded</.test(html) && !html.includes('id="roundup-goal-scope"'), 'Daily focus share card does not show Other excluded');
 assert(/id="roundup-goal-card"[^>]*class="[^"]*has-tip/.test(html) || /class="[^"]*has-tip[^"]*"[^>]*id="roundup-goal-card"/.test(html), 'Daily focus share card uses the existing hover tip pattern');
 assert(/data-full="[^"]*Other is excluded/.test(html), 'Daily focus share tip explains the default Other-excluded metric');
 const rendererJs = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'renderer.js'), 'utf8');

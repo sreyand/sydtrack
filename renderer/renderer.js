@@ -1735,9 +1735,6 @@ function renderRoundup(stats) {
   if ($('roundup-goal-pct')) {
     $('roundup-goal-pct').textContent = 'Goal ' + goalPct + '%';
   }
-  if ($('roundup-goal-scope')) {
-    $('roundup-goal-scope').textContent = focus && focus.includeOther ? 'Including Other' : 'Other excluded';
-  }
   if (goalCard) {
     goalCard.setAttribute(
       'data-full',
