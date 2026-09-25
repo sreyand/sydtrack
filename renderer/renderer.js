@@ -754,73 +754,37 @@ function renderMood(stats) {
 /** Latest Home pie slice geometry + apps for hover tip. */
 let pieHoverState = { total: 0, ends: [0, 0, 0], appsByCat: { productive: [], unproductive: [], other: [] } };
 let liveStats = null;
-let liveCategory = 'other';
-let liveDisplayCategories = null;
-let liveLastAt = 0;
-let liveDisplaySignature = '';
+const liveTotalsClock = createLiveTotalsClock();
 
-function advanceLiveTotals(at) {
-  if (
-    !liveDisplayCategories ||
-    !liveLastAt ||
-    (liveCategory !== 'productive' && liveCategory !== 'unproductive')
-  ) {
-    liveLastAt = at;
-    return;
-  }
-  const elapsed = Math.max(0, (at - liveLastAt) / 1000);
-  liveDisplayCategories[liveCategory] += elapsed;
-  liveLastAt = at;
-}
-
-function setLiveStats(stats, now) {
-  const at = Date.now();
-  advanceLiveTotals(at);
+function setLiveStats(stats, sample) {
   liveStats = stats || null;
-  liveCategory =
-    now && (now.category === 'productive' || now.category === 'unproductive')
-      ? now.category
-      : null;
-  const incoming = Object.assign(
-    { productive: 0, unproductive: 0, other: 0 },
-    (stats && stats.byCategory) || {}
+  liveTotalsClock.ingest(
+    (stats && stats.byCategory) || {},
+    sample && sample.category
   );
-  if (!liveDisplayCategories) {
-    liveDisplayCategories = incoming;
-  } else {
-    for (const category of ['productive', 'unproductive', 'other']) {
-      if (incoming[category] + 1 < liveDisplayCategories[category]) {
-        liveDisplayCategories[category] = incoming[category];
-      } else {
-        liveDisplayCategories[category] = Math.max(
-          liveDisplayCategories[category],
-          incoming[category]
-        );
-      }
-    }
-  }
-  liveLastAt = at;
 }
 
-function renderLiveTotals() {
-  if (!liveStats || !liveDisplayCategories) return;
-  const at = Date.now();
-  advanceLiveTotals(at);
-  const byCategory = liveDisplayCategories;
-  const signature = ['productive', 'unproductive', 'other']
-    .map((category) => Math.floor(byCategory[category]))
-    .join(':');
-  if (signature === liveDisplaySignature) return;
-  liveDisplaySignature = signature;
+function paintLivePie() {
+  if (!liveStats) return;
+  const byCategory = liveTotalsClock.snapshot();
   renderPie(Object.assign({}, liveStats, { byCategory }));
   if ($('streak')) {
+    const liveCategory = liveTotalsClock.currentCategory();
+    const stored = Number(liveStats.byCategory && liveStats.byCategory.unproductive) || 0;
+    const extra = Math.max(0, byCategory.unproductive - stored);
     const streak = liveCategory === 'unproductive'
-      ? (Number(liveStats.unproductiveStreak) || 0) + Math.max(0, byCategory.unproductive - Number(liveStats.byCategory.unproductive || 0))
+      ? (Number(liveStats.unproductiveStreak) || 0) + extra
       : liveCategory === 'productive'
         ? 0
         : Number(liveStats.unproductiveStreak) || 0;
     $('streak').textContent = fmtDuration(streak);
   }
+}
+
+function renderLiveTotals() {
+  if (!liveStats) return;
+  liveTotalsClock.tick();
+  paintLivePie();
 }
 
 function appsForCategory(stats, category) {
@@ -1865,11 +1829,6 @@ function renderStats(stats) {
   if (!stats) return;
   if (stats.settings) latestGoalSettings = Object.assign({}, latestGoalSettings, stats.settings);
   renderMood(stats);
-  renderPie(
-    liveDisplayCategories
-      ? Object.assign({}, stats, { byCategory: liveDisplayCategories })
-      : stats
-  );
   if (stats.week) renderWeek(stats);
   else if (historicalWeek) {
     historicalWeek = historicalWeek.map(day => day.date === stats.date ? { ...day, byCategory: stats.byCategory, topApps: stats.topApps } : day);
@@ -1922,7 +1881,9 @@ $('app-list').addEventListener('click', async ev => {
     const stats = await api.correctActivityToday(name, category);
     historicalWeek = null;
     historyRequest++;
+    setLiveStats(stats, lastFocusedCache);
     renderStats(stats);
+    paintLivePie();
   } catch (err) { console.warn('App correction failed', err); }
   finally { btn.disabled = false; }
 });
@@ -2497,7 +2458,11 @@ if ($('data-import')) {
         invalidateHistoryViews();
         historyRequest++;
         const state = await api.getState();
-        if (state) renderStats(state.stats);
+        if (state) {
+          setLiveStats(state.stats, state.now);
+          renderStats(state.stats);
+          paintLivePie();
+        }
         await loadRulesAndIgnore();
         if (window.sydtrackProfilesUI) await window.sydtrackProfilesUI.reload(true, true);
         refreshSessionLog();
@@ -2516,7 +2481,9 @@ if ($('data-clear-today')) {
     const res = await api.clearToday();
     if (res && res.ok) {
       $('data-status').textContent = 'Today cleared';
+      setLiveStats(res.stats, null);
       renderStats(res.stats);
+      paintLivePie();
     }
   });
 }
@@ -2529,7 +2496,9 @@ if ($('data-clear-all')) {
     if (res && res.ok) {
       $('data-status').textContent = 'All history cleared';
       invalidateHistoryViews();
+      setLiveStats(res.stats, null);
       renderStats(res.stats);
+      paintLivePie();
     }
   });
 }
@@ -2542,7 +2511,9 @@ if ($('data-delete-all')) {
     if (res && res.ok) {
       $('data-status').textContent = 'All local data deleted';
       invalidateHistoryViews();
+      setLiveStats(res.stats, null);
       renderStats(res.stats);
+      paintLivePie();
       await loadRulesAndIgnore();
       if (window.sydtrackProfilesUI) await window.sydtrackProfilesUI.reload(true, true);
       refreshSessionLog();
@@ -2998,6 +2969,7 @@ async function boot() {
       renderLastFocused(state.lastFocused, state.now);
       setLiveStats(state.stats, state.now);
       renderStats(state.stats);
+      paintLivePie();
       if (typeof noteWellbeingPayload === 'function') noteWellbeingPayload(state);
       if (state.session) renderActiveSession(state.session);
       else if (api.getActiveSession) {
@@ -3013,6 +2985,7 @@ async function boot() {
     renderLastFocused(payload.lastFocused, payload.now);
     setLiveStats(payload.stats, payload.now);
     renderStats(payload.stats);
+    if (!liveTotalsClock.isTracking()) paintLivePie();
     if (typeof noteWellbeingPayload === 'function') noteWellbeingPayload(payload);
     if (payload.session !== undefined) {
       renderActiveSession(payload.session);
