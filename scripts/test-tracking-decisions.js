@@ -365,6 +365,38 @@ async function run() {
   assert(reasons.includes('clock'), 'a clock jump reaches decideSample');
   presenceTracker.stop();
 
+  const cadenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-cadence-'));
+  const cadenceStore = createStore(cadenceRoot);
+  cadenceStore.updateSettings({ demoMode: false, idleTimeoutSec: 0, pollMs: 1000 });
+  let cadenceClock = Date.now();
+  const cadenceReasons = [];
+  const cadenceDeltas = [];
+  const cadenceTracker = createTracker({
+    store: cadenceStore,
+    rules: { productive: [], unproductive: [], identities: { productiveApps: ['code'] } },
+    ignore: [],
+    now: () => cadenceClock,
+    backend: { getActiveWindow: async () => ({
+      window: { owner: { name: 'Code' }, title: 'app.js' },
+      idleSec: 0
+    }) },
+    onTick: (tick) => { cadenceReasons.push(tick.now.idleReason); }
+  });
+  let previousTotal = 0;
+  for (let i = 0; i < 20; i++) {
+    cadenceClock += 1000;
+    await cadenceTracker.poll();
+    const cats = cadenceStore.snapshot().byCategory;
+    const total = (cats.productive || 0) + (cats.unproductive || 0);
+    cadenceDeltas.push(total - previousTotal);
+    previousTotal = total;
+  }
+  cadenceTracker.stop();
+  assert(cadenceDeltas.every((delta) => Math.abs(delta - 1) < 0.001), 'under a 1s fake clock the live path adds ~1s per sample');
+  assert(Math.abs(previousTotal - 20) < 0.001, 'twenty 1s samples earn twenty seconds');
+  assert(!cadenceReasons.includes('clock') && !cadenceReasons.includes('sleep') && !cadenceReasons.includes('lock'), 'clock-jump / sleep / lock do not over-fire under normal 1s load');
+  fs.rmSync(cadenceRoot, { recursive: true, force: true });
+
   const { createWindowsBackend } = require('../src/windows-backend');
   let seenArgs = [];
   const gated = createWindowsBackend({

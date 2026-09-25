@@ -2906,6 +2906,9 @@ async function boot() {
 }
 
 boot();
+// Home pie-total ticks from this rAF + Date.now() interpolation, not from
+// tracker sample cadence. Multi-second skips here are renderer paint (follow-up:
+// lane 1 / #22 or a small dedicated PR), not main-process clock jumps.
 function runLiveTotalsTicker() {
   renderLiveTotals();
   window.requestAnimationFrame(runLiveTotalsTicker);
