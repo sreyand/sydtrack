@@ -3471,3 +3471,37 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
     max-width: none;
   }
 }
+
+/* Analytics Day/Week/Month/Apps: active reads, inactive recedes. */
+#view-analytics .analytics-toolbar .segment-control {
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  padding: 3px;
+  gap: 2px;
+}
+#view-analytics .analytics-toolbar .segment-btn {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--color-ink-faint);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+#view-analytics .analytics-toolbar .segment-btn:hover {
+  color: var(--color-ink-muted);
+  background: transparent;
+  box-shadow: none;
+}
+#view-analytics .analytics-toolbar .segment-btn.active {
+  font-weight: 700;
+  color: var(--color-ink);
+  background: var(--color-accent-tint);
+  border-color: var(--color-accent);
+  box-shadow: none;
+}

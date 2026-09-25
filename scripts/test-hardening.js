@@ -107,6 +107,10 @@ assert(!html.includes('id="app-drill"') && !html.includes('app-hours-btn'), 'app
 const wellbeingUi = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'wellbeing-ui.js'), 'utf8');
 assert(!wellbeingUi.includes('of active tracked time today'), 'app hour-breakdown copy is not rendered');
 const rendererJs = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'renderer.js'), 'utf8');
+assert(!rendererJs.includes('app-hours-btn') && !rendererJs.includes('>Hours</button>'), 'Apps Hours control is fully gone');
+assert(/#view-analytics \.analytics-toolbar \.segment-btn\.active[\s\S]{0,160}font-weight:\s*700/.test(homeCss), 'Analytics active tab is Satoshi 700');
+assert(/#view-analytics \.analytics-toolbar \.segment-btn\.active[\s\S]{0,200}var\(--color-accent\)/.test(homeCss), 'Analytics active tab uses the accent token');
+assert(/#view-analytics \.analytics-toolbar \.segment-btn \{[\s\S]{0,200}font-weight:\s*400/.test(homeCss), 'Analytics inactive tabs are quieter Satoshi 400');
 assert(rendererJs.includes('fmtPieDuration(total)'), 'Home donut uses the natural duration format');
 assert(/return m \+ ' min'/.test(rendererJs), 'sub-hour donut time reads as min, not abrupt m');
 assert(rendererJs.includes(".app-trunc, .has-tip"), 'existing name-tip also opens for has-tip cards');
