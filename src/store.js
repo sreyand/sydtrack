@@ -251,7 +251,8 @@ function defaultSettings() {
     dailyGoalSec: 7200,
     sessionHistoryEnabled: true,
     sessionCustomMin: 45,
-    notificationsEnabled: true
+    notificationsEnabled: true,
+    theme: 'graphite'
   };
 }
 

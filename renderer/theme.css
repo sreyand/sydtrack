@@ -1,0 +1,190 @@
+/* Satoshi — bundled static cuts only. Weights 300 / 400 / 500 / 700 / 900. Never 600. */
+@font-face {
+  font-family: "Satoshi";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("fonts/satoshi/Satoshi-Light.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Satoshi";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/satoshi/Satoshi-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Satoshi";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/satoshi/Satoshi-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Satoshi";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/satoshi/Satoshi-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Satoshi";
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url("fonts/satoshi/Satoshi-Black.woff2") format("woff2");
+}
+
+:root,
+[data-theme="graphite"] {
+  color-scheme: light;
+  --color-canvas: #F4F5F7;
+  --color-surface: #FFFFFF;
+  --color-surface-sunken: #FAFAFB;
+  --color-border: #E2E4E8;
+  --color-border-strong: #C9CCD2;
+  --color-ink: #14181C;
+  --color-ink-muted: #5B6169;
+  --color-ink-faint: #9297A0;
+  --color-accent: #2A3F8F;
+  --color-accent-tint: #EBEEF9;
+  --color-accent-hover: #24357A;
+  --color-data-productive: #1F6F4A;
+  --color-data-productive-tint: #E5F2EC;
+  --color-data-unproductive: #A63D40;
+  --color-data-unproductive-tint: #F7E8E8;
+  --color-data-other: #6B7280;
+  --color-data-other-tint: #EDEEF0;
+}
+
+[data-theme="coral"] {
+  color-scheme: light;
+  --color-canvas: #FBF6F3;
+  --color-surface: #FFFFFF;
+  --color-surface-sunken: #F6EFEB;
+  --color-border: #EDE1DA;
+  --color-border-strong: #D9C7BC;
+  --color-ink: #2B2320;
+  --color-ink-muted: #74655D;
+  --color-ink-faint: #A89184;
+  --color-accent: #C2542F;
+  --color-accent-tint: #FBEAE2;
+  --color-accent-hover: #A6461F;
+  --color-data-productive: #2C7A52;
+  --color-data-productive-tint: #E7F3EC;
+  --color-data-unproductive: #B8483C;
+  --color-data-unproductive-tint: #F8E9E5;
+  --color-data-other: #7A6F66;
+  --color-data-other-tint: #F0EBE6;
+}
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-canvas: #0E1116;
+  --color-surface: #161A21;
+  --color-surface-sunken: #1D222B;
+  --color-border: #262C36;
+  --color-border-strong: #343B47;
+  --color-ink: #E7E9EC;
+  --color-ink-muted: #9BA1AC;
+  --color-ink-faint: #656B76;
+  --color-accent: #6B8AFA;
+  --color-accent-tint: #1B2340;
+  --color-accent-hover: #85A0FF;
+  --color-data-productive: #3FA372;
+  --color-data-productive-tint: #12291F;
+  --color-data-unproductive: #E2685F;
+  --color-data-unproductive-tint: #33191A;
+  --color-data-other: #8890A0;
+  --color-data-other-tint: #232733;
+}
+
+[data-theme="starlight"] {
+  color-scheme: light;
+  --color-canvas: #F7F8FC;
+  --color-surface: #FFFFFF;
+  --color-surface-sunken: #F0F2FA;
+  --color-border: #E3E6F2;
+  --color-border-strong: #CBD0E6;
+  --color-ink: #1B1E2E;
+  --color-ink-muted: #5E6480;
+  --color-ink-faint: #9BA0C0;
+  --color-accent: #5B5FEF;
+  --color-accent-tint: #ECEDFC;
+  --color-accent-hover: #4A4ED9;
+  --color-data-productive: #1E8F6B;
+  --color-data-productive-tint: #E3F5EE;
+  --color-data-unproductive: #C24870;
+  --color-data-unproductive-tint: #FBEAF0;
+  --color-data-other: #7076A0;
+  --color-data-other-tint: #EEEFF7;
+}
+
+[data-theme="dusk"] {
+  color-scheme: dark;
+  --color-canvas: #2B2A33;
+  --color-surface: #34333D;
+  --color-surface-sunken: #3C3B46;
+  --color-border: #454450;
+  --color-border-strong: #54525F;
+  --color-ink: #EDEBF0;
+  --color-ink-muted: #A9A6B4;
+  --color-ink-faint: #726F7D;
+  --color-accent: #C98A4B;
+  --color-accent-tint: #3D3226;
+  --color-accent-hover: #DE9C5C;
+  --color-data-productive: #4E9A72;
+  --color-data-productive-tint: #23342B;
+  --color-data-unproductive: #C15C55;
+  --color-data-unproductive-tint: #3A2624;
+  --color-data-other: #8D899A;
+  --color-data-other-tint: #322F3A;
+}
+
+:root,
+[data-theme] {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+  --radius-md: 10px;
+  --radius-sm: 6px;
+  --shadow-overlay: 0 4px 12px rgba(20, 24, 28, 0.08);
+  --font-sans: "Satoshi", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-data: "Satoshi", "Segoe UI", Helvetica, Arial, sans-serif;
+  --display-1: 500 40px/44px var(--font-data);
+  --heading-2: 700 20px/26px var(--font-sans);
+  --heading-3: 700 16px/22px var(--font-sans);
+  --body: 400 14px/20px var(--font-sans);
+  --body-data: 400 14px/20px var(--font-data);
+  --label: 500 13px/18px var(--font-sans);
+  --caption: 500 12px/16px var(--font-sans);
+
+  --bg: var(--color-canvas);
+  --bg-elev: var(--color-surface);
+  --panel: var(--color-surface);
+  --panel-2: var(--color-surface-sunken);
+  --line: var(--color-border);
+  --line-strong: var(--color-border-strong);
+  --text: var(--color-ink);
+  --muted: var(--color-ink-muted);
+  --prod: var(--color-data-productive);
+  --prod-bg: var(--color-data-productive-tint);
+  --unprod: var(--color-data-unproductive);
+  --unprod-bg: var(--color-data-unproductive-tint);
+  --other: var(--color-data-other);
+  --other-bg: var(--color-data-other-tint);
+  --browser: var(--color-ink-muted);
+  --browser-bg: var(--color-surface-sunken);
+  --accent: var(--color-accent);
+  --accent-2: var(--color-accent);
+  --shadow: none;
+  --radius: var(--radius-md);
+  --font: var(--font-sans);
+  --mono: var(--font-data);
+  --icon: var(--color-ink);
+  --icon-muted: var(--color-ink-muted);
+}

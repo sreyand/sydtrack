@@ -148,7 +148,7 @@ async function run() {
   assert(windowOpts.webPreferences.sandbox === true, 'BrowserWindow sandbox stays on');
   assert(windowOpts.webPreferences.contextIsolation === true, 'BrowserWindow contextIsolation stays on');
   assert(windowOpts.webPreferences.nodeIntegration === false, 'BrowserWindow nodeIntegration stays off');
-  assert(windowOpts.backgroundColor === windowBackgroundColor(true), 'BrowserWindow uses the dark page fill');
+  assert(windowOpts.backgroundColor === windowBackgroundColor('graphite'), 'BrowserWindow uses the active theme canvas');
   assert(typeof webContents.openHandler === 'function', 'installNavigationGuards ran on window creation');
   assert(session.webRequest.called === true, 'applyContentSecurityPolicy ran on window creation');
   assert(session.permissionDenied === true, 'denyPermissionRequests ran on window creation');

@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="graphite">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'" />
   <title>sydtrack</title>
+  <link rel="stylesheet" href="theme.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="wellbeing.css" />
 </head>
@@ -12,10 +13,9 @@
   <div class="shell">
     <aside class="rail">
       <div class="logo">
-        <img class="logo-mark" src="assets/logo-wordmark.png" alt="" aria-hidden="true" />
+        <span class="logo-mark" aria-hidden="true">B</span>
         <div class="logo-copy">
-          <div class="logo-word"><span class="logo-syd">syd</span><span class="logo-track">track</span></div>
-          <div class="logo-sub">Live Window Tracking</div>
+          <div class="logo-word">sydtrack</div>
         </div>
       </div>
       <button type="button" id="nav-toggle" class="nav-toggle" aria-expanded="true" title="Collapse sidebar" aria-label="Collapse sidebar"><span class="nav-caret" aria-hidden="true"></span></button>
@@ -43,7 +43,7 @@
         <button type="button" id="notif-btn" class="notif-toggle" data-muted="off" title="Notifications on" aria-label="Toggle notifications" aria-pressed="false">
           <svg class="notif-ico notif-ico-on" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 7 3 7 3 7H3s3 0 3-7"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>
           <svg class="notif-ico notif-ico-off" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 7 3 7 3 7H3s3 0 3-7"/><path d="M10 19a2 2 0 0 0 4 0"/><path d="M4 4l16 16"/></svg>
-          <span class="notif-label">ALERTS ON</span>
+          <span class="notif-label">Alerts on</span>
         </button>
         <div class="rail-status-row">
           <button type="button" id="pause-btn" class="pause-power" data-paused="off" title="Pause tracking" aria-label="Pause tracking" aria-pressed="false">
@@ -63,76 +63,73 @@
         <button id="banner-dismiss" type="button">Dismiss</button>
       </div>
 
-      <!-- HOME: pie + mood + last focused -->
+      <!-- HOME: header + chart card + secondary cards -->
       <section id="view-home" class="view">
-        <article class="card home-focus">
-          <!--
-            Mood skins: animal / face skins will key off [data-mood="{id}"].
-            Stable ids: thriving | focused | meh | distracted | doomscroll
-          -->
-          <div class="home-top">
-            <div id="mood-block" class="mood-block" data-mood="meh">
-              <span id="mood-emoji" class="mood-emoji" aria-hidden="true">😐</span>
-              <div class="mood-copy">
-                <span id="mood-label" class="mood-label">Meh</span>
-                <span class="mood-sub muted tiny">Focus level</span>
-              </div>
-            </div>
+        <header class="page-head">
+          <div>
+            <h1>Today</h1>
+            <p class="page-date" id="home-date" hidden></p>
+          </div>
+          <div id="mood-block" class="mood-pill" data-mood="meh" title="">
+            <span class="mood-dot" aria-hidden="true"></span>
+            <span id="mood-emoji" class="mood-emoji" aria-hidden="true"></span>
+            <span id="mood-label" class="mood-label">Quiet start</span>
+          </div>
+        </header>
 
+        <div class="home-layout">
+          <article class="card chart-card home-focus">
+            <div class="pie-wrap">
+              <div id="pie-chart" class="pie-chart" role="img" aria-label="Time breakdown pie"></div>
+              <div class="pie-center">
+                <div id="pie-total" class="pie-total">0m</div>
+                <div class="pie-total-label">tracked</div>
+              </div>
+              <div id="pie-tip" class="pie-tip hidden" role="tooltip"></div>
+            </div>
+            <ul class="pie-legend">
+              <li><span class="swatch prod"></span> Productive <strong id="prod-val">0m</strong></li>
+              <li><span class="swatch unprod"></span> Unproductive <strong id="unprod-val">0m</strong></li>
+              <li><span class="swatch other"></span> Other <strong id="other-val">0m</strong></li>
+            </ul>
+            <div id="week-bars" class="week-bars" hidden></div>
+            <div class="home-meta-hidden" hidden aria-hidden="true">
+              <strong id="streak">0m</strong>
+              <strong id="thresh-label">10m</strong>
+            </div>
+          </article>
+
+          <div class="home-side">
             <div class="home-focus-actions">
-            <button type="button" id="focusboost-btn" class="focusboost-btn" data-boost="off" title="~3 min unproductive reminder" aria-label="focusboost">
-              <span class="fb-bolt" aria-hidden="true">⚡</span>
-              <span id="focusboost-label" class="fb-wordmark"><span class="fb-focus">focus</span><span class="fb-boost">boost</span></span>
-            </button>
-            <button type="button" id="focus-profile-btn" class="focusboost-btn profile-trigger" data-boost="off" aria-expanded="false" aria-controls="focus-profile-menu">
-              <span class="profile-icon" aria-hidden="true">🎯</span><span class="fb-wordmark"><span class="fb-focus">focus</span><span class="fb-boost">profile</span></span><span id="focus-profile-label">default</span><span aria-hidden="true">▾</span>
-            </button>
-            <div id="focus-profile-menu" class="profile-menu hidden" role="group" aria-label="Choose Focus profile"></div>
-            <span id="home-profile-status" class="muted tiny" role="status"></span>
+              <button type="button" id="focusboost-btn" class="focusboost-btn" data-boost="off" title="~3 min unproductive reminder" aria-label="focusboost">
+                <span id="focusboost-label" class="fb-wordmark"><span class="fb-focus">focus</span><span class="fb-boost">boost</span></span>
+              </button>
+              <button type="button" id="focus-profile-btn" class="focusboost-btn profile-trigger" data-boost="off" aria-expanded="false" aria-controls="focus-profile-menu">
+                <span class="fb-wordmark"><span class="fb-focus">focus</span><span class="fb-boost">profile</span></span>
+                <span id="focus-profile-label">default</span><span aria-hidden="true">▾</span>
+              </button>
+              <div id="focus-profile-menu" class="profile-menu hidden" role="group" aria-label="Choose Focus profile"></div>
+              <span id="home-profile-status" class="muted tiny" role="status"></span>
             </div>
-          </div>
-
-          <div class="pie-wrap">
-            <div id="pie-chart" class="pie-chart" role="img" aria-label="Time breakdown pie"></div>
-            <div class="pie-center">
-              <div id="pie-total" class="pie-total">0:00</div>
-              <div class="pie-total-label muted tiny">tracked</div>
-            </div>
-            <div id="pie-tip" class="pie-tip hidden" role="tooltip"></div>
-          </div>
-
-          <ul class="pie-legend">
-            <li><span class="swatch prod"></span> Productive <strong id="prod-val">0:00</strong></li>
-            <li><span class="swatch unprod"></span> Unproductive <strong id="unprod-val">0:00</strong></li>
-            <li><span class="swatch other"></span> Other <strong id="other-val">0:00</strong></li>
-          </ul>
-
-          <div id="week-bars" class="week-bars" hidden></div>
-
-          <div id="last-focused" class="last-focused">
-            <div class="lf-kicker">Last focused</div>
-            <div class="lf-row">
-              <div class="lf-main">
-                <span id="lf-app" class="lf-app app-trunc" data-full="">Waiting for an app…</span>
-                <span id="lf-title" class="lf-title muted app-trunc" data-full=""></span>
+            <article id="last-focused" class="card last-focused">
+              <div class="lf-kicker">Last focused</div>
+              <div class="lf-row">
+                <div class="lf-main">
+                  <span id="lf-app" class="lf-app app-trunc" data-full="">Waiting for an app…</span>
+                  <span id="lf-title" class="lf-title muted app-trunc" data-full=""></span>
+                </div>
+                <div class="lf-actions">
+                  <span id="lf-cat" class="chip other">—</span>
+                  <span class="lf-reclass">
+                    <button type="button" id="lf-prod" class="btn-mini prod" title="Mark productive">P</button>
+                    <button type="button" id="lf-unprod" class="btn-mini unprod" title="Mark unproductive">U</button>
+                    <button type="button" id="lf-ignore" class="btn-mini ignore" title="Ignore (stop tracking)">I</button>
+                  </span>
+                </div>
               </div>
-              <div class="lf-actions">
-                <span id="lf-cat" class="chip other">—</span>
-                <span class="lf-reclass">
-                  <button type="button" id="lf-prod" class="btn-mini prod" title="Mark productive">P</button>
-                  <button type="button" id="lf-unprod" class="btn-mini unprod" title="Mark unproductive">U</button>
-                  <button type="button" id="lf-ignore" class="btn-mini ignore" title="Ignore (stop tracking)">I</button>
-                </span>
-              </div>
-            </div>
+            </article>
           </div>
-
-          <div class="home-meta-hidden" hidden aria-hidden="true">
-            <strong id="streak">0:00</strong>
-            <strong id="thresh-label">10:00</strong>
-          </div>
-
-        </article>
+        </div>
       </section>
 
 
@@ -488,6 +485,25 @@
         </div>
 
         </div>
+        <article class="card tags-card" id="browser-keywords-card">
+          <div class="lf-kicker tag-kicker">Browser keywords</div>
+          <p class="hint tags-hint">Exact title tokens used after Focus Tags miss. Unproductive wins. One keyword per line. Stored only on this computer.</p>
+          <div class="kw-editor">
+            <label class="field">
+              <span>Productive sites</span>
+              <textarea id="kw-prod-edit" class="rules-textarea tags-textarea" spellcheck="false" rows="6" placeholder="github"></textarea>
+            </label>
+            <label class="field">
+              <span>Unproductive sites</span>
+              <textarea id="kw-unprod-edit" class="rules-textarea tags-textarea" spellcheck="false" rows="6" placeholder="youtube"></textarea>
+            </label>
+          </div>
+          <div class="rules-actions">
+            <button type="button" id="kw-save" class="btn primary">Save browser keywords</button>
+            <button type="button" id="kw-reset" class="btn ghost">Reset to defaults</button>
+            <span id="kw-status" class="muted tiny" role="status"></span>
+          </div>
+        </article>
         <article class="card profile-settings" id="profile-settings">
           <div class="profile-management-row">
             <div class="profile-identity">
@@ -524,6 +540,17 @@
         <header class="page-head">
           <div><h1>Settings</h1><p class="muted">Tracking, reminders, and data</p></div>
         </header>
+        <article class="card">
+          <h3>Appearance</h3>
+          <p class="hint">Graphite is the default. Structure stays the same; only the palette changes.</p>
+          <div class="theme-swatches" role="group" aria-label="Theme">
+            <button type="button" class="theme-swatch" data-theme-id="graphite" aria-pressed="true">Graphite</button>
+            <button type="button" class="theme-swatch" data-theme-id="midnight" aria-pressed="false">Midnight</button>
+            <button type="button" class="theme-swatch" data-theme-id="dusk" aria-pressed="false">Dusk</button>
+            <button type="button" class="theme-swatch" data-theme-id="coral" aria-pressed="false">Coral</button>
+            <button type="button" class="theme-swatch" data-theme-id="starlight" aria-pressed="false">Starlight</button>
+          </div>
+        </article>
         <article class="card">
           <h3>Tracker</h3>
           <!-- Toggles first: Pause → session history → focusboost schedule (last) -->
@@ -673,6 +700,7 @@
             </label>
           </div>
           <p class="settings-meta muted tiny">Data: <code id="data-path">./data</code></p>
+          <p class="font-credit">Satoshi typeface © Indian Type Foundry, licensed under Fontshare FFL. See renderer/fonts/satoshi/FFL.txt.</p>
         </article>
 
         <article class="card data-card">
@@ -705,6 +733,7 @@
   </div>
   <div id="name-tip" class="name-tip pie-tip hidden" role="tooltip"></div>
   <script src="../src/browser-rules.js"></script>
+  <script src="lib/live-ticker.js"></script>
   <script src="lib/goals.js"></script>
   <script src="lib/streaks.js"></script>
   <script src="lib/decompress.js"></script>

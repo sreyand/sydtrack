@@ -3,13 +3,17 @@
 const fs = require('fs');
 const path = require('path');
 
+const { canvasForTheme, DEFAULT_THEME } = require('./theme');
+
 const APP_SCHEME = 'sydtrack';
 const APP_PAGE_URL = 'sydtrack://app/renderer/index.html';
-const WINDOW_BACKGROUND_DARK = '#121418';
-const WINDOW_BACKGROUND_LIGHT = '#f3f4f6';
+const WINDOW_BACKGROUND_DARK = canvasForTheme('midnight');
+const WINDOW_BACKGROUND_LIGHT = canvasForTheme('graphite');
 
-function windowBackgroundColor(shouldUseDarkColors) {
-  return shouldUseDarkColors ? WINDOW_BACKGROUND_DARK : WINDOW_BACKGROUND_LIGHT;
+function windowBackgroundColor(themeOrDark) {
+  if (themeOrDark === true) return WINDOW_BACKGROUND_DARK;
+  if (themeOrDark === false) return WINDOW_BACKGROUND_LIGHT;
+  return canvasForTheme(themeOrDark == null ? DEFAULT_THEME : themeOrDark);
 }
 
 // Inline style attributes are set by the renderer (tooltips, layout). No remote

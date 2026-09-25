@@ -30,7 +30,10 @@ const CHANNELS = [
   'session:stop',
   'session:getActive',
   'session:getForDay',
-  'session:delete'
+  'session:delete',
+  'keywords:get',
+  'keywords:set',
+  'keywords:reset'
 ];
 
 const PROFILE_ID = /^[A-Za-z0-9_-]{1,80}$/;
@@ -172,6 +175,16 @@ function resetProfile(payload) {
   return optionalProfileId(payload);
 }
 
+function keywordsSet(payload) {
+  const obj = plainObject(payload);
+  assertKeys(obj, ['productive', 'unproductive']);
+  if (!Object.hasOwn(obj, 'productive') || !Object.hasOwn(obj, 'unproductive')) invalid();
+  return {
+    productive: stringList(obj.productive),
+    unproductive: stringList(obj.unproductive)
+  };
+}
+
 function ignoreSet(payload) {
   const obj = plainObject(payload);
   assertKeys(obj, ['ignore', 'profileId']);
@@ -225,7 +238,11 @@ const SETTINGS = {
   decompressBreaksPerDay: (value) => finiteInt(value, 0, 8),
   decompressBreakMinutes: (value) => finiteInt(value, 1, 60),
   gamificationEnabled: bool,
-  duckEnabled: bool
+  duckEnabled: bool,
+  theme: (value) => {
+    if (value !== 'graphite' && value !== 'coral' && value !== 'midnight' && value !== 'starlight' && value !== 'dusk') invalid();
+    return value;
+  }
 };
 
 function settingsUpdate(payload) {
@@ -352,7 +369,10 @@ const VALIDATORS = {
   'session:stop': noPayload,
   'session:getActive': noPayload,
   'session:getForDay': optionalDate,
-  'session:delete': sessionDelete
+  'session:delete': sessionDelete,
+  'keywords:get': noPayload,
+  'keywords:set': keywordsSet,
+  'keywords:reset': noPayload
 };
 
 function validateIpcPayload(channel, payload) {
