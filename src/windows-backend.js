@@ -30,12 +30,15 @@ function readBrowserAddress(win, run = execFile) {
 
 // Address capture is experimental: known editing/focus gaps must not affect
 // ordinary tracking. Production callers use foreground titles only.
-function createWindowsBackend({ experimentalAddressCapture = false, run = execFile } = {}) {
+function createWindowsBackend({ experimentalAddressCapture = false, run = execFile, includeMedia } = {}) {
   function getActiveWindow() {
     return new Promise((resolve) => {
+      const wantMedia = typeof includeMedia === 'function' ? !!includeMedia() : !!includeMedia;
+      const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', PS1];
+      if (wantMedia) args.push('-IncludeMedia');
       run(
         'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', PS1],
+        args,
         { windowsHide: true, timeout: TIMEOUT_MS, encoding: 'utf8', maxBuffer: 1024 * 1024 },
         async (err, stdout, stderr) => {
           if (err && !stdout) {
@@ -60,7 +63,14 @@ function createWindowsBackend({ experimentalAddressCapture = false, run = execFi
           try {
             const parsed = JSON.parse(jsonText);
             if (parsed.window) parsed.window.url = experimentalAddressCapture ? await readBrowserAddress(parsed.window, run) : '';
-            resolve({ window: parsed.window || null, idleSec: Number(parsed.idleSec) || 0, error: parsed.error || null });
+            const idleValue = parsed.idleSec == null || parsed.idleSec === '' ? null : Number(parsed.idleSec);
+            resolve({
+              window: parsed.window || null,
+              idleSec: Number.isFinite(idleValue) ? Math.max(0, idleValue) : null,
+              screenOff: parsed.screenOff === true,
+              media: parsed.media && typeof parsed.media === 'object' ? parsed.media : null,
+              error: parsed.error || null
+            });
           } catch (parseErr) {
             resolve({
               window: null,

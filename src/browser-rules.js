@@ -54,18 +54,42 @@
   }
 
   function classifySite(url, rules) { return siteMatch(url, rules)?.category || null; }
-  function browserMatch(entry, rules) {
-    const site = siteMatch(entry.url, rules);
-    if (site) return site;
-    const text = `${entry.title || ''} ${entry.url || ''}`.toLowerCase();
+  function keywordMatch(text, rules) {
+    if (!rules) return null;
     for (const type of ['unproductive', 'productive']) {
-      const match = ((rules && rules[type]) || []).find((tag) => {
+      const match = (rules[type] || []).find((tag) => {
         const key = String(tag || '').trim().toLowerCase();
         return key && !key.startsWith('site:') && text.includes(key);
       });
       if (match) return { category: type, reason: String(match).trim().toLowerCase() };
     }
-    return { category: 'productive', reason: 'Browser default' };
+    return null;
+  }
+
+  function exactKeyword(text, key) {
+    const escaped = String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(^|[^a-z0-9])' + escaped + '([^a-z0-9]|$)', 'i').test(text);
+  }
+
+  function exactKeywordMatch(text, rules) {
+    if (!rules) return null;
+    for (const type of ['unproductive', 'productive']) {
+      const match = (rules[type] || []).find((tag) => {
+        const key = String(tag || '').trim().toLowerCase();
+        return key && !key.startsWith('site:') && exactKeyword(text, key);
+      });
+      if (match) return { category: type, reason: String(match).trim().toLowerCase() };
+    }
+    return null;
+  }
+
+  // Focus profile tags win (substring). The browser list is exact-token only.
+  function browserMatch(entry, rules) {
+    const site = siteMatch(entry && entry.url, rules);
+    if (site) return site;
+    const text = `${(entry && entry.title) || ''} ${(entry && entry.url) || ''}`.toLowerCase();
+    return keywordMatch(text, rules) || exactKeywordMatch(text, rules && rules.browserKeywords) ||
+      { category: 'productive', reason: 'Browser default' };
   }
   function classifyBrowser(entry, rules) { return browserMatch(entry, rules).category; }
 
@@ -79,7 +103,7 @@
     }
   }
 
-  const api = { browserMatch, hostname, siteDomain, classifySite, classifyBrowser, validateSiteTags, browserNames, isBrowserName };
+  const api = { browserMatch, hostname, siteDomain, classifySite, classifyBrowser, validateSiteTags, browserNames, isBrowserName, exactKeyword };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.sydtrackBrowserRules = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

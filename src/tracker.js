@@ -2,6 +2,8 @@
 
 const { createDemoBackend } = require('./demo-windows');
 const { classify, classifyWithReason, appLabel, isIgnored, isBrowserProcess } = require('./classifier');
+const { decideSample, assessContinuity, toleranceMs } = require('./tracking-decision');
+const { normalizeMediaReport } = require('./media-signal');
 
 function createActiveWinBackend() {
   let impl = null;
@@ -46,14 +48,14 @@ function createActiveWinBackend() {
  * active-win only on non-Windows, or if windows-backend fails to load / errors at runtime.
  * Never silently switch to demo when demoMode is false.
  */
-function createRealBackend() {
+function createRealBackend(options = {}) {
   if (process.platform === 'win32') {
     let windows = null;
     let activeWin = null;
     let useActiveWin = false;
 
     try {
-      windows = require('./windows-backend').createWindowsBackend();
+      windows = require('./windows-backend').createWindowsBackend({ includeMedia: options.includeMedia });
     } catch (err) {
       console.warn(
         '[tracker] windows-backend load failed, falling back to active-win:',
@@ -86,15 +88,23 @@ function createRealBackend() {
  * Mutable so IPC can hot-reload without restarting tracker.
  * Also accepts legacy `rules` / `ignore` plain values for smoke/tests.
  */
-function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessionManager, onTick, onReminder, backend, now: clock = Date.now }) {
+function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessionManager, onTick, onReminder, backend, now: clock = Date.now, readIdleTime }) {
   const rHolder = rulesHolder || { rules: rules };
   const iHolder = ignoreHolder || { ignore: ignore || [] };
-  const real = backend || createRealBackend();
+  const real = backend || createRealBackend({
+    includeMedia: () => {
+      const settings = store.getSettings();
+      return settings.trackMusicWhileIdle === true || settings.trackVideoWhileIdle === true;
+    }
+  });
   const demo = createDemoBackend();
   let timer = null;
   let pollInFlight = false;
   let generation = 0;
-  let systemInactive = false;
+  let stopped = false;
+  let sleeping = false;
+  let locked = false;
+  let pendingDiscontinuity = false;
   let lastTick = clock();
   let lastHeartbeat = lastTick;
   let current = {
@@ -115,19 +125,24 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
 
   function checkContinuity() {
     const at = clock();
-    const gap = at - lastHeartbeat;
-    const tolerance = Math.max(5000, (Number(store.getSettings().pollMs) || 1500) * 3);
+    const result = assessContinuity({
+      previousAt: lastHeartbeat,
+      now: at,
+      toleranceMs: toleranceMs(store.getSettings().pollMs)
+    });
     lastHeartbeat = at;
-    if (gap < 0 || gap > tolerance) {
+    if (result.discontinuity) {
+      pendingDiscontinuity = true;
       generation += 1;
       lastTick = at;
       current.since = at;
       resetStreakSafely();
     }
+    return result;
   }
 
   async function pollOnce() {
-    if (systemInactive) return;
+    if (stopped) return;
     const pollGeneration = generation;
     const now = clock();
     const intervalStart = lastTick;
@@ -141,35 +156,66 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     let source = 'idle';
     let trackingError = null;
     let idleSec = 0;
+    let sample = null;
+    const skipProbe = sleeping || locked;
 
-    if (settings.demoMode) {
+    if (!skipProbe && settings.demoMode) {
       win = demo.getActiveWindow();
       source = 'demo';
       trackingError = null;
-    } else {
+    } else if (!skipProbe) {
       // Real mode only — do not silently fall back to demo
-      const result = await real.getActiveWindow();
-      win = result.window;
-      idleSec = Math.max(0, Number(result.idleSec) || 0);
-      trackingError = result.error || null;
+      sample = await real.getActiveWindow();
+      win = sample.window;
+      if (sample.idleSec != null && sample.idleSec !== '' && Number.isFinite(Number(sample.idleSec))) {
+        idleSec = Math.max(0, Number(sample.idleSec));
+      } else if (typeof readIdleTime === 'function') {
+        try {
+          const reported = Number(readIdleTime());
+          if (Number.isFinite(reported)) idleSec = Math.max(0, reported);
+        } catch (_) {}
+      }
+      trackingError = sample.error || null;
       source = win ? 'real' : 'idle';
     }
 
-    checkContinuity();
-    if (pollGeneration !== generation || systemInactive) return;
+    if (stopped) return;
+    const continuity = checkContinuity();
+    const discontinuous = continuity.discontinuity || pendingDiscontinuity;
+    pendingDiscontinuity = false;
+    if (pollGeneration !== generation && !discontinuous && !sleeping && !locked) return;
     settings = store.getSettings();
-    if (!!settings.demoMode !== startedDemo) return;
-    if (startedPaused) elapsed = 0;
+    if (!skipProbe && !!settings.demoMode !== startedDemo) return;
+    if (startedPaused || discontinuous) elapsed = 0;
     const activity = win ? classifyWithReason(win, rHolder.rules) : null;
     const rowCorrection = win && store.getActivityCorrection ? store.getActivityCorrection(appLabel(win), activity) : null;
     const correction = rowCorrection || (win && store.getAppCorrection ? store.getAppCorrection(appLabel(win)) : null);
     const selfIgnored = win && isIgnored(win, [], {});
     const ignored = selfIgnored || (correction ? correction === 'ignored' : win ? isIgnored(win, iHolder.ignore || [], rHolder.rules && rHolder.rules.identities) : false);
     const idleTimeoutSec = Math.max(0, Number(settings.idleTimeoutSec) || 0);
-    const idle = !settings.demoMode && idleTimeoutSec > 0 && idleSec >= idleTimeoutSec;
     // Pause at the timeout. Never subtract accumulated idle time from earned history.
     // Show in Now viewing; do not log time or affect streaks when ignored
     const category = !win ? 'other' : ignored ? 'ignored' : correction || classify(win, rHolder.rules);
+    const mediaEnabled = settings.trackMusicWhileIdle === true || settings.trackVideoWhileIdle === true;
+    const media = !settings.demoMode && mediaEnabled ? normalizeMediaReport(sample && sample.media, win) : null;
+    const decision = decideSample({
+      elapsedSec: elapsed,
+      idleSec,
+      idleTimeoutSec,
+      demoMode: !!settings.demoMode,
+      paused: !!settings.trackingPaused,
+      ignored,
+      hasWindow: !!win,
+      screenOff: !!(sample && sample.screenOff === true),
+      discontinuity: discontinuous,
+      systemAsleep: sleeping,
+      systemLocked: locked,
+      category,
+      media,
+      trackMusicWhileIdle: settings.trackMusicWhileIdle === true,
+      trackVideoWhileIdle: settings.trackVideoWhileIdle === true
+    });
+    const idle = decision.idle;
     const app = win
       ? appLabel(win)
       : trackingError
@@ -207,10 +253,10 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       current.source = 'idle';
     }
 
-    // NEVER count ignored toward totals or streaks; never log while paused
-    if (win && !ignored && !paused && !idle) {
-      if (store.addInterval && elapsed > 0) store.addInterval(app, category, intervalStart, now, activity);
-      else store.addSeconds(app, category, elapsed, activity);
+    // One foreground sample per tick. Sessions and reminders use this same decision.
+    if (decision.count && decision.elapsedSec > 0) {
+      if (store.addInterval) store.addInterval(app, category, intervalStart, now, activity);
+      else store.addSeconds(app, category, decision.elapsedSec, activity);
     } else if (store.resetStreak) {
       store.resetStreak();
     }
@@ -221,13 +267,13 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       sessionInfo = sessionManager.onTrackerTick({
         app,
         category,
-        elapsedSec: win && !ignored && !paused && !idle ? elapsed : 0
+        elapsedSec: decision.count ? decision.elapsedSec : 0
       });
     }
 
     // Remember last real focused app (not ignored / not self) for Home "Last focused"
     // Freeze lastFocused while paused so the Home bar stays put
-    if (win && !ignored && !paused && !idle) {
+    if (decision.count && win && decision.elapsedSec > 0) {
       lastFocused = {
         app,
         title,
@@ -240,10 +286,8 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     }
 
     if (
-      win &&
-      !ignored &&
-      !paused &&
-      !idle &&
+      decision.count &&
+      decision.elapsedSec > 0 &&
       settings.notificationsEnabled !== false &&
       store.shouldRemind() &&
       category === 'unproductive'
@@ -273,6 +317,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
           source,
           ignored,
           idle,
+          idleReason: decision.reason,
           idleSec,
           url: (win && win.url) || '',
           elapsedSec: Math.round((now - current.since) / 1000),
@@ -300,6 +345,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
 
   function start() {
     if (timer) return; // idempotent
+    stopped = false;
     resetStreakSafely();
     lastTick = clock();
     lastHeartbeat = lastTick;
@@ -311,6 +357,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
   }
 
   function stop() {
+    stopped = true;
     generation += 1;
     if (timer) {
       clearInterval(timer);
@@ -322,14 +369,22 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     return lastFocused;
   }
 
-  function setSystemInactive(inactive) {
-    if (systemInactive === !!inactive) return;
-    systemInactive = !!inactive;
+  function setSystemPresence({ sleeping: nextSleep, locked: nextLock } = {}) {
+    const nextSleeping = !!nextSleep;
+    const nextLocked = !!nextLock;
+    if (sleeping === nextSleeping && locked === nextLocked) return;
+    sleeping = nextSleeping;
+    locked = nextLocked;
     generation += 1;
     lastTick = clock();
     lastHeartbeat = lastTick;
     current.since = lastTick;
     resetStreakSafely();
+  }
+
+  function setSystemInactive(inactive) {
+    if (inactive) setSystemPresence({ sleeping: true, locked: true });
+    else setSystemPresence({ sleeping: false, locked: false });
   }
 
   function invalidateClassification() {
@@ -341,7 +396,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     resetStreakSafely();
   }
 
-  return { start, stop, poll, getLastFocused, setSystemInactive, invalidateClassification };
+  return { start, stop, poll, getLastFocused, setSystemInactive, setSystemPresence, invalidateClassification };
 }
 
 module.exports = { createTracker, createRealBackend };

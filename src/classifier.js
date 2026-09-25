@@ -220,9 +220,36 @@ function classifyWithReason(win, rules = {}) {
   return { category, reason: reason || 'No matching keyword' };
 }
 
+const APP_NAME_ALIASES = {
+  googlechrome: 'chrome',
+  microsoftedge: 'msedge',
+  mozillafirefox: 'firefox',
+  bravebrowser: 'brave',
+  operabrowser: 'opera',
+  visualstudiocode: 'Code',
+  windowsterminal: 'WindowsTerminal'
+};
+
+function compactAppName(value) {
+  return String(value || '').toLowerCase().replace(/\.exe$/i, '').replace(/[^a-z0-9]+/g, '');
+}
+
+function rawAppName(win) {
+  const owner = (win && win.owner) || {};
+  const base = String(owner.path || '').split(/[/\\]/).pop();
+  return String(owner.name || base || '').trim();
+}
+
+/** Stable label for process renames and backend display-name differences. */
+function canonicalAppName(name) {
+  const trimmed = String(name || '').trim().replace(/\.exe$/i, '');
+  if (!trimmed) return '';
+  return APP_NAME_ALIASES[compactAppName(trimmed)] || trimmed;
+}
+
 function appLabel(win) {
   if (!win) return 'Unknown';
-  return (win.owner && win.owner.name) || win.title || 'Unknown';
+  return canonicalAppName(rawAppName(win)) || win.title || 'Unknown';
 }
 
 /** Case-insensitive: does app name match any ignore keyword? */
@@ -254,6 +281,7 @@ module.exports = {
   classifyWithReason,
   isIgnored,
   appLabel,
+  canonicalAppName,
   haystack,
   appMatchesIgnore,
   isBrowserProcess,

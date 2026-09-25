@@ -129,6 +129,7 @@ throws(() => validateIpcPayload('profiles:activate', ''), 'profiles:activate rej
 assert(validateIpcPayload('profiles:activate', 'default') === 'default', 'profiles:activate accepts default');
 
 assert(validateIpcPayload('settings:update', { trackingPaused: true, thresholdSec: 600 }).thresholdSec === 600, 'settings:update accepts known keys');
+assert(validateIpcPayload('settings:update', { trackMusicWhileIdle: false, trackVideoWhileIdle: true }).trackVideoWhileIdle === true, 'settings:update accepts media-while-idle keys');
 throws(() => validateIpcPayload('settings:update', { demoMode: true }), 'settings:update rejects unknown keys');
 throws(() => validateIpcPayload('settings:update', { thresholdSec: 0 }), 'settings:update rejects a 0 threshold');
 throws(() => validateIpcPayload('settings:update', { reminderMessage: 'x'.repeat(2001) }), 'settings:update rejects oversized text');

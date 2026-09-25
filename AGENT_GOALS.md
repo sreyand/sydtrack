@@ -138,6 +138,8 @@ Success is a useful app people can trust and leave running—not the longest fea
 - Retained and hardened process-identity precedence (#11): editors remain productive when project titles contain words such as “youtube,” while browser content still determines browser classification.
 - Established a browser-independent foreground-title baseline (#7), including non-Chromium and configurable browser identities. The unreliable address-capture prototype remains disabled by default.
 - Fixed ordinary idle accounting so earned time is not repeatedly subtracted (#14 groundwork).
+- Added opt-in, per-kind media playback during idle. The default is still the idle timeout. Tags choose the category; paused and background playback do not count. Windows uses SMTC when a media setting is on. macOS and Linux stay parked.
+- Added a local browser keyword list with exact-token matching and backup/delete-all coverage. Focus profile tags still win. Do not add a keyword editor in the tracking PR: the Focus Tags editor for this list is lane 1 / issue #22.
 - Improved handling of sleep, lock, pause, delayed probes, stale results, clock discontinuities, and local hour/day boundaries.
 - Improved session completion delivery, deadline handling, retention, and failure behavior.
 - Added or strengthened atomic JSON writes, validation before backup replacement, malformed-file preservation, recovery notices, and bounded local error logs.
@@ -165,7 +167,7 @@ Success is a useful app people can trust and leave running—not the longest fea
 
 ## What remains limited
 
-- Passive video viewing can still become idle. Media-aware idle detection is not implemented.
+- Passive video still becomes idle unless **Track video while idle** is turned on, and only while that video is playing in the focused app. Playback state is not inferred from the title.
 - Title-only tracking cannot reliably identify sites with vague titles. Automatic address extraction is not ready to enable.
 - Profile changes do not rewrite history. Today's Analytics corrections do not rewrite previous days or saved session observations.
 - Unrecorded ignored time cannot be reconstructed; old activity cannot acquire missing keyword attribution.
@@ -230,7 +232,7 @@ Check startup and steady-state tracking cost, history loading, narrow layouts, l
 - Browser titles do not establish process identity. Experimental address capture exposed unsubmitted-address capture and unreliable resumption after the focus guard. New live evidence is required before enabling it.
 - Keep archive reads bounded and outside live polling. Measure CPU, memory, startup, and probe latency before architectural changes; historical informal memory estimates are not measurements.
 - Windows x64 remains the target. Mac/Linux, rebranding, adaptive profiles, reminder-history analytics, onboarding, and extra privacy/data controls remain parked ideas, not commitments. Preserve stable IDs, data paths, and export formats.
-- Issue numbers describe scoped work, not permission to close issues. #1/#3/#4/#11 have targeted fixes; #7/#9/#13/#14 remain partly or wholly deferred. #10 external bot configuration requires identifying its owner, not renaming the app.
+- Issue numbers describe scoped work, not permission to close issues. #1/#3/#4/#11 have targeted fixes. #7 and #14 now have local keyword and idle/media decisions; address capture and title-only media inference stay off. #9/#13 remain partly or wholly deferred. #10 external bot configuration requires identifying its owner, not renaming the app.
 - Run focused regressions with `npm test`; use relevant syntax and diff checks. Isolated UI checks: `npm run test:ui` and `npm run test:profiles-ui`. Packaging: `npm run pack` or `npm run dist:portable`. Output is unsigned and Git-ignored.
 - Verify branch, release state, and executable version before release work. External publication requires user authorization. Repository LICENSE is authoritative; obsolete MIT wording in previous goals is not a licensing decision.
 

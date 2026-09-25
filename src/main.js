@@ -12,6 +12,11 @@ let focusProfiles;
 let appliedProfile = '';
 const { createAppTray } = require('./tray');
 const { validateSiteTags } = require('./browser-rules');
+const {
+  loadBrowserKeywords,
+  saveBrowserKeywords,
+  defaultBrowserKeywords
+} = require('./browser-keywords');
 
 const {
   loadRulesFrom,
@@ -75,6 +80,7 @@ let sessionManager = null;
 const rulesHolder = { rules: null };
 const ignoreHolder = { ignore: [] };
 const identitiesHolder = { identities: null };
+const browserKeywordsHolder = { keywords: null };
 let rulesFilePath = null;
 let rulesIsCustom = false;
 let ignoreFilePath = null;
@@ -115,6 +121,10 @@ function userAppIdentitiesPath() {
   return path.join(dataDir(), 'app-identities.json');
 }
 
+function userBrowserKeywordsPath() {
+  return path.join(dataDir(), 'browser-keywords.json');
+}
+
 function loadAppIdentities() {
   const custom = userAppIdentitiesPath();
   if (!fs.existsSync(custom)) saveAppIdentities(custom, loadAppIdentitiesFrom(DEFAULT_APP_IDENTITIES_PATH));
@@ -128,7 +138,14 @@ function loadAppIdentities() {
 
 function attachAppIdentities(rules) {
   rules.identities = identitiesHolder.identities || loadAppIdentitiesFrom(DEFAULT_APP_IDENTITIES_PATH);
+  rules.browserKeywords = browserKeywordsHolder.keywords || defaultBrowserKeywords();
   return rules;
+}
+
+function loadBrowserKeywordFile() {
+  browserKeywordsHolder.keywords = loadBrowserKeywords(userBrowserKeywordsPath());
+  if (rulesHolder.rules) rulesHolder.rules.browserKeywords = browserKeywordsHolder.keywords;
+  return browserKeywordsHolder.keywords;
 }
 
 function loadAppRules() {
@@ -349,6 +366,7 @@ function startServices() {
   if (servicesStarted) return;
   servicesStarted = true;
   loadAppIdentities();
+  loadBrowserKeywordFile();
   loadAppRules();
   loadAppIgnore();
   store = createStore(dataDir(), { onRecovery: reportRecovery });
@@ -404,7 +422,11 @@ function ensureTrackerStarted() {
         appTray.refresh();
       }
     },
-    onReminder: fireReminder
+    onReminder: fireReminder,
+    readIdleTime: () => {
+      try { return powerMonitor.getSystemIdleTime(); }
+      catch (_) { return null; }
+    }
   });
   bindTrackingLifecycle(powerMonitor, tracker);
   tracker.start();
@@ -609,7 +631,8 @@ ipcMain.handle('data:export', async (event, payload) => {
     ignore: ignoreHolder.ignore,
     sessionManager,
     identities: identitiesHolder.identities,
-    focusProfiles
+    focusProfiles,
+    browserKeywords: browserKeywordsHolder.keywords
   });
   writeBackupFile(result.filePath, exportData);
   return { ok: true, path: result.filePath };
@@ -696,6 +719,10 @@ ipcMain.handle('data:import', async (event, payload) => {
     onIdentities: (identities) => {
       identitiesHolder.identities = saveAppIdentities(userAppIdentitiesPath(), identities);
       attachAppIdentities(rulesHolder.rules);
+    },
+    onBrowserKeywords: (keywords) => {
+      browserKeywordsHolder.keywords = saveBrowserKeywords(userBrowserKeywordsPath(), keywords);
+      if (rulesHolder.rules) rulesHolder.rules.browserKeywords = browserKeywordsHolder.keywords;
     },
     mode: options.mode === 'replace' ? 'replace' : 'merge',
     onSettings: applySettings,
@@ -821,6 +848,7 @@ ipcMain.handle('data:deleteAll', async (event, payload) => {
     appData: app.getPath('appData')
   });
   loadAppIdentities();
+  loadBrowserKeywordFile();
   if (tracker) tracker.invalidateClassification();
   return {
     ...deleted,

@@ -1189,6 +1189,12 @@ function applySettingsInputs(settings) {
     const idleSec = Number(settings.idleTimeoutSec);
     $('idle-timeout-min').value = Math.round(((Number.isFinite(idleSec) ? idleSec : 300) / 60) * 10) / 10;
   }
+  if ($('track-music-idle') && document.activeElement !== $('track-music-idle')) {
+    $('track-music-idle').checked = settings.trackMusicWhileIdle === true;
+  }
+  if ($('track-video-idle') && document.activeElement !== $('track-video-idle')) {
+    $('track-video-idle').checked = settings.trackVideoWhileIdle === true;
+  }
   if ($('reminder-message') && document.activeElement !== $('reminder-message')) {
     $('reminder-message').value = settings.reminderMessage || "You've been on {app} for a while... maybe it's time to get back?";
   }
@@ -1887,6 +1893,16 @@ if ($('idle-timeout-min')) {
   };
   $('idle-timeout-min').addEventListener('change', saveIdleTimeout);
 }
+if ($('track-music-idle')) {
+  $('track-music-idle').addEventListener('change', () => {
+    pushSettings({ trackMusicWhileIdle: $('track-music-idle').checked === true });
+  });
+}
+if ($('track-video-idle')) {
+  $('track-video-idle').addEventListener('change', () => {
+    pushSettings({ trackVideoWhileIdle: $('track-video-idle').checked === true });
+  });
+}
 if ($('reminder-message')) {
   const saveReminderMsg = () => {
     const text = String($('reminder-message').value || '').trim() || "You've been on {app} for a while... maybe it's time to get back?";
@@ -2158,7 +2174,6 @@ if ($('ignore-reset')) {
     } finally { tagsQuickSaving = false; }
   });
 }
-
 
 /* —— Focus Tags quick add / search —— */
 function currentTagLists() {
@@ -2891,6 +2906,9 @@ async function boot() {
 }
 
 boot();
+// Home pie-total ticks from this rAF + Date.now() interpolation, not from
+// tracker sample cadence. Multi-second skips here are renderer paint (follow-up:
+// lane 1 / #22 or a small dedicated PR), not main-process clock jumps.
 function runLiveTotalsTicker() {
   renderLiveTotals();
   window.requestAnimationFrame(runLiveTotalsTicker);
