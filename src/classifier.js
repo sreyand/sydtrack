@@ -163,11 +163,11 @@ function isIgnored(win, ignoreList, identities) {
   const nameHay = `${owner} ${base} ${baseNoExt} ${label}`;
 
   // Self: Electron shell running this app
-  if (/electron/i.test(nameHay) && /sydtrack/i.test(title)) {
+  if (/electron/i.test(nameHay) && /\b(sydtrack|focusflow)\b/i.test(title)) {
     return true;
   }
-  // Self: packaged / named SydTrack process
-  if (/\bsydtrack\b/i.test(owner) || /\bsydtrack\b/i.test(baseNoExt) || /\bsydtrack\b/i.test(label)) {
+  // Self: packaged SydTrack, including the previous focusflow process name.
+  if (/\b(sydtrack|focusflow)\b/i.test(owner) || /\b(sydtrack|focusflow)\b/i.test(baseNoExt) || /\b(sydtrack|focusflow)\b/i.test(label)) {
     return true;
   }
 
@@ -232,7 +232,7 @@ function appMatchesIgnore(appName, ignoreList) {
   for (const keyword of ignoreList) {
     if (keyword && name.includes(String(keyword).toLowerCase())) return true;
   }
-  if (/\bsydtrack\b/i.test(name)) return true;
+  if (/\b(sydtrack|focusflow)\b/i.test(name)) return true;
   return false;
 }
 

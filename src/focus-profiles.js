@@ -83,6 +83,11 @@ function createFocusProfiles({ dataDir, rules, ignore, onChange = () => {}, onRe
       if (id === state.activeId) return snapshot();
       return commit({ ...snapshot(), activeId: id });
     },
+    resetBundled(defaults) {
+      const bundled = validateProfiles(defaults);
+      writeJson(seedMarker, { version: 1 });
+      return commit(bundled);
+    },
     remove: id => {
       if (id === 'default') throw new Error('Default cannot be deleted.');
       if (!state.profiles.some(profile => profile.id === id)) throw new Error('Focus profile not found.');

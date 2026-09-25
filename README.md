@@ -110,7 +110,7 @@ The native app ships with these five editable starter profiles. Fresh installs h
 
 On GitHub, open a profile link and use **Download raw file**, keeping the `.sydtrack-profile` extension. In sydtrack, open **Focus Tags → Import profile…** and select the downloaded file. Import adds and activates the profile; a free slot and a unique name are required. There are five slots total, so an installation that already has all five does not need to import them again. All lists remain editable. These are starting points; review video/social keywords for your workflow.
 
-See [profile notes](profiles/README.md) for assumptions. The downloaded packs match the bundled profiles. The native executable is available from the repository’s [Releases page](https://github.com/gitpaperclip/sydtrack/releases) when published.
+See [profile notes](profiles/README.md) for assumptions. The downloaded packs match the bundled profiles. The native executable is available from the repository’s [Releases page](https://github.com/sreyand/sydtrack/releases) when published.
 
 Use **Home → focusprofile** (under FocusBoost) or the **Active profile** selector at the top of **Focus Tags** to switch profiles. All profile controls live on Focus Tags: New profile, Rename, Delete, Import, and Export. New profiles start empty and become active immediately. The lists below and Quick Add edit that active profile; there is no duplicate Settings editor. Switching asks before discarding unsaved edits. Default cannot be deleted; deleting the active profile returns to Default.
 
@@ -124,7 +124,7 @@ Give another model the [profile generation guide](docs/focus-profile-generation-
 
 ## Data
 
-During development, SydTrack stores local data under `data/`. Packaged builds use Electron's user data directory. Data includes daily statistics, hourly buckets, history, settings, and focus sessions.
+During development, SydTrack stores local data under `data/`. Packaged builds use Electron's `sydtrack` user-data directory. Data includes daily statistics, hourly buckets, history, compact daily rollups, settings, and focus sessions. An existing `focusflow` user-data directory from before the rename is copied in once; the old folder is left in place.
 
 Settings can export:
 
@@ -133,7 +133,25 @@ Settings can export:
 
 Activity backup merge is additive: importing the same backup again adds its activity time again. Session IDs are deduplicated; completed records supersede stopped checkpoints, and later records of the same status supersede earlier ones. An active session is exported as a stopped checkpoint without stopping the source timer; importing never starts a timer or replaces the target's active session. Older schema-1 backups remain accepted; absent session/identity fields leave those local data intact. Older app versions ignore these additional fields. Validation covers all imported sections before any replacement, but multi-file imports are not transactional on disk failure. Daily statistics, settings, app identities, and session writes replace complete JSON files to reduce truncation risk. Malformed stored statistics are preserved and reported rather than silently reset.
 
-Live snapshots contain today's data only. Week and Last 30 Days summaries load on demand in Analytics, with loading/error text. Archived summaries are cached until history changes or the local date rolls over. Existing per-day storage remains unchanged, with reads bounded to 90 days; manually edited archive files require an app restart to refresh the cache.
+Live snapshots contain today's data only. Opening Analytics parses the retained window (up to 90 days) once and shows a loading state; week and month views slice that result. Summaries are cached until history changes or the local date rolls over. Raw history older than 90 days is deleted only after a compact daily rollup is stored and read back; those rollups stay so category totals, hourly category totals, and per-app totals remain available to export and to later reads. Manually edited archive files require an app restart to refresh the cache.
+
+### Storage format
+
+`storage-schema.json` records schema version 2 (`product`, `rawRetentionDays`, `migratedAt`). Schema 1 is the previous layout with no version file. The first launch that sees schema 1 copies the data directory to `migration-backups/schema-1-<timestamp>/` and writes `BACKUP_COMPLETE.json` last, then builds rollups, then writes the schema file. After that write succeeds, the schema-1 copy is deleted so raw history is not kept twice past 90 days; live `history/` plus `rollups/` are the record. A crash during the copy leaves no complete marker; the next launch removes incomplete `schema-1-*` folders and retries. If the backup itself fails, the error is logged, schema 1 is left in place, and purge is skipped for that launch so the app still starts.
+
+The Windows installer identity stays `com.gitpaperclip.sydtrack`. electron-builder/NSIS derives the uninstall GUID from `appId`; changing it would install side by side and orphan the previous install. User-facing names and the `sydtrack` user-data folder are unchanged. An existing `focusflow` user-data directory is copied once.
+
+| Path | Contents |
+| --- | --- |
+| `stats.json` | Today's raw day |
+| `history/YYYY-MM-DD.json` | Raw day, kept for 90 days |
+| `rollups/YYYY-MM-DD.json` | Compact rollup kept after the raw file is purged |
+| `retention-journal.json` | Dates whose raw delete was committed but not finished |
+| `settings.json`, `sessions/`, `focus-profiles.json`, `app-identities.json` | Preferences, sessions, profiles, identities |
+
+A raw day stores `byCategory`, `byApp` (including keyword attribution), and `byHour` with per-app totals. A rollup stores `schemaVersion`, `date`, `byCategory`, 24 hourly category totals, and `apps` as `{ name, category, seconds }`. It does not keep hourly per-app maps or keyword attribution. Ignored time is omitted. The purge writes the rollup, reads it back, records the date in the journal, then unlinks the raw file and clears that journal entry. If the rollup cannot be verified, the raw file stays.
+
+Settings can export JSON (`.sydtrack`, format `sydtrack-backup`, backup schema 1) or CSV (one spreadsheet of activity, sessions, settings, tags, and profiles). Both are local files. Import backs up settings, profiles, and tag lists first. Older `focusflow-backup` and `focusflow-profile` files still import. **Delete all my data** removes activity, rollups, sessions, settings, profiles, tags, logs, migration copies, and the leftover focusflow data folder, then restores the bundled defaults. **Clear all history** removes activity only.
 
 Warnings, errors, fatal main-process errors, renderer console errors, and renderer exits are recorded locally in `logs/errors.log` under the Data location shown in Settings. Rotation retains one previous file, approximately 256 KB per file. Errors may contain private paths or text; review logs before sharing. They are never uploaded or included in backups. Logging failures are contained. Startup failures before logging is installed may still require the terminal output.
 

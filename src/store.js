@@ -3,6 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const { writeJson, validDateKey, readRecoverableJson } = require('./json-file');
+const { buildRollup, writeRollup, readRollup, listRollupDates, dayFromRollup, removeRollups } = require('./rollups');
+const { purgeExpiredRaw, clearJournal } = require('./retention');
+const { migrateStorage } = require('./storage-schema');
 
 function todayKey(at) {
   const d = at === undefined ? new Date() : new Date(at);
@@ -42,6 +45,18 @@ function activityParts(key) {
 function activityId(key, info) {
   const parts = activityParts(key);
   return JSON.stringify(parts ? parts.slice(0, 3) : [appEntryName(key), info.category, 'Keyword not recorded']);
+}
+
+function toRollup(day) {
+  return buildRollup(migrateDay(day), appEntryName);
+}
+
+function retentionCutoffKey(now = new Date()) {
+  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  cutoff.setDate(cutoff.getDate() - MAX_HISTORY_DAYS);
+  const month = String(cutoff.getMonth() + 1).padStart(2, '0');
+  const day = String(cutoff.getDate()).padStart(2, '0');
+  return `${cutoff.getFullYear()}-${month}-${day}`;
 }
 
 function appEntryName(key) {
@@ -174,10 +189,57 @@ function moodFromCategories(byCategory) {
   return { id, emoji: m.emoji, label: m.label, ratio };
 }
 
+function defaultSettings() {
+  return {
+    thresholdSec: defaultThresholdSec(),
+    demoMode: false,
+    trackingPaused: false,
+    reminderCooldownSec: 90,
+    idleTimeoutSec: 300,
+    pollMs: 750,
+    focusBoost: false,
+    focusBoostRestoreSec: null,
+    focusBoostSec: 180,
+    focusBoostScheduleEnabled: false,
+    focusBoostScheduleStart: '09:00',
+    focusBoostScheduleEnd: '17:00',
+    reminderMessage: "You've been on {app} for a while... maybe it's time to get back?",
+    focusBoostReminderMessage: "Hey! focusboost is enabled. Maybe it's time to refocus?",
+    dailyGoalSec: 7200,
+    sessionHistoryEnabled: true,
+    sessionCustomMin: 45,
+    notificationsEnabled: true
+  };
+}
+
+function applyRuntimeEnvironment(settings) {
+  if (process.env.SYDTRACK_THRESHOLD_SEC) {
+    settings.thresholdSec = Number(process.env.SYDTRACK_THRESHOLD_SEC);
+  }
+  if (process.env.SYDTRACK_DEMO === '1' || process.env.SYDTRACK_DEMO === 'true') {
+    settings.demoMode = true;
+  } else if (process.env.SYDTRACK_DEMO === '0' || process.env.SYDTRACK_DEMO === 'false') {
+    settings.demoMode = false;
+  }
+  if (
+    process.platform === 'linux' &&
+    !process.env.DISPLAY &&
+    process.env.SYDTRACK_FORCE_REAL !== '1' &&
+    process.env.SYDTRACK_DEMO == null
+  ) {
+    settings.demoMode = true;
+  }
+  return settings;
+}
+
 function createStore(dataDir, { onRecovery = () => {} } = {}) {
   fs.mkdirSync(dataDir, { recursive: true });
   const historyDir = path.join(dataDir, 'history');
   fs.mkdirSync(historyDir, { recursive: true });
+  const rollupDir = path.join(dataDir, 'rollups');
+  const migration = migrateStorage(dataDir, { buildRollup: toRollup });
+  const retentionArmed = !migration.skipped;
+  fs.mkdirSync(rollupDir, { recursive: true });
   const filePath = path.join(dataDir, 'stats.json');
   const settingsPath = path.join(dataDir, 'settings.json');
   const summaryCache = new Map();
@@ -194,51 +256,10 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
   const savedSettings = readRecoverableJson(settingsPath,
     (value) => value !== null && typeof value === 'object' && !Array.isArray(value),
     (report) => { settingsRecovered = true; onRecovery(report); });
-  let settings = Object.assign(
-    {
-      thresholdSec: defaultThresholdSec(),
-      demoMode: false,
-      trackingPaused: false,
-      reminderCooldownSec: 90,
-      idleTimeoutSec: 300,
-      pollMs: 750,
-      focusBoost: false,
-      focusBoostRestoreSec: null,
-      focusBoostSec: 180,
-      focusBoostScheduleEnabled: false,
-      focusBoostScheduleStart: '09:00',
-      focusBoostScheduleEnd: '17:00',
-      reminderMessage: "You've been on {app} for a while... maybe it's time to get back?",
-      focusBoostReminderMessage: "Hey! focusboost is enabled. Maybe it's time to refocus?",
-      dailyGoalSec: 7200,
-      sessionHistoryEnabled: true,
-      sessionCustomMin: 45,
-      notificationsEnabled: true
-    },
-    savedSettings || {}
-  );
+  let settings = applyRuntimeEnvironment(Object.assign(defaultSettings(), savedSettings || {}));
   if (settingsRecovered) {
     settings.trackingPaused = true;
     persistSettings();
-  }
-
-  if (process.env.SYDTRACK_THRESHOLD_SEC) {
-    settings.thresholdSec = Number(process.env.SYDTRACK_THRESHOLD_SEC);
-  }
-  if (process.env.SYDTRACK_DEMO === '1' || process.env.SYDTRACK_DEMO === 'true') {
-    settings.demoMode = true;
-  } else if (process.env.SYDTRACK_DEMO === '0' || process.env.SYDTRACK_DEMO === 'false') {
-    settings.demoMode = false;
-  }
-
-  // Headless Linux only — never auto-demo on Windows/macOS
-  if (
-    process.platform === 'linux' &&
-    !process.env.DISPLAY &&
-    process.env.SYDTRACK_FORCE_REAL !== '1' &&
-    process.env.SYDTRACK_DEMO == null
-  ) {
-    settings.demoMode = true;
   }
 
   function archiveDay(day) {
@@ -248,6 +269,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
       fs.mkdirSync(historyDir, { recursive: true });
       const dest = path.join(historyDir, `${day.date}.json`);
       writeJson(dest, day);
+      writeRollup(rollupDir, toRollup(day));
     } catch (err) {
       console.error('[store] archive day failed', err.message);
       throw err;
@@ -502,32 +524,38 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function loadHistoryDay(dateKey) {
     if (!validDateKey(dateKey)) return null;
-    const p = path.join(historyDir, `${dateKey}.json`);
-    const raw = loadJson(p);
-    return raw ? migrateDay(raw) : null;
+    const raw = loadJson(path.join(historyDir, `${dateKey}.json`));
+    if (raw) return migrateDay(raw);
+    const rollup = readRollup(rollupDir, dateKey);
+    return rollup ? migrateDay(dayFromRollup(rollup)) : null;
   }
 
+  function readRawDay(dateKey) {
+    if (!validDateKey(dateKey)) return null;
+    const raw = loadJson(path.join(historyDir, `${dateKey}.json`));
+    if (!raw) return null;
+    const day = migrateDay(raw);
+    day.date = dateKey;
+    return day;
+  }
 
   function pruneOldHistory() {
     summaryCache.clear();
+    if (!retentionArmed) {
+      return { purged: [], kept: [], errors: [], skipped: true };
+    }
     try {
-      const dates = listHistoryDates();
-      const cutoff = new Date();
-      cutoff.setHours(0, 0, 0, 0);
-      cutoff.setDate(cutoff.getDate() - MAX_HISTORY_DAYS);
-      const cy = cutoff.getFullYear();
-      const cm = String(cutoff.getMonth() + 1).padStart(2, '0');
-      const cd = String(cutoff.getDate()).padStart(2, '0');
-      const cutoffKey = `${cy}-${cm}-${cd}`;
-      for (const key of dates) {
-        if (key < cutoffKey) {
-          try {
-            fs.unlinkSync(path.join(historyDir, `${key}.json`));
-          } catch (_) {}
-        }
-      }
+      return purgeExpiredRaw({
+        dataDir,
+        historyDir,
+        rollupDir,
+        cutoffKey: retentionCutoffKey(),
+        readRawDay,
+        buildRollup: toRollup
+      });
     } catch (err) {
       console.error('[store] prune history failed', err.message);
+      return { purged: [], kept: [], errors: [{ date: null, message: err.message }] };
     }
   }
 
@@ -692,26 +720,44 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function clearAllHistory() {
     summaryCache.clear();
-    try {
-      if (fs.existsSync(historyDir)) {
-        for (const f of fs.readdirSync(historyDir)) {
-          if (/^\d{4}-\d{2}-\d{2}\.json$/.test(f)) {
-            fs.unlinkSync(path.join(historyDir, f));
-          }
-        }
+    const failed = [];
+    const forget = (filePath) => {
+      try {
+        if (fs.existsSync(filePath)) fs.rmSync(filePath, { recursive: true, force: true });
+      } catch (err) {
+        failed.push({ path: filePath, message: err.message });
       }
-    } catch (err) {
-      console.error('[store] clear history failed', err.message);
+    };
+    try { clearJournal(dataDir); } catch (err) {
+      failed.push({ path: path.join(dataDir, 'retention-journal.json'), message: err.message });
     }
+    if (fs.existsSync(historyDir)) {
+      for (const f of fs.readdirSync(historyDir)) {
+        if (/^\d{4}-\d{2}-\d{2}\.json$/.test(f)) forget(path.join(historyDir, f));
+      }
+    }
+    try { removeRollups(rollupDir); } catch (err) {
+      failed.push({ path: rollupDir, message: err.message });
+    }
+    if (failed.length) console.error('[store] clear history failed', failed.map((item) => item.path).join(', '));
     state = emptyDay(todayKey());
     persistStats();
-    return state;
+    return { ok: failed.length === 0, failed, state };
   }
 
-  /** All archived days + today, keyed by date. */
+  function eraseActivityAndSettings() {
+    const cleared = clearAllHistory();
+    settings = applyRuntimeEnvironment(defaultSettings());
+    persistSettings();
+    return { ok: cleared.ok, failed: cleared.failed, stats: snapshot() };
+  }
+
+  /** Raw days within retention, plus rollups for days whose raw file was purged. */
   function allDaysMap() {
     const map = {};
-    for (const key of listHistoryDates()) {
+    const dates = new Set(listHistoryDates());
+    for (const key of listRollupDates(rollupDir)) dates.add(key);
+    for (const key of dates) {
       const d = loadHistoryDay(key);
       if (d) map[key] = d;
     }
@@ -754,13 +800,16 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     replaceToday,
     clearToday,
     clearAllHistory,
+    eraseActivityAndSettings,
     allDaysMap,
     writeHistoryDay,
     loadHistoryDay,
     listHistoryDates,
+    listRollupDates: () => listRollupDates(rollupDir),
     pruneOldHistory,
     archiveDay,
     getHistoryDir,
+    migration,
     filePath,
     settingsPath,
     dataDir
@@ -794,5 +843,11 @@ module.exports = {
   emptyHour,
   migrateDay,
   moodFromCategories,
-  MAX_HISTORY_DAYS
+  MAX_HISTORY_DAYS,
+  appEntryName,
+  appCategoryKey,
+  activityKey,
+  toRollup,
+  retentionCutoffKey,
+  defaultSettings
 };

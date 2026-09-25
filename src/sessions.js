@@ -490,6 +490,19 @@ function createSessionManager({ dataDir, getSettings, onRecovery = () => {} }) {
     getRecentSessionDays,
     applyHistorySetting,
     deleteSession,
+    eraseAll() {
+      active = null;
+      pendingCompletions.length = 0;
+      const failed = [];
+      const forget = (filePath) => {
+        try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); }
+        catch (err) { failed.push({ path: filePath, message: err.message }); }
+      };
+      forget(activePath);
+      for (const key of listSessionDates()) forget(dayPath(key));
+      if (failed.length) console.error('[sessions] erase failed', failed.map((item) => item.path).join(', '));
+      return { ok: failed.length === 0, failed };
+    },
     checkExpiry,
     MODE_DEFS,
     sessionsDir,
