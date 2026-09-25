@@ -133,6 +133,8 @@ assert(validateIpcPayload('settings:update', { trackMusicWhileIdle: false, track
 assert(channels.includes('wellbeing'), 'wellbeing is a known channel');
 assert(validateIpcPayload('wellbeing', { action: 'startBreak' }).action === 'startBreak', 'wellbeing accepts startBreak');
 assert(validateIpcPayload('settings:update', { focusShareGoalPct: 80, gamificationEnabled: false, decompressBreaksPerDay: 0 }).decompressBreaksPerDay === 0, 'settings:update accepts goal keys');
+assert(validateIpcPayload('settings:update', { screenTimeLimitEnabled: false, duckEnabled: false, focusShareIncludeOther: false }).duckEnabled === false, 'settings:update accepts remaining wellbeing keys');
+throws(() => validateIpcPayload('settings:update', { onboardingComplete: true }), 'settings:update rejects orphan onboardingComplete');
 throws(() => validateIpcPayload('settings:update', { demoMode: true }), 'settings:update rejects unknown keys');
 throws(() => validateIpcPayload('settings:update', { thresholdSec: 0 }), 'settings:update rejects a 0 threshold');
 throws(() => validateIpcPayload('settings:update', { reminderMessage: 'x'.repeat(2001) }), 'settings:update rejects oversized text');

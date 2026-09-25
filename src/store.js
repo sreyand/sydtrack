@@ -18,6 +18,7 @@ function todayKey(at) {
 }
 
 const MAX_HISTORY_DAYS = 90;
+const SETTINGS_BACKUP_KEEP = 3;
 
 function emptyHour() {
   return { productive: 0, unproductive: 0, other: 0, byApp: Object.create(null) };
@@ -302,8 +303,10 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
   const needsGoalMigration = needsGoalSettingsMigration(savedSettings);
   if (needsGoalMigration && savedSettings) backupSettingsFile(settingsPath);
   settings = applyGoalMigration(settings, savedSettings);
+  const dropOnboarding = !!(savedSettings && Object.prototype.hasOwnProperty.call(savedSettings, 'onboardingComplete'));
+  delete settings.onboardingComplete;
   if (settingsRecovered) settings.trackingPaused = true;
-  if (settingsRecovered || needsGoalMigration) persistSettings();
+  if (settingsRecovered || needsGoalMigration || dropOnboarding) persistSettings();
 
   function archiveDay(day) {
     summaryCache.clear();
@@ -330,6 +333,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function persistSettings() {
     try {
+      delete settings.onboardingComplete;
       writeJson(settingsPath, settings);
     } catch (err) {
       console.error('[store] persist settings failed', err.message);
@@ -897,11 +901,33 @@ function applyGoalMigration(settings, savedSettings) {
   return migrateGoalSettings(settings, { existingInstall: !!savedSettings });
 }
 
+function listSettingsBackups(settingsPath) {
+  if (!settingsPath) return [];
+  const dir = path.dirname(settingsPath);
+  const prefix = path.basename(settingsPath) + '.';
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((name) => name.startsWith(prefix) && name.endsWith('.bak'))
+    .map((name) => path.join(dir, name))
+    .sort();
+}
+
+function pruneSettingsBackups(settingsPath, keep) {
+  const retain = Number.isFinite(Number(keep)) ? Math.max(0, Math.floor(Number(keep))) : SETTINGS_BACKUP_KEEP;
+  const files = listSettingsBackups(settingsPath);
+  const extra = files.slice(0, Math.max(0, files.length - retain));
+  for (const file of extra) {
+    try { fs.unlinkSync(file); } catch (_) {}
+  }
+  return extra;
+}
+
 function backupSettingsFile(settingsPath, at) {
   if (!settingsPath || !fs.existsSync(settingsPath)) return null;
   const stamp = (at || new Date()).toISOString().replace(/[:.]/g, '-');
   const dest = settingsPath + '.' + stamp + '.bak';
   fs.copyFileSync(settingsPath, dest);
+  pruneSettingsBackups(settingsPath, SETTINGS_BACKUP_KEEP);
   return dest;
 }
 
@@ -960,6 +986,7 @@ module.exports = {
   migrateDay,
   moodFromCategories,
   MAX_HISTORY_DAYS,
+  SETTINGS_BACKUP_KEEP,
   appEntryName,
   appCategoryKey,
   activityKey,
@@ -969,6 +996,7 @@ module.exports = {
   needsGoalSettingsMigration,
   applyGoalMigration,
   backupSettingsFile,
+  pruneSettingsBackups,
   hourlyHistoryDays,
   resetDecompressFile
 };

@@ -165,7 +165,6 @@
       decompressBreakMinutes: 10,
       gamificationEnabled: false,
       duckEnabled: false,
-      onboardingComplete: false,
       goalsSchema: GOALS_SCHEMA
     };
   }
@@ -181,7 +180,7 @@
     next.decompressBreakMinutes = clampInt(next.decompressBreakMinutes, 1, 60, defaults.decompressBreakMinutes);
     next.gamificationEnabled = !!next.gamificationEnabled;
     next.duckEnabled = !!next.duckEnabled;
-    next.onboardingComplete = !!next.onboardingComplete;
+    delete next.onboardingComplete;
     next.goalsSchema = GOALS_SCHEMA;
     const legacyGoal = Number(next.dailyGoalSec);
     if (!Number.isFinite(legacyGoal) || legacyGoal <= 0) next.dailyGoalSec = DEFAULT_DAILY_GOAL_SEC;
@@ -193,9 +192,7 @@
   // stays off. The number is only the starting value if they later enable it.
   // The untouched 2h default is not treated as a personal budget; the optional
   // limit then starts at 8h of active tracked time.
-  function migrateGoalSettings(settings, options) {
-    const opts = options || {};
-    const existingInstall = !!opts.existingInstall;
+  function migrateGoalSettings(settings, _options) {
     const source = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings : {};
     const next = Object.assign(goalSettingsDefaults(), source);
     if (Number(source.goalsSchema) >= GOALS_SCHEMA) {
@@ -222,9 +219,6 @@
     if (!Object.prototype.hasOwnProperty.call(source, 'decompressBreakMinutes')) next.decompressBreakMinutes = 10;
     if (!Object.prototype.hasOwnProperty.call(source, 'gamificationEnabled')) next.gamificationEnabled = false;
     if (!Object.prototype.hasOwnProperty.call(source, 'duckEnabled')) next.duckEnabled = false;
-    if (!Object.prototype.hasOwnProperty.call(source, 'onboardingComplete')) {
-      next.onboardingComplete = existingInstall;
-    }
     next.goalsSchema = GOALS_SCHEMA;
     return sanitizeGoalSettings(next);
   }

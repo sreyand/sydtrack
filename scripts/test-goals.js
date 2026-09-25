@@ -9,9 +9,9 @@ const decompress = require('../renderer/lib/decompress');
 const insights = require('../renderer/lib/insights');
 const gamification = require('../renderer/lib/gamification');
 const { createDecompressService } = require('../src/decompress-service');
-const { createStore, needsGoalSettingsMigration, backupSettingsFile } = require('../src/store');
+const { createStore, needsGoalSettingsMigration, backupSettingsFile, SETTINGS_BACKUP_KEEP } = require('../src/store');
 const { importBackup } = require('../src/backup');
-const { goalPrefs, drillSharePercent } = require('../renderer/wellbeing-ui');
+const { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS } = require('../renderer/wellbeing-ui');
 
 function run(assert) {
   const eighty = goals.focusParts({ productive: 80, unproductive: 20, other: 90 }, false);
@@ -77,13 +77,14 @@ function run(assert) {
   assert(fresh.decompressBreaksPerDay === 3 && fresh.decompressBreakMinutes === 10 && fresh.goalsSchema === 2, 'decompress defaults are 3 breaks of 10 minutes');
 
   const untouched = goals.migrateGoalSettings({ dailyGoalSec: 7200, futureSetting: 'retain' }, { existingInstall: true });
-  assert(untouched.onboardingComplete === true && untouched.screenTimeLimitEnabled === false, 'existing default goal does not turn the screen limit on');
+  assert(untouched.screenTimeLimitEnabled === false, 'existing default goal does not turn the screen limit on');
+  assert(!Object.prototype.hasOwnProperty.call(untouched, 'onboardingComplete'), 'existing-install migration does not write onboardingComplete');
   assert(untouched.screenTimeLimitSec === 8 * 3600 && untouched.legacyProductiveGoalSec == null, 'default 2h goal is not reused as a screen limit');
   assert(untouched.dailyGoalSec === 7200 && untouched.futureSetting === 'retain' && untouched.focusShareGoalPct === 80, 'migration keeps the old goal field and unknown settings');
 
   const custom = goals.migrateGoalSettings({ dailyGoalSec: 5400, idleTimeoutSec: 300 }, { existingInstall: true });
   assert(custom.legacyProductiveGoalSec === 5400 && custom.screenTimeLimitSec === 5400 && custom.screenTimeLimitEnabled === false, 'custom productive-hour goal prefills a disabled screen limit');
-  assert(custom.focusShareGoalPct === 80 && custom.onboardingComplete === true, 'custom hour goal migrates to the 80% focus-share default');
+  assert(custom.focusShareGoalPct === 80 && !Object.prototype.hasOwnProperty.call(custom, 'onboardingComplete'), 'custom hour goal migrates to the 80% focus-share default without onboardingComplete');
 
   const kept = goals.migrateGoalSettings({
     goalsSchema: 2,
@@ -94,6 +95,10 @@ function run(assert) {
     dailyGoalSec: 5400
   }, { existingInstall: true });
   assert(kept.focusShareGoalPct === 70 && kept.screenTimeLimitEnabled === true && kept.screenTimeLimitSec === 5 * 3600, 'schema 2 settings are not migrated again');
+  assert(!Object.prototype.hasOwnProperty.call(kept, 'onboardingComplete'), 'sanitize drops leftover onboardingComplete');
+  assert(!Object.prototype.hasOwnProperty.call(goals.sanitizeGoalSettings({ onboardingComplete: true }), 'onboardingComplete'), 'sanitize does not keep onboardingComplete');
+  assert(!Object.prototype.hasOwnProperty.call(goals.goalSettingsDefaults(), 'onboardingComplete'), 'goal defaults do not include onboardingComplete');
+  assert(!Object.prototype.hasOwnProperty.call(fresh, 'onboardingComplete'), 'new-install migration does not write onboardingComplete');
   assert(goals.sanitizeGoalSettings({ focusShareGoalPct: 130, decompressBreaksPerDay: 0, decompressBreakMinutes: 90 }).focusShareGoalPct === 100, 'goal percent clamps to 100');
   assert(goals.sanitizeGoalSettings({ decompressBreaksPerDay: 0, decompressBreakMinutes: 90 }).decompressBreaksPerDay === 0, 'zero decompress breaks stays zero');
   assert(goals.sanitizeGoalSettings({ decompressBreakMinutes: 90 }).decompressBreakMinutes === 60, 'decompress minutes clamp to 60');
@@ -110,6 +115,23 @@ function run(assert) {
   assert(streak.marks[1].qualified === false, 'streak ignores days under 15 minutes');
   assert(streak.marks[2].hit === true && streak.marks[3].hit === false, 'streak uses the rounded focus-share goal');
   assert(streak.current === 1 && streak.longest === 2 && streak.lastQualifiedDate === '2026-09-06', 'inactive days do not break a streak and a miss does');
+  assert(WEEK_HISTORY_DAYS === 14 && STREAK_HISTORY_DAYS === 90, 'week review stays 14 days; streaks fetch the 90-day store max');
+  const longHitDays = [];
+  for (let i = 1; i <= 20; i += 1) {
+    longHitDays.push({
+      date: '2026-09-' + String(i).padStart(2, '0'),
+      byCategory: { productive: 900, unproductive: 0 }
+    });
+  }
+  const longStreak = streaks.focusStreak(longHitDays, { goalPct: 80 });
+  assert(longStreak.current === 20 && longStreak.longest === 20, '20 qualified hit days are not capped at 14');
+  assert(streaks.focusStreak(longHitDays.slice(-14), { goalPct: 80 }).current === 14, 'a 14-day fetch would hide a longer streak');
+  const wellbeingSrc = fs.readFileSync(path.join(__dirname, '../renderer/wellbeing-ui.js'), 'utf8');
+  assert(/getHistorySummary\(STREAK_HISTORY_DAYS\)/.test(wellbeingSrc), 'renderer streak path fetches STREAK_HISTORY_DAYS');
+  assert(!/getHistorySummary\(14\)/.test(wellbeingSrc), 'renderer no longer hardcodes a 14-day streak fetch');
+  const rendererSrc = fs.readFileSync(path.join(__dirname, '../renderer/renderer.js'), 'utf8');
+  assert(!/productive target/i.test(rendererSrc) && !/productive goal/i.test(rendererSrc), 'roundup copy no longer says productive target');
+  assert(/focus-share goal/.test(rendererSrc), 'roundup hit copy names the focus-share goal');
 
   assert(decompress.ON_TRACK_SEC === 3600, 'on-track hour is 3600 seconds');
   assert(decompress.MIN_PATTERN_DAYS === 3 && decompress.MIN_HOUR_SEC === 5 * 60 && decompress.MIN_DROP === 0.05, 'pattern thresholds are 3 days, 5 minutes, and a 5 point drop');
@@ -308,15 +330,25 @@ function run(assert) {
   const extraDirs = [];
   try {
     const settingsPath = path.join(root, 'settings.json');
-    fs.writeFileSync(settingsPath, JSON.stringify({ dailyGoalSec: 5400, futureSetting: 'keep' }));
+    fs.writeFileSync(settingsPath, JSON.stringify({ dailyGoalSec: 5400, futureSetting: 'keep', onboardingComplete: true }));
     const helperBak = backupSettingsFile(settingsPath, new Date('2026-09-24T15:00:00.000Z'));
     assert(helperBak && path.basename(helperBak) === 'settings.json.2026-09-24T15-00-00-000Z.bak', 'backupSettingsFile writes a timestamped copy next to settings.json');
     assert(JSON.parse(fs.readFileSync(helperBak, 'utf8')).dailyGoalSec === 5400, 'helper backup keeps the original settings bytes');
     fs.unlinkSync(helperBak);
+    assert(SETTINGS_BACKUP_KEEP === 3, 'settings backup retention is 3');
+    for (let i = 1; i <= 5; i += 1) {
+      backupSettingsFile(settingsPath, new Date(Date.UTC(2026, 0, i, 12)));
+    }
+    const pruned = fs.readdirSync(root).filter((f) => f.startsWith('settings.json.') && f.endsWith('.bak'));
+    assert(pruned.length === SETTINGS_BACKUP_KEEP, 'settings backups keep only the newest ' + SETTINGS_BACKUP_KEEP);
+    assert(!pruned.some((f) => /2026-01-0[12]T/.test(f)), 'oldest settings.json.*.bak files are pruned');
+    for (const name of pruned) fs.unlinkSync(path.join(root, name));
     const store = createStore(root);
     const saved = store.getSettings();
     assert(saved.focusShareGoalPct === 80 && saved.legacyProductiveGoalSec === 5400 && saved.futureSetting === 'keep', 'store migrates an existing productivity goal on load');
     assert(saved.screenTimeLimitEnabled === false && saved.gamificationEnabled === false, 'store migration leaves the screen limit and gamification off');
+    assert(!Object.prototype.hasOwnProperty.call(saved, 'onboardingComplete'), 'migrated settings drop onboardingComplete');
+    assert(!Object.prototype.hasOwnProperty.call(JSON.parse(fs.readFileSync(settingsPath, 'utf8')), 'onboardingComplete'), 'settings.json does not write onboardingComplete');
     const backups = fs.readdirSync(root).filter((f) => f.startsWith('settings.json.') && f.endsWith('.bak'));
     assert(backups.length === 1, 'goal migration writes a timestamped settings backup');
     assert(JSON.parse(fs.readFileSync(path.join(root, backups[0]), 'utf8')).dailyGoalSec === 5400, 'settings backup keeps the pre-migration file');
@@ -330,6 +362,17 @@ function run(assert) {
     extraDirs.push(freshDir);
     const freshStore = createStore(freshDir);
     assert(freshStore.getSettings().gamificationEnabled === false && freshStore.getSettings().dailyGoalSec === 7200, 'a new store keeps dailyGoalSec and leaves gamification off');
+
+    const orphanDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-goals-orphan-'));
+    extraDirs.push(orphanDir);
+    fs.writeFileSync(path.join(orphanDir, 'settings.json'), JSON.stringify({
+      goalsSchema: 2,
+      focusShareGoalPct: 70,
+      onboardingComplete: true
+    }));
+    const orphanStore = createStore(orphanDir);
+    assert(orphanStore.getSettings().focusShareGoalPct === 70 && !Object.prototype.hasOwnProperty.call(orphanStore.getSettings(), 'onboardingComplete'), 'schema 2 settings drop onboardingComplete without remigrating');
+    assert(!Object.prototype.hasOwnProperty.call(JSON.parse(fs.readFileSync(path.join(orphanDir, 'settings.json'), 'utf8')), 'onboardingComplete'), 'schema 2 settings.json is rewritten without onboardingComplete');
 
     const importDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-goals-import-'));
     extraDirs.push(importDir);

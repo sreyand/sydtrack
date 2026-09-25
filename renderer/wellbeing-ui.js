@@ -5,7 +5,9 @@ let wellbeingStats = null;
 let wellbeingDate = '';
 let wellbeingStreak = 0;
 let drillApp = '';
-const historyCache = { date: '', at: 0, days: null, pending: null, pendingDate: '' };
+const WEEK_HISTORY_DAYS = 14;
+const STREAK_HISTORY_DAYS = 90;
+const historyCache = { date: '', at: 0, count: 0, days: null, pending: null, pendingDate: '', pendingCount: 0 };
 
 function wellbeingEl(id) {
   return document.getElementById(id);
@@ -123,28 +125,40 @@ function renderDecompress(state) {
   if (end) end.classList.toggle('hidden', !state.active);
 }
 
-function loadGoalHistory(date) {
+function historyDayCount(days) {
+  const n = Math.floor(Number(days));
+  return Number.isFinite(n) ? Math.min(STREAK_HISTORY_DAYS, Math.max(1, n)) : WEEK_HISTORY_DAYS;
+}
+
+function loadGoalHistory(date, days) {
   const key = date || wellbeingDate || '';
-  if (historyCache.days && historyCache.date === key && Date.now() - historyCache.at < 60000) {
+  const count = historyDayCount(days);
+  if (historyCache.days && historyCache.date === key && historyCache.count === count && Date.now() - historyCache.at < 60000) {
     return Promise.resolve(historyCache.days);
   }
-  if (historyCache.pending && historyCache.pendingDate === key) return historyCache.pending;
+  if (historyCache.pending && historyCache.pendingDate === key && historyCache.pendingCount === count) {
+    return historyCache.pending;
+  }
   const bridge = window.sydtrack;
   if (!bridge || !bridge.getHistorySummary) return Promise.resolve([]);
-  const pending = bridge.getHistorySummary(14).then((days) => {
+  const pending = bridge.getHistorySummary(count).then((rows) => {
     historyCache.date = key;
     historyCache.at = Date.now();
-    historyCache.days = days || [];
+    historyCache.count = count;
+    historyCache.days = rows || [];
     historyCache.pending = null;
     historyCache.pendingDate = '';
+    historyCache.pendingCount = 0;
     return historyCache.days;
   }).catch(() => {
     historyCache.pending = null;
     historyCache.pendingDate = '';
+    historyCache.pendingCount = 0;
     return [];
   });
   historyCache.pending = pending;
   historyCache.pendingDate = key;
+  historyCache.pendingCount = count;
   return pending;
 }
 
@@ -235,7 +249,7 @@ function renderWellbeing(stats) {
   if (duck) duck.classList.toggle('hidden', !prefs.duck);
   const share = wellbeingEl('share-actions');
   if (share) share.classList.toggle('hidden', !prefs.gamification);
-  loadGoalHistory(stats.date).then((days) => {
+  loadGoalHistory(stats.date, STREAK_HISTORY_DAYS).then((days) => {
     if (!wellbeingStats || wellbeingStats.date !== stats.date) return;
     applyStreakCopy(stats, days);
   });
@@ -263,7 +277,7 @@ function renderScoreList(target, days, windowSize) {
 }
 
 function renderWeekWellbeing() {
-  loadGoalHistory(wellbeingDate).then((days) => {
+  loadGoalHistory(wellbeingDate, WEEK_HISTORY_DAYS).then((days) => {
     const body = wellbeingEl('week-review-body');
     const list = wellbeingEl('week-focus-score-list');
     if (body && typeof sydtrackInsights !== 'undefined') {
@@ -440,4 +454,6 @@ function drillSharePercent(total, active) {
 }
 
 if (typeof document !== 'undefined') bindWellbeing();
-if (typeof module !== 'undefined' && module.exports) module.exports = { goalPrefs, drillSharePercent };
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS };
+}

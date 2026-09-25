@@ -4,6 +4,9 @@
 // focus-share denominator. Qualified days at or above the goal extend the
 // streak. Qualified days under the goal reset it. Days under the minimum
 // are skipped: an unused computer does not break or extend a streak.
+// There is no internal day cap. Callers must pass the retained history
+// (store MAX_HISTORY_DAYS / STREAK_HISTORY_DAYS = 90). A 14-day fetch
+// silently shortens current and longest.
 
 (function (root) {
   const goals = typeof module !== 'undefined' && module.exports

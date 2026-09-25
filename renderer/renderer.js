@@ -1656,17 +1656,17 @@ function roundupHeadlines(moodId, hit, thin) {
   if (hit) {
     const map = {
       thriving: ['Goal crushed', 'You killed it today! 🥳'],
-      focused: ['Goal hit', 'Solid focus day — you met the productive target.'],
-      meh: ['Goal hit, mixed vibe', 'You made the productive goal even if the mix wasn’t perfect.'],
-      distracted: ['Goal hit, rough edges', 'You still cleared the target despite some drift.'],
-      doomscroll: ['Goal hit somehow', 'Productive target cleared — maybe tighten Focus Tags next.']
+      focused: ['Goal hit', 'Solid focus day — you met the focus-share goal.'],
+      meh: ['Goal hit, mixed vibe', 'You made the focus-share goal even if the mix wasn’t perfect.'],
+      distracted: ['Goal hit, rough edges', 'You still cleared the focus-share goal despite some drift.'],
+      doomscroll: ['Goal hit somehow', 'Focus-share goal cleared — maybe tighten Focus Tags next.']
     };
     const row = map[moodId] || map.meh;
     return { headline: row[0], sub: row[1] };
   }
   const map = {
     thriving: ['Almost there', "Let's finish strong! 💪"],
-    focused: ['Close call', 'Good focus day. Nudge the goal or keep stacking productive time.'],
+    focused: ['Close call', 'Good focus day. Nudge the goal or keep the focus share up.'],
     meh: ['Mixed day', 'Some focus, some drift. Tags and FocusBoost can tighten tomorrow.'],
     distracted: ['Drift day', 'Unproductive time led. Tag distractions and arm FocusBoost.'],
     doomscroll: ['Doomscroll o’clock', 'Heavy unproductive stretch. Reset with Focus Tags + Boost.']

@@ -225,8 +225,7 @@ const SETTINGS = {
   decompressBreaksPerDay: (value) => finiteInt(value, 0, 8),
   decompressBreakMinutes: (value) => finiteInt(value, 1, 60),
   gamificationEnabled: bool,
-  duckEnabled: bool,
-  onboardingComplete: bool
+  duckEnabled: bool
 };
 
 function settingsUpdate(payload) {
