@@ -99,10 +99,13 @@ app.whenReady().then(async () => {
       const centerBox = document.querySelector('.pie-center').getBoundingClientRect();
       return { below: trigger.top >= boost.bottom, menuInside: menu.right <= innerWidth && menu.left >= 0,
         clickable: !!hit && !!hit.closest('.profile-choice'),
-        totalInside: totalBox.left >= centerBox.left && totalBox.right <= centerBox.right };
+        totalInside: totalBox.left >= centerBox.left && totalBox.right <= centerBox.right,
+        lastFocusedDirection: getComputedStyle(document.querySelector('.last-focused .lf-row')).flexDirection };
     })()`);
     console.log('Profile chooser layout', width, layout);
     if (!layout.below || !layout.menuInside || !layout.clickable || !layout.totalInside) throw new Error('Profile chooser or Home total layout failed');
+    if (width === 1040 && layout.lastFocusedDirection !== 'column') throw new Error('Compact Last focused card did not stack');
+    if (width === 1600 && layout.lastFocusedDirection !== 'row') throw new Error('Wide Last focused card should stay inline');
     if (width === 1040) fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-profiles-home.png'), (await win.webContents.capturePage()).toPNG());
     await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
   }
