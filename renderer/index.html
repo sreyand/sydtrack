@@ -69,14 +69,16 @@
       <!-- HOME: header + chart card + secondary cards -->
       <section id="view-home" class="view">
         <header class="page-head">
-          <div>
-            <h1>Today</h1>
+          <div class="page-title-block">
+            <div class="page-title-row">
+              <h1>Today</h1>
+              <div id="mood-block" class="mood-pill" data-mood="meh" title="">
+                <span class="mood-dot" aria-hidden="true"></span>
+                <span id="mood-emoji" class="mood-emoji" aria-hidden="true"></span>
+                <span id="mood-label" class="mood-label">Quiet start</span>
+              </div>
+            </div>
             <p class="page-date" id="home-date" hidden></p>
-          </div>
-          <div id="mood-block" class="mood-pill" data-mood="meh" title="">
-            <span class="mood-dot" aria-hidden="true"></span>
-            <span id="mood-emoji" class="mood-emoji" aria-hidden="true"></span>
-            <span id="mood-label" class="mood-label">Quiet start</span>
           </div>
         </header>
 

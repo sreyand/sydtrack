@@ -504,6 +504,7 @@ h4.unprod { color: var(--unprod); }
 
 .pie-wrap {
   position: relative;
+  container-type: inline-size;
   width: clamp(160px, 28vmin, 360px);
   height: clamp(160px, 28vmin, 360px);
   margin: 6px auto 12px;
@@ -2958,14 +2959,39 @@ h4 {
 #view-home {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: center;
   max-width: 1200px;
-  min-height: 0;
+  min-height: calc(100vh - 2 * var(--space-6));
   max-height: none;
   overflow: visible;
   gap: var(--space-5);
 }
-#view-home .page-head { display: flex; }
+#view-home .page-head {
+  display: flex;
+  flex-direction: row;
+  margin-bottom: 0;
+}
+#view-home .page-title-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+}
+#view-home .mood-pill {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-muted);
+  font: var(--caption);
+}
+#view-home .mood-dot {
+  width: 6px;
+  height: 6px;
+}
+#view-home .mood-label {
+  font: inherit;
+  font-weight: 500;
+}
 #view-home .home-focus.card {
   flex: none;
   overflow: visible;
@@ -3005,7 +3031,14 @@ h4 {
 .mood-emoji { display: none; }
 .mood-sub { display: none; }
 
-.pie-total { font: var(--display-1); font-variant-numeric: tabular-nums; color: var(--color-ink); }
+.pie-total {
+  font: var(--display-1);
+  font-size: clamp(22px, 12.5cqi, 40px);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
 .pie-total-label { font: var(--caption); color: var(--color-ink-muted); }
 .pie-chart, .pie-chart.has-data { box-shadow: none !important; filter: none; }
 .pie-legend li { font: var(--body); gap: var(--space-2); }

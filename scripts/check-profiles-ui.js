@@ -93,11 +93,16 @@ app.whenReady().then(async () => {
       const menu = document.getElementById('focus-profile-menu').getBoundingClientRect();
       const last = document.querySelector('.profile-choice:last-child').getBoundingClientRect();
       const hit = document.elementFromPoint(last.x + last.width / 2, last.y + last.height / 2);
+      const total = document.getElementById('pie-total');
+      total.textContent = '23h 59m';
+      const totalBox = total.getBoundingClientRect();
+      const centerBox = document.querySelector('.pie-center').getBoundingClientRect();
       return { below: trigger.top >= boost.bottom, menuInside: menu.right <= innerWidth && menu.left >= 0,
-        clickable: !!hit && !!hit.closest('.profile-choice') };
+        clickable: !!hit && !!hit.closest('.profile-choice'),
+        totalInside: totalBox.left >= centerBox.left && totalBox.right <= centerBox.right };
     })()`);
     console.log('Profile chooser layout', width, layout);
-    if (!layout.below || !layout.menuInside || !layout.clickable) throw new Error('Profile chooser layout failed');
+    if (!layout.below || !layout.menuInside || !layout.clickable || !layout.totalInside) throw new Error('Profile chooser or Home total layout failed');
     if (width === 1040) fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-profiles-home.png'), (await win.webContents.capturePage()).toPNG());
     await win.webContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
   }

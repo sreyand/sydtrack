@@ -92,8 +92,12 @@ assert(html.includes('appearance-card'), 'Appearance picker is scoped for the th
 const homeCss = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
 assert(/\.home-layout \{[\s\S]{0,80}grid-template-columns:\s*64% 36%/.test(homeCss), 'Home uses the pre-#25 64/36 layout');
 assert(!/#view-home \.home-layout[\s\S]{0,200}padding-left:\s*clamp/.test(homeCss), 'Home is not the post-#25 center-right cluster');
-assert(/\.pie-total \{ font: var\(--display-1\)/.test(homeCss), 'Home donut time uses the pre-#25 display-1 hierarchy');
+assert(/\.pie-total \{[\s\S]{0,80}font:\s*var\(--display-1\)/.test(homeCss), 'Home donut time uses the pre-#25 display-1 hierarchy');
 assert(!/#view-home \.pie-legend strong[\s\S]{0,40}display:\s*none/.test(homeCss), 'Home pie legend durations are visible again');
+assert(/\.pie-total \{[\s\S]{0,180}white-space:\s*nowrap/.test(homeCss), 'Home donut total stays on one line');
+assert(/\.pie-total \{[\s\S]{0,180}font-size:\s*clamp\(22px, 12\.5cqi, 40px\)/.test(homeCss), 'Home donut total scales to fit the full daily range');
+assert(/#view-home \{[\s\S]{0,180}justify-content:\s*center/.test(homeCss), 'Home content is vertically balanced');
+assert(html.includes('class="page-title-row"') && /#view-home \.mood-pill \{[\s\S]{0,100}border:\s*0/.test(homeCss), 'Home mood is a quiet inline title status');
 assert(/\.home-focus-actions \.profile-menu[\s\S]{0,80}top:\s*calc\(100% \+ 4px\)/.test(homeCss), 'Home focus-profile menu opens downward by default');
 assert(homeCss.includes('profile-menu-up'), 'Home focus-profile menu can flip only when there is room above');
 assert(!/>Actual</.test(html), 'Daily focus share card does not show an Actual label');
