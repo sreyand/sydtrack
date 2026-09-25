@@ -34,6 +34,7 @@ const { createTracker } = require('./tracker');
 const { createSessionManager } = require('./sessions');
 const { updateAppSettings } = require('./settings-service');
 const { createDecompressService } = require('./decompress-service');
+const decompress = require('../renderer/lib/decompress');
 const {
   buildExport,
   importBackup,
@@ -290,8 +291,7 @@ function formatReminderBody(template, payload) {
 
 function fireLocalNotice(title, body, kicker) {
   const settings = (store && store.getSettings && store.getSettings()) || {};
-  if (settings.notificationsEnabled === false) return;
-  if (!(Number(settings.decompressBreaksPerDay) > 0)) return;
+  if (!decompress.noticesEnabled(settings)) return;
   const text = String(body || '').trim();
   if (!text) return;
   if (Notification.isSupported()) {
@@ -546,6 +546,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (decompressService && typeof decompressService.flush === 'function') decompressService.flush();
 });
 
 ipcMain.handle('state:get', async (event, payload) => {

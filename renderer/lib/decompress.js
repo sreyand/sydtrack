@@ -227,6 +227,11 @@
     return Math.min(23, Math.max(0, n));
   }
 
+  function noticesEnabled(settings) {
+    const src = settings || {};
+    return src.notificationsEnabled !== false && Number(src.decompressBreaksPerDay) > 0;
+  }
+
   function formatHour(hour) {
     const h = clampHour(hour);
     const suffix = h >= 12 ? 'PM' : 'AM';
@@ -269,7 +274,8 @@
     trackedDeltas,
     suggestDecompressHour,
     formatHour,
-    suggestionMessage
+    suggestionMessage,
+    noticesEnabled
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.sydtrackDecompress = api;

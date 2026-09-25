@@ -11,7 +11,7 @@ const gamification = require('../renderer/lib/gamification');
 const { createDecompressService } = require('../src/decompress-service');
 const { createStore, needsGoalSettingsMigration, backupSettingsFile } = require('../src/store');
 const { importBackup } = require('../src/backup');
-const { goalPrefs } = require('../renderer/wellbeing-ui');
+const { goalPrefs, drillSharePercent } = require('../renderer/wellbeing-ui');
 
 function run(assert) {
   const eighty = goals.focusParts({ productive: 80, unproductive: 20, other: 90 }, false);
@@ -112,6 +112,10 @@ function run(assert) {
   assert(streak.current === 1 && streak.longest === 2 && streak.lastQualifiedDate === '2026-09-06', 'inactive days do not break a streak and a miss does');
 
   assert(decompress.ON_TRACK_SEC === 3600, 'on-track hour is 3600 seconds');
+  assert(decompress.MIN_PATTERN_DAYS === 3 && decompress.MIN_HOUR_SEC === 5 * 60 && decompress.MIN_DROP === 0.05, 'pattern thresholds are 3 days, 5 minutes, and a 5 point drop');
+  assert(decompress.noticesEnabled({ notificationsEnabled: true, decompressBreaksPerDay: 3 }), 'breaks on allows decompress notices');
+  assert(!decompress.noticesEnabled({ notificationsEnabled: true, decompressBreaksPerDay: 0 }), 'zero breaks gates decompress notices');
+  assert(!decompress.noticesEnabled({ notificationsEnabled: false, decompressBreaksPerDay: 3 }), 'notifications off gates decompress notices');
   let state = decompress.createBreakState('2026-09-24');
   let step = decompress.applyTrackedTime(state, { category: 'productive', seconds: decompress.ON_TRACK_SEC - 1 }, { goalPct: 80, breaksPerDay: 3 });
   assert(!step.suggest && step.onTrackSec === 3599, '59:59 on track does not suggest a break');
@@ -184,6 +188,30 @@ function run(assert) {
   assert(passed.hour === 14 && passed.passed === true, 'a dip that already started is labeled passed');
   const emptyPattern = decompress.suggestDecompressHour([]);
   assert(emptyPattern.reason === 'not-enough-pattern' && emptyPattern.hour === null, 'empty history does not invent a break hour');
+  const twoDays = decompress.suggestDecompressHour(
+    [patternDay('2026-09-01'), patternDay('2026-09-02')],
+    { nowHour: 9 }
+  );
+  assert(twoDays.reason === 'not-enough-pattern' && twoDays.minDays === decompress.MIN_PATTERN_DAYS, 'two days stay under MIN_PATTERN_DAYS');
+  const shortHour = (productive, unproductive) => hour(productive, unproductive);
+  const underMin = [];
+  for (let i = 1; i <= 3; i += 1) {
+    const byHour = Array.from({ length: 24 }, () => hour(0, 0));
+    byHour[13] = shortHour(decompress.MIN_HOUR_SEC - 1, 0);
+    byHour[14] = shortHour(decompress.MIN_HOUR_SEC - 1, 0);
+    underMin.push({ date: '2026-09-0' + i, byHour });
+  }
+  const thinHours = decompress.suggestDecompressHour(underMin, { nowHour: 9 });
+  assert(thinHours.reason === 'not-enough-pattern' && thinHours.minHourSec === decompress.MIN_HOUR_SEC, 'hours under MIN_HOUR_SEC do not invent a dip');
+  const smallDrop = [];
+  for (let i = 1; i <= 3; i += 1) {
+    const byHour = Array.from({ length: 24 }, () => hour(0, 0));
+    byHour[13] = hour(600, 0);
+    byHour[14] = hour(580, 20);
+    smallDrop.push({ date: '2026-09-0' + i, byHour });
+  }
+  const noDrop = decompress.suggestDecompressHour(smallDrop, { nowHour: 9 });
+  assert(noDrop.reason === 'not-enough-pattern', 'a drop under MIN_DROP does not invent a break hour');
   const thinPattern = decompress.suggestDecompressHour(
     [{ date: '2026-09-01', byHour: Array.from({ length: 24 }, () => hour(60, 0)) }],
     { nowHour: 9 }
@@ -242,6 +270,7 @@ function run(assert) {
   const share = insights.appShare(merged.total, active);
   const over = insights.appShare(700, active);
   assert(share != null && share <= 1 && over === 1, 'app share never exceeds 100% even if ignored time is still in hourly rows');
+  assert(drillSharePercent(700, 100) === 100 && drillSharePercent(50, 0) === null, 'renderer appShare path clamps share and stays empty without active time');
 
   const calm = gamification.roundupCopy({ thin: false, hit: false, gamification: false, goalPct: 80 });
   const playful = gamification.roundupCopy({ thin: false, hit: true, gamification: true, goalPct: 80, streak: 3 });
@@ -291,6 +320,8 @@ function run(assert) {
     const backups = fs.readdirSync(root).filter((f) => f.startsWith('settings.json.') && f.endsWith('.bak'));
     assert(backups.length === 1, 'goal migration writes a timestamped settings backup');
     assert(JSON.parse(fs.readFileSync(path.join(root, backups[0]), 'utf8')).dailyGoalSec === 5400, 'settings backup keeps the pre-migration file');
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    assert(written.goalsSchema === 2 && written.focusShareGoalPct === 80 && written.legacyProductiveGoalSec === 5400, 'migrated settings are saved to disk');
     store.updateSettings({ focusShareGoalPct: 65, gamificationEnabled: true });
     const restarted = createStore(root);
     assert(restarted.getSettings().focusShareGoalPct === 65 && restarted.getSettings().gamificationEnabled === true, 'a later launch does not overwrite saved goal settings');
@@ -344,9 +375,12 @@ function run(assert) {
     assert(fs.existsSync(decompressPath), 'started breaks are stored in decompress.json');
     const mtime = fs.statSync(decompressPath).mtimeMs;
     reloaded.observe({ date: '2026-09-24', byCategory: { productive: 4000, unproductive: 0, other: 0 } });
-    reloaded.observe({ date: '2026-09-24', byCategory: { productive: 4000, unproductive: 0, other: 0 } });
-    assert(fs.statSync(decompressPath).mtimeMs === mtime, 'decompress.json is not rewritten when state is unchanged');
-    store.clearAllHistory();
+    reloaded.observe({ date: '2026-09-24', byCategory: { productive: 4100, unproductive: 0, other: 0 } });
+    reloaded.observe({ date: '2026-09-24', byCategory: { productive: 4200, unproductive: 10, other: 0 } });
+    assert(fs.statSync(decompressPath).mtimeMs === mtime, 'changing totals do not rewrite decompress.json every tick');
+    store.updateSettings({ focusShareGoalPct: 65, gamificationEnabled: true });
+    const erased = store.eraseActivityAndSettings();
+    assert(erased.ok && store.getSettings().focusShareGoalPct === 80 && store.getSettings().gamificationEnabled === false, 'erase-all remigrates goal defaults');
     assert(!fs.existsSync(decompressPath), 'clearing data removes decompress.json');
     reloaded.reset();
     assert(reloaded.publicState().breaksUsed === 0 && !fs.existsSync(decompressPath), 'decompress reset clears memory and file');

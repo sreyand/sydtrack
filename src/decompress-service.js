@@ -19,15 +19,25 @@ function createDecompressService({ dataDir, getSettings, getHourlyHistory, now =
       const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
       state = decompress.cloneState(raw);
-      lastPersisted = JSON.stringify(decompress.cloneState(state));
+      lastPersisted = durableKey(state);
     } catch (err) {
       console.error('[decompress] read failed', err.message);
     }
   }
 
-  function persist() {
-    const serialized = JSON.stringify(decompress.cloneState(state));
-    if (serialized === lastPersisted) return false;
+  function durableKey(next) {
+    const cloned = decompress.cloneState(next);
+    return JSON.stringify({
+      date: cloned.date,
+      breaksUsed: cloned.breaksUsed,
+      active: cloned.active,
+      suggested: cloned.suggested
+    });
+  }
+
+  function persist(force) {
+    const serialized = durableKey(state);
+    if (!force && serialized === lastPersisted) return false;
     try {
       writeJson(filePath, decompress.cloneState(state));
       lastPersisted = serialized;
@@ -36,6 +46,10 @@ function createDecompressService({ dataDir, getSettings, getHourlyHistory, now =
       console.error('[decompress] persist failed', err.message);
       return false;
     }
+  }
+
+  function flush() {
+    return persist(true);
   }
 
   function settings() {
@@ -174,7 +188,7 @@ function createDecompressService({ dataDir, getSettings, getHourlyHistory, now =
   }
 
   load();
-  return { observe, startBreak, endBreak, reset, publicState, filePath };
+  return { observe, startBreak, endBreak, reset, flush, publicState, filePath };
 }
 
 module.exports = { createDecompressService };

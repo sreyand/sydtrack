@@ -302,8 +302,7 @@ function renderAppDrilldown(stats) {
   }
   const drill = sydtrackInsights.appDrilldown(stats && stats.byHour, drillApp);
   const active = sydtrackGoals.activeTrackedSec(stats && stats.byCategory);
-  const ratio = sydtrackInsights.appShare(drill.total, active);
-  const share = ratio == null ? null : Math.round(ratio * 100);
+  const share = drillSharePercent(drill.total, active);
   if (!drill.total) {
     host.textContent = drillApp + ' has no hourly time recorded today.';
     return;
@@ -426,5 +425,19 @@ function bindWellbeing() {
   }
 }
 
+function drillSharePercent(total, active) {
+  const api = typeof sydtrackInsights !== 'undefined'
+    ? sydtrackInsights
+    : (typeof require === 'function' ? require('./lib/insights') : null);
+  if (api && typeof api.appShare === 'function') {
+    const ratio = api.appShare(total, active);
+    return ratio == null ? null : Math.round(ratio * 100);
+  }
+  const activeSec = Math.max(0, Number(active) || 0);
+  const totalSec = Math.max(0, Number(total) || 0);
+  if (!activeSec) return null;
+  return Math.round(Math.min(1, totalSec / activeSec) * 100);
+}
+
 if (typeof document !== 'undefined') bindWellbeing();
-if (typeof module !== 'undefined' && module.exports) module.exports = { goalPrefs };
+if (typeof module !== 'undefined' && module.exports) module.exports = { goalPrefs, drillSharePercent };
