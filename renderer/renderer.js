@@ -1716,20 +1716,32 @@ function renderRoundup(stats) {
 
   const goalCard = $('roundup-goal-card');
   const focusPct = focus && focus.percent != null ? focus.percent : null;
-  const barPct = focusPct == null ? 0 : Math.min(100, Math.round((focusPct / goalPct) * 100));
+  const actualPct = focusPct == null ? 0 : Math.min(100, Math.max(0, focusPct));
   if (goalCard) goalCard.setAttribute('data-hit', !focus || focus.thin ? 'na' : hit ? 'yes' : 'no');
   const goalKicker = goalCard && goalCard.querySelector('.lf-kicker');
   if (goalKicker) goalKicker.textContent = 'Daily focus share';
   if ($('roundup-goal-value')) {
-    $('roundup-goal-value').textContent = (focusPct == null ? '—' : focusPct + '%') + ' / ' + goalPct + '%';
+    $('roundup-goal-value').textContent = focusPct == null ? '—' : focusPct + '%';
   }
   if ($('roundup-goal-pct')) {
-    $('roundup-goal-pct').textContent = focus && focus.includeOther ? 'Including Other' : 'Other excluded';
+    $('roundup-goal-pct').textContent = 'Goal ' + goalPct + '%';
+  }
+  if ($('roundup-goal-scope')) {
+    $('roundup-goal-scope').textContent = focus && focus.includeOther ? 'Including Other' : 'Other excluded';
   }
   const fill = $('roundup-goal-fill');
   const bar = $('roundup-goal-bar');
-  if (fill) fill.style.width = barPct + '%';
-  if (bar) bar.setAttribute('aria-valuenow', String(barPct));
+  const mark = $('roundup-goal-mark');
+  if (fill) fill.style.width = actualPct + '%';
+  if (bar) {
+    bar.setAttribute('aria-valuenow', String(actualPct));
+    bar.setAttribute('aria-valuetext', (focusPct == null ? 'No focus share yet' : focusPct + '% actual') + ', ' + goalPct + '% goal');
+  }
+  if (mark) {
+    const showMark = focusPct != null && goalPct > 0 && goalPct < 100;
+    mark.hidden = !showMark;
+    mark.style.left = Math.min(100, Math.max(0, goalPct)) + '%';
+  }
   const apps = (stats && stats.topApps) || [];
   const topP = apps.find((a) => a.category === 'productive');
   const topU = apps.find((a) => a.category === 'unproductive');
@@ -1857,13 +1869,21 @@ function renderAppList(stats) {
   list.innerHTML = apps.map(a => {
     const category = a.category;
     const chip = category === 'mixed' ? { className: 'chip other', label: 'mixed' } : chipDisplay(category, a.name);
-    return '<li class="app-row"><span class="app-name app-trunc" title="' + esc(a.name) + '">' + esc(a.name) + '<small class="app-match-reason">' + esc(a.reason || 'Keyword not recorded') + '</small></span>' +
-      '<button type="button" class="btn-mini" data-drill="' + esc(a.name) + '">Hours</button>' +
-      '<span class="' + chip.className + '">' + chip.label + '</span><span class="secs">' + fmt(a.seconds) + '</span>' +
+    return '<li class="app-row">' +
+      '<div class="app-row-copy">' +
+      '<span class="app-name app-trunc" title="' + esc(a.name) + '">' + esc(a.name) + '</span>' +
+      '<small class="app-match-reason">' + esc(a.reason || 'Keyword not recorded') + '</small>' +
+      '</div>' +
+      '<div class="app-row-tools">' +
       '<span class="reclass" data-app="' + encodeURIComponent(a.id || '') + '">' +
       [['productive', 'prod', 'P'], ['unproductive', 'unprod', 'U'], ['ignored', 'ignore', 'ign']].map(([value, cls, label]) =>
         '<button type="button" class="btn-mini ' + cls + (category === value ? ' selected' : '') + '" aria-pressed="' + (category === value) +
-        '" data-action="' + value + '" title="' + (value === 'ignored' && category === 'ignored' ? 'Unignore for today' : 'Mark this activity ' + value + ' for today') + '">' + label + '</button>').join('') + '</span></li>';
+        '" data-action="' + value + '" title="' + (value === 'ignored' && category === 'ignored' ? 'Unignore for today' : 'Mark this activity ' + value + ' for today') + '">' + label + '</button>').join('') +
+      '</span>' +
+      '<button type="button" class="app-hours-btn" data-drill="' + esc(a.name) + '">Hours</button>' +
+      '<span class="' + chip.className + '">' + chip.label + '</span>' +
+      '<span class="secs">' + fmt(a.seconds) + '</span>' +
+      '</div></li>';
   }).join('');
   if (typeof renderAppDrilldown === 'function') renderAppDrilldown(stats);
 }
