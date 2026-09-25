@@ -28,7 +28,11 @@ app.whenReady().then(async () => {
     'rules:get': () => ({ ...profiles.active(), profileId: profiles.snapshot().activeId }),
     'ignore:get': () => ({ ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId }),
     'session:getActive': () => null, 'session:getForDay': () => ({ sessions: [], days: [] }),
-    'settings:update': (_e, partial) => store.updateSettings(partial)
+    'settings:update': (_e, partial) => store.updateSettings(partial),
+    'keywords:get': () => ({ productive: [], unproductive: [] }),
+    'keywords:set': (_e, keywords) => keywords,
+    'keywords:reset': () => ({ productive: [], unproductive: [] }),
+    'history:summary': () => []
   };
   for (const [channel, handler] of Object.entries(handlers)) ipcMain.handle(channel, handler);
   const win = new BrowserWindow({ show: false, width: 1040, height: 900,

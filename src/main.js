@@ -219,7 +219,7 @@ function createWindow() {
     preloadPath: path.join(__dirname, 'preload.js'),
     iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png'),
     platform: process.platform,
-    backgroundColor: windowBackgroundColor(!!(nativeTheme && nativeTheme.shouldUseDarkColors))
+    backgroundColor: windowBackgroundColor(store && store.getSettings ? store.getSettings().theme : 'graphite')
   });
   mainWindow = new BrowserWindow(winOpts);
   installNavigationGuards(mainWindow.webContents);
@@ -622,6 +622,27 @@ ipcMain.handle('ignore:reset', async (event, payload) => {
   return ignorePayload();
 });
 
+ipcMain.handle('keywords:get', async (event, payload) => {
+  guardIpc(event, 'keywords:get', payload);
+  return browserKeywordsHolder.keywords || defaultBrowserKeywords();
+});
+
+ipcMain.handle('keywords:set', async (event, payload) => {
+  const next = guardIpc(event, 'keywords:set', payload);
+  browserKeywordsHolder.keywords = saveBrowserKeywords(userBrowserKeywordsPath(), next);
+  if (rulesHolder.rules) rulesHolder.rules.browserKeywords = browserKeywordsHolder.keywords;
+  if (tracker) tracker.invalidateClassification();
+  return browserKeywordsHolder.keywords;
+});
+
+ipcMain.handle('keywords:reset', async (event, payload) => {
+  guardIpc(event, 'keywords:reset', payload);
+  browserKeywordsHolder.keywords = saveBrowserKeywords(userBrowserKeywordsPath(), defaultBrowserKeywords());
+  if (rulesHolder.rules) rulesHolder.rules.browserKeywords = browserKeywordsHolder.keywords;
+  if (tracker) tracker.invalidateClassification();
+  return browserKeywordsHolder.keywords;
+});
+
 function assertActiveProfile(id) {
   if (id != null && id !== focusProfiles.snapshot().activeId) throw new Error('Focus profile changed. Reload tags before saving.');
 }
@@ -678,6 +699,9 @@ ipcMain.handle('settings:update', async (event, payload) => {
 function applySettings(partial) {
   return updateAppSettings(store, sessionManager, partial, () => {
     if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
+    if (partial && partial.theme && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setBackgroundColor(windowBackgroundColor(partial.theme));
+    }
   });
 }
 

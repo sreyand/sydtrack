@@ -59,14 +59,17 @@ assert(win.webPreferences === prefs || (
   win.webPreferences.webSecurity
 ), 'BrowserWindow options stay hardened');
 assert(win.show === false, 'window stays hidden until ready');
-assert(WINDOW_BACKGROUND_DARK === '#121418', 'dark window fill is #121418');
-assert(WINDOW_BACKGROUND_LIGHT === '#f3f4f6', 'light window fill is #f3f4f6');
-assert(windowBackgroundColor(true) === WINDOW_BACKGROUND_DARK, 'dark theme uses the dark window fill');
-assert(windowBackgroundColor(false) === WINDOW_BACKGROUND_LIGHT, 'light theme uses the light window fill');
+assert(WINDOW_BACKGROUND_DARK === '#0E1116', 'dark window fill is Midnight canvas');
+assert(WINDOW_BACKGROUND_LIGHT === '#F4F5F7', 'light window fill is Graphite canvas');
+assert(windowBackgroundColor(true) === WINDOW_BACKGROUND_DARK, 'boolean dark uses Midnight canvas');
+assert(windowBackgroundColor(false) === WINDOW_BACKGROUND_LIGHT, 'boolean light uses Graphite canvas');
+assert(windowBackgroundColor('graphite') === '#F4F5F7', 'graphite theme uses its canvas');
+assert(windowBackgroundColor('midnight') === '#0E1116', 'midnight theme uses its canvas');
+assert(windowBackgroundColor('dusk') === '#2B2A33', 'dusk theme uses its canvas');
 assert(buildBrowserWindowOptions({
   preloadPath: preload,
-  backgroundColor: windowBackgroundColor(false)
-}).backgroundColor === '#f3f4f6', 'BrowserWindow options accept the light fill');
+  backgroundColor: windowBackgroundColor('graphite')
+}).backgroundColor === '#F4F5F7', 'BrowserWindow options accept the active theme canvas');
 
 assert(CONTENT_SECURITY_POLICY.includes("default-src 'self'"), 'CSP default-src is self');
 assert(!/https?:/.test(CONTENT_SECURITY_POLICY), 'CSP has no remote origins');
@@ -74,7 +77,41 @@ assert(!CONTENT_SECURITY_POLICY.includes('unsafe-eval'), 'CSP has no unsafe-eval
 const html = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'index.html'), 'utf8');
 assert(/http-equiv="Content-Security-Policy"/i.test(html), 'renderer HTML declares a CSP');
 assert(/default-src 'self'/.test(html), 'renderer CSP defaults to self');
+assert(/font-src 'self'/.test(html), 'renderer CSP keeps fonts on self');
 assert(!/<(?:script|link|img|iframe)\b[^>]+\b(?:src|href)=['"]https?:/i.test(html), 'renderer HTML has no remote script/style/img URLs');
+assert(!/fonts\.googleapis|fontshare\.com|cdn\./i.test(html), 'renderer HTML has no font CDN');
+assert(html.includes('theme.css'), 'renderer loads the local theme sheet');
+assert(html.includes('settings-block-title'), 'Goals settings-block-title is preserved');
+const satoshiDir = path.join(__dirname, '..', 'renderer', 'fonts', 'satoshi');
+for (const cut of ['Light', 'Regular', 'Medium', 'Bold', 'Black']) {
+  assert(fs.existsSync(path.join(satoshiDir, 'Satoshi-' + cut + '.woff2')), 'Satoshi ' + cut + ' woff2 is bundled');
+}
+assert(fs.existsSync(path.join(satoshiDir, 'FFL.txt')), 'Satoshi FFL attribution is bundled');
+const themeCss = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'theme.css'), 'utf8');
+assert(!/IBM Plex|Inter/.test(themeCss), 'theme sheet does not load IBM Plex or Inter');
+const rendererCss = ['theme.css', 'styles.css', 'wellbeing.css'].map((name) =>
+  fs.readFileSync(path.join(__dirname, '..', 'renderer', name), 'utf8')
+).join('\n');
+const weightHits = rendererCss.match(/font-weight\s*:\s*[^;]+/gi) || [];
+const allowedWeights = new Set(['300', '400', '500', '700', '900']);
+const badWeights = weightHits.filter((decl) => {
+  const num = String(decl).match(/(\d+)/);
+  return num && !allowedWeights.has(num[1]);
+});
+assert(badWeights.length === 0, 'renderer CSS font-weight values stay on 300/400/500/700/900' + (badWeights.length ? ' (off: ' + badWeights.join(', ') + ')' : ''));
+const radiusHits = rendererCss.match(/border-radius\s*:\s*[^;]+/gi) || [];
+const allowedRadius = /^(?:0|50%|inherit|var\(--radius-(?:sm|md)\))(?:\s+(?:0|var\(--radius-(?:sm|md)\)))*$/;
+const badRadii = radiusHits.filter((decl) => {
+  const value = String(decl).split(':')[1].replace(/\s+/g, ' ').trim();
+  return !allowedRadius.test(value);
+});
+assert(badRadii.length === 0, 'renderer radii stay on 6/10 tokens (or 0/50%/inherit)' + (badRadii.length ? ' (off: ' + badRadii.join(', ') + ')' : ''));
+assert(!/rgba\(\s*129\s*,\s*140\s*,\s*248/i.test(rendererCss), 'no hardcoded lavender accent bypass');
+assert(!/#818cf8|#c7d2fe|#949dff/i.test(rendererCss), 'no hardcoded lavender hex accent bypass');
+assert(!/rgba\(\s*52\s*,\s*211\s*,\s*153|#34d399|#86efac|#22d3ee/i.test(rendererCss), 'no neon green tracking chrome');
+const fontDir = path.join(__dirname, '..', 'renderer', 'fonts');
+const leftoverInter = fs.readdirSync(fontDir).filter((name) => /^inter/i.test(name));
+assert(leftoverInter.length === 0, 'unused Inter woff2 files are not bundled' + (leftoverInter.length ? ' (left: ' + leftoverInter.join(', ') + ')' : ''));
 
 assert(isAllowedNavigation(APP_PAGE_URL), 'app page URL is allowed');
 assert(!isAllowedNavigation('https://example.com'), 'https navigation is blocked');
@@ -140,6 +177,10 @@ throws(() => validateIpcPayload('settings:update', { thresholdSec: 0 }), 'settin
 throws(() => validateIpcPayload('settings:update', { reminderMessage: 'x'.repeat(2001) }), 'settings:update rejects oversized text');
 assert(validateIpcPayload('settings:update', { focusBoostScheduleStart: '09:00' }).focusBoostScheduleStart === '09:00', 'settings:update accepts HH:MM');
 throws(() => validateIpcPayload('settings:update', { focusBoostScheduleStart: '9:00' }), 'settings:update rejects loose times');
+assert(validateIpcPayload('settings:update', { theme: 'midnight' }).theme === 'midnight', 'settings:update accepts a theme');
+throws(() => validateIpcPayload('settings:update', { theme: 'neon' }), 'settings:update rejects an unknown theme');
+assert(validateIpcPayload('keywords:set', { productive: ['github'], unproductive: ['youtube'] }).productive[0] === 'github', 'keywords:set accepts lists');
+throws(() => validateIpcPayload('keywords:set', { productive: [1], unproductive: [] }), 'keywords:set rejects non-strings');
 
 assert(validateIpcPayload('data:export', { includeSettings: true }).includeSettings === true, 'data:export accepts flags');
 throws(() => validateIpcPayload('data:export', { includeSettings: 1 }), 'data:export rejects non-booleans');

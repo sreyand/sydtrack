@@ -10,6 +10,14 @@ function fmt(s) {
     : m + ':' + String(x).padStart(2, '0');
 }
 
+function fmtDuration(s) {
+  s = Math.max(0, Math.floor(+s || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h >= 1) return m ? h + 'h ' + m + 'm' : h + 'h';
+  return m + 'm';
+}
+
 function fmtFriendly(s) {
   s = Math.max(0, Math.floor(+s || 0));
   const h = Math.floor(s / 3600);
@@ -692,87 +700,90 @@ function renderLastFocused(lf, now) {
   applyLfButtonOutlines(lastFocusedCache.category);
 }
 
+const MOOD_COPY = {
+  thriving: { label: 'Thriving: almost all productive', title: 'Productive share is 80% or higher of classified time.' },
+  focused: { label: 'Focused: more productive than not', title: 'Productive share is 60% or higher of classified time.' },
+  meh: { label: 'Split: productive and unproductive even', title: 'Classified time is near even, or nothing is classified yet.' },
+  idle: { label: 'Quiet start', title: 'Nothing classified as productive or unproductive yet today.' },
+  distracted: { label: 'Drifting: unproductive is winning', title: 'Productive share is 20% or higher but below 40%.' },
+  doomscroll: { label: 'Sinking: mostly unproductive', title: 'Productive share is below 20% of classified time.' }
+};
+
+function moodDisplay(mood) {
+  const id = mood && mood.id;
+  if (id === 'meh' && (mood.ratio == null || !Number.isFinite(mood.ratio))) return MOOD_COPY.idle;
+  return MOOD_COPY[id] || MOOD_COPY.idle;
+}
+
+function formatPageDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' }).format(date);
+  } catch (_) {
+    return '';
+  }
+}
+
+function applyPageDate(id, value) {
+  const el = $(id);
+  if (!el) return;
+  const text = formatPageDate(value);
+  if (!text) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  el.hidden = false;
+  el.textContent = text;
+}
+
 function renderMood(stats) {
   const block = $('mood-block');
   if (!block) return;
-  const mood = (stats && stats.mood) || { id: 'meh', emoji: '😐', label: 'Meh' };
+  const mood = (stats && stats.mood) || { id: 'meh', ratio: null };
+  const copy = moodDisplay(mood);
   block.setAttribute('data-mood', mood.id || 'meh');
+  block.title = copy.title;
   const em = $('mood-emoji');
   const lab = $('mood-label');
-  if (em) em.textContent = mood.emoji || '😐';
-  if (lab) lab.textContent = mood.label || 'Meh';
+  if (em) em.textContent = '';
+  if (lab) lab.textContent = copy.label;
 }
 
 /** Latest Home pie slice geometry + apps for hover tip. */
 let pieHoverState = { total: 0, ends: [0, 0, 0], appsByCat: { productive: [], unproductive: [], other: [] } };
 let liveStats = null;
-let liveCategory = 'other';
-let liveDisplayCategories = null;
-let liveLastAt = 0;
-let liveDisplaySignature = '';
+const liveTotalsClock = createLiveTotalsClock();
 
-function advanceLiveTotals(at) {
-  if (
-    !liveDisplayCategories ||
-    !liveLastAt ||
-    (liveCategory !== 'productive' && liveCategory !== 'unproductive')
-  ) {
-    liveLastAt = at;
-    return;
-  }
-  const elapsed = Math.max(0, (at - liveLastAt) / 1000);
-  liveDisplayCategories[liveCategory] += elapsed;
-  liveLastAt = at;
-}
-
-function setLiveStats(stats, now) {
-  const at = Date.now();
-  advanceLiveTotals(at);
+function setLiveStats(stats, sample) {
   liveStats = stats || null;
-  liveCategory =
-    now && (now.category === 'productive' || now.category === 'unproductive')
-      ? now.category
-      : null;
-  const incoming = Object.assign(
-    { productive: 0, unproductive: 0, other: 0 },
-    (stats && stats.byCategory) || {}
+  liveTotalsClock.ingest(
+    (stats && stats.byCategory) || {},
+    sample && sample.category
   );
-  if (!liveDisplayCategories) {
-    liveDisplayCategories = incoming;
-  } else {
-    for (const category of ['productive', 'unproductive', 'other']) {
-      if (incoming[category] + 1 < liveDisplayCategories[category]) {
-        liveDisplayCategories[category] = incoming[category];
-      } else {
-        liveDisplayCategories[category] = Math.max(
-          liveDisplayCategories[category],
-          incoming[category]
-        );
-      }
-    }
-  }
-  liveLastAt = at;
 }
 
-function renderLiveTotals() {
-  if (!liveStats || !liveDisplayCategories) return;
-  const at = Date.now();
-  advanceLiveTotals(at);
-  const byCategory = liveDisplayCategories;
-  const signature = ['productive', 'unproductive', 'other']
-    .map((category) => Math.floor(byCategory[category]))
-    .join(':');
-  if (signature === liveDisplaySignature) return;
-  liveDisplaySignature = signature;
+function paintLivePie() {
+  if (!liveStats) return;
+  const byCategory = liveTotalsClock.snapshot();
   renderPie(Object.assign({}, liveStats, { byCategory }));
   if ($('streak')) {
+    const liveCategory = liveTotalsClock.currentCategory();
+    const stored = Number(liveStats.byCategory && liveStats.byCategory.unproductive) || 0;
+    const extra = Math.max(0, byCategory.unproductive - stored);
     const streak = liveCategory === 'unproductive'
-      ? (Number(liveStats.unproductiveStreak) || 0) + Math.max(0, byCategory.unproductive - Number(liveStats.byCategory.unproductive || 0))
+      ? (Number(liveStats.unproductiveStreak) || 0) + extra
       : liveCategory === 'productive'
         ? 0
         : Number(liveStats.unproductiveStreak) || 0;
-    $('streak').textContent = fmt(streak);
+    $('streak').textContent = fmtDuration(streak);
   }
+}
+
+function renderLiveTotals() {
+  if (!liveStats) return;
+  paintLivePie();
 }
 
 function appsForCategory(stats, category) {
@@ -794,10 +805,10 @@ function renderPie(stats) {
   const unp = cats.unproductive || 0;
   const oth = cats.other || 0;
   const total = prod + unp + oth;
-  $('prod-val').textContent = fmt(prod);
-  $('unprod-val').textContent = fmt(unp);
-  $('other-val').textContent = fmt(oth);
-  if ($('pie-total')) $('pie-total').textContent = fmt(total);
+  $('prod-val').textContent = fmtDuration(prod);
+  $('unprod-val').textContent = fmtDuration(unp);
+  $('other-val').textContent = fmtDuration(oth);
+  if ($('pie-total')) $('pie-total').textContent = fmtDuration(total);
 
   pieHoverState = {
     total,
@@ -814,31 +825,27 @@ function renderPie(stats) {
   };
   pie.classList.toggle('has-data', total > 0);
 
+  const token = (name, fallback) => {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+  };
+  const prodColor = token('--color-data-productive', '#1F6F4A');
+  const unprodColor = token('--color-data-unproductive', '#A63D40');
+  const otherColor = token('--color-data-other', '#6B7280');
+  const emptyColor = token('--color-border', '#E2E4E8');
   if (total <= 0) {
-    pie.style.background =
-      'conic-gradient(rgba(148,163,184,0.25) 0deg 360deg)';
+    pie.style.background = 'conic-gradient(' + emptyColor + ' 0deg 360deg)';
     hidePieTip();
     return;
   }
   const pDeg = (prod / total) * 360;
   const uDeg = (unp / total) * 360;
   const oDeg = (oth / total) * 360;
-  const g =
+  pie.style.background =
     'conic-gradient(' +
-    '#34d399 0deg ' +
-    pDeg +
-    'deg,' +
-    '#fb7185 ' +
-    pDeg +
-    'deg ' +
-    (pDeg + uDeg) +
-    'deg,' +
-    'rgba(148,163,184,0.45) ' +
-    (pDeg + uDeg) +
-    'deg ' +
-    (pDeg + uDeg + oDeg) +
-    'deg)';
-  pie.style.background = g;
+    prodColor + ' 0deg ' + pDeg + 'deg,' +
+    unprodColor + ' ' + pDeg + 'deg ' + (pDeg + uDeg) + 'deg,' +
+    otherColor + ' ' + (pDeg + uDeg) + 'deg ' + (pDeg + uDeg + oDeg) + 'deg)';
 }
 
 function hidePieTip() {
@@ -1227,8 +1234,19 @@ function applySettingsInputs(settings) {
   syncFocusBoostUi(settings);
   syncFocusBoostScheduleUi(settings);
   syncSessionSettingsUi(settings);
+  applyTheme(settings && settings.theme);
   applying = false;
   applyFocusBoostSchedule(settings).catch(() => {});
+}
+
+const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk'];
+
+function applyTheme(theme) {
+  const id = THEME_IDS.indexOf(theme) >= 0 ? theme : 'graphite';
+  document.documentElement.setAttribute('data-theme', id);
+  document.querySelectorAll('[data-theme-id]').forEach((btn) => {
+    btn.setAttribute('aria-pressed', btn.getAttribute('data-theme-id') === id ? 'true' : 'false');
+  });
 }
 
 function syncNotifUi(settings) {
@@ -1237,9 +1255,9 @@ function syncNotifUi(settings) {
   const on = settings && settings.notificationsEnabled !== false;
   btn.setAttribute('data-muted', on ? 'off' : 'on');
   btn.setAttribute('aria-pressed', on ? 'false' : 'true');
-  btn.title = on ? 'ALERTS ON' : 'DND';
+  btn.title = on ? 'Alerts on' : 'Muted';
   const lab = btn.querySelector('.notif-label');
-  if (lab) lab.textContent = on ? 'ALERTS ON' : 'DND';
+  if (lab) lab.textContent = on ? 'Alerts on' : 'Muted';
 }
 
 function syncPauseUi(settings) {
@@ -1631,19 +1649,10 @@ function renderDay(stats) {
 
 
 function formatRoundupDate(dateKey) {
-  if (!dateKey) return 'Today';
+  if (!dateKey) return formatPageDate(new Date());
   const parts = String(dateKey).split('-').map(Number);
-  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return 'Today';
-  const d = new Date(parts[0], parts[1] - 1, parts[2]);
-  try {
-    return d.toLocaleDateString(undefined, {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric'
-    });
-  } catch (_) {
-    return dateKey;
-  }
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return '';
+  return formatPageDate(new Date(parts[0], parts[1] - 1, parts[2]));
 }
 
 function roundupHeadlines(moodId, hit, thin) {
@@ -1690,8 +1699,13 @@ function renderRoundup(stats) {
   const hit = !!(focus && focus.hit);
   const goalPct = focus ? focus.goalPct : 80;
 
-  const dateEl = $('roundup-date');
-  if (dateEl) dateEl.textContent = formatRoundupDate(stats && stats.date);
+  applyPageDate('roundup-date', (() => {
+    const key = stats && stats.date;
+    if (!key) return new Date();
+    const parts = String(key).split('-').map(Number);
+    if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  })());
 
   const hero = $('roundup-hero');
   if (hero) hero.setAttribute('data-mood', mood.id || 'meh');
@@ -1814,11 +1828,6 @@ function renderStats(stats) {
   if (!stats) return;
   if (stats.settings) latestGoalSettings = Object.assign({}, latestGoalSettings, stats.settings);
   renderMood(stats);
-  renderPie(
-    liveDisplayCategories
-      ? Object.assign({}, stats, { byCategory: liveDisplayCategories })
-      : stats
-  );
   if (stats.week) renderWeek(stats);
   else if (historicalWeek) {
     historicalWeek = historicalWeek.map(day => day.date === stats.date ? { ...day, byCategory: stats.byCategory, topApps: stats.topApps } : day);
@@ -1826,7 +1835,8 @@ function renderStats(stats) {
   }
   renderDay(stats);
   renderRoundup(stats);
-  $('streak').textContent = fmt(stats.unproductiveStreak || 0);
+  applyPageDate('home-date', new Date());
+  $('streak').textContent = fmtDuration(stats.unproductiveStreak || 0);
   if (stats.settings) {
     $('thresh-label').textContent = fmt(stats.settings.thresholdSec || 600);
     applySettingsInputs(stats.settings);
@@ -1870,7 +1880,9 @@ $('app-list').addEventListener('click', async ev => {
     const stats = await api.correctActivityToday(name, category);
     historicalWeek = null;
     historyRequest++;
+    setLiveStats(stats, lastFocusedCache);
     renderStats(stats);
+    paintLivePie();
   } catch (err) { console.warn('App correction failed', err); }
   finally { btn.disabled = false; }
 });
@@ -2087,11 +2099,26 @@ function fillIgnoreEditor(payload) {
   updateTagsQuickStatus();
 }
 
+function fillKeywordEditors(keywords) {
+  const prod = (keywords && keywords.productive) || [];
+  const unprod = (keywords && keywords.unproductive) || [];
+  if ($('kw-prod-edit')) $('kw-prod-edit').value = prod.join('\n');
+  if ($('kw-unprod-edit')) $('kw-unprod-edit').value = unprod.join('\n');
+}
+
+async function loadBrowserKeywords() {
+  if (!api || !api.getBrowserKeywords) return;
+  try {
+    fillKeywordEditors(await api.getBrowserKeywords());
+  } catch (_) {}
+}
+
 async function loadRulesAndIgnore() {
   if (!api || tagsQuickSaving) return;
   try {
     const rules = await api.getRules();
     fillRulesEditors(rules);
+    if (rules && rules.browserKeywords) fillKeywordEditors(rules.browserKeywords);
   } catch (err) {
     if ($('rules-status')) $('rules-status').textContent = 'Failed to load rules';
   }
@@ -2101,6 +2128,7 @@ async function loadRulesAndIgnore() {
       fillIgnoreEditor(ign);
     }
   } catch (_) {}
+  await loadBrowserKeywords();
 }
 
 async function saveRulesFromEditors(statusId) {
@@ -2168,6 +2196,48 @@ if ($('ignore-save')) {
     } finally { tagsQuickSaving = false; }
   });
 }
+
+if ($('kw-save')) {
+  $('kw-save').addEventListener('click', async () => {
+    if (!api || !api.setBrowserKeywords) return;
+    const status = $('kw-status');
+    if (status) status.textContent = 'Saving…';
+    try {
+      const next = await api.setBrowserKeywords({
+        productive: linesToList(($('kw-prod-edit') && $('kw-prod-edit').value) || ''),
+        unproductive: linesToList(($('kw-unprod-edit') && $('kw-unprod-edit').value) || '')
+      });
+      fillKeywordEditors(next);
+      if (status) status.textContent = 'Saved — live now';
+    } catch (_) {
+      if (status) status.textContent = 'Save failed';
+    }
+  });
+}
+
+if ($('kw-reset')) {
+  $('kw-reset').addEventListener('click', async () => {
+    if (!api || !api.resetBrowserKeywords) return;
+    const status = $('kw-status');
+    if (status) status.textContent = 'Resetting…';
+    try {
+      fillKeywordEditors(await api.resetBrowserKeywords());
+      if (status) status.textContent = 'Defaults restored';
+    } catch (_) {
+      if (status) status.textContent = 'Reset failed';
+    }
+  });
+}
+
+document.querySelectorAll('[data-theme-id]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const theme = btn.getAttribute('data-theme-id');
+    applyTheme(theme);
+    if (api && api.updateSettings) {
+      try { await pushSettings({ theme }); } catch (_) {}
+    }
+  });
+});
 
 if ($('ignore-reset')) {
   $('ignore-reset').addEventListener('click', async () => {
@@ -2387,7 +2457,11 @@ if ($('data-import')) {
         invalidateHistoryViews();
         historyRequest++;
         const state = await api.getState();
-        if (state) renderStats(state.stats);
+        if (state) {
+          setLiveStats(state.stats, state.now);
+          renderStats(state.stats);
+          paintLivePie();
+        }
         await loadRulesAndIgnore();
         if (window.sydtrackProfilesUI) await window.sydtrackProfilesUI.reload(true, true);
         refreshSessionLog();
@@ -2406,7 +2480,9 @@ if ($('data-clear-today')) {
     const res = await api.clearToday();
     if (res && res.ok) {
       $('data-status').textContent = 'Today cleared';
+      setLiveStats(res.stats, null);
       renderStats(res.stats);
+      paintLivePie();
     }
   });
 }
@@ -2419,7 +2495,9 @@ if ($('data-clear-all')) {
     if (res && res.ok) {
       $('data-status').textContent = 'All history cleared';
       invalidateHistoryViews();
+      setLiveStats(res.stats, null);
       renderStats(res.stats);
+      paintLivePie();
     }
   });
 }
@@ -2432,7 +2510,9 @@ if ($('data-delete-all')) {
     if (res && res.ok) {
       $('data-status').textContent = 'All local data deleted';
       invalidateHistoryViews();
+      setLiveStats(res.stats, null);
       renderStats(res.stats);
+      paintLivePie();
       await loadRulesAndIgnore();
       if (window.sydtrackProfilesUI) await window.sydtrackProfilesUI.reload(true, true);
       refreshSessionLog();
@@ -2888,6 +2968,7 @@ async function boot() {
       renderLastFocused(state.lastFocused, state.now);
       setLiveStats(state.stats, state.now);
       renderStats(state.stats);
+      paintLivePie();
       if (typeof noteWellbeingPayload === 'function') noteWellbeingPayload(state);
       if (state.session) renderActiveSession(state.session);
       else if (api.getActiveSession) {
@@ -2903,6 +2984,7 @@ async function boot() {
     renderLastFocused(payload.lastFocused, payload.now);
     setLiveStats(payload.stats, payload.now);
     renderStats(payload.stats);
+    if (!liveTotalsClock.isTracking()) paintLivePie();
     if (typeof noteWellbeingPayload === 'function') noteWellbeingPayload(payload);
     if (payload.session !== undefined) {
       renderActiveSession(payload.session);
@@ -2917,14 +2999,14 @@ async function boot() {
 }
 
 boot();
-// Home pie-total ticks from this rAF + Date.now() interpolation, not from
-// tracker sample cadence. Multi-second skips here are renderer paint (follow-up:
-// lane 1 / #22 or a small dedicated PR), not main-process clock jumps.
-function runLiveTotalsTicker() {
-  renderLiveTotals();
-  window.requestAnimationFrame(runLiveTotalsTicker);
-}
-runLiveTotalsTicker();
+const liveTotalsTicker = createLiveTicker({
+  interval: 1000,
+  now: () => Date.now(),
+  schedule: (fn, ms) => window.setTimeout(fn, ms),
+  clear: (id) => window.clearTimeout(id),
+  onTick: () => renderLiveTotals()
+});
+liveTotalsTicker.start();
 
 const focusBoostBtn = $('focusboost-btn');
 if (focusBoostBtn) {
