@@ -207,7 +207,8 @@
         "chatgpt",
         "chat.openai",
         "claude.ai",
-        "copilot"
+        "copilot",
+        "grok bot"
       ],
       "unproductive": [
         "youtube",
