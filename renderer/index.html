@@ -69,7 +69,7 @@
       <!-- HOME: header + chart card + secondary cards -->
       <section id="view-home" class="view">
         <header class="page-head">
-          <div class="page-head-copy">
+          <div>
             <h1>Today</h1>
             <p class="page-date" id="home-date" hidden></p>
           </div>
@@ -85,7 +85,7 @@
             <div class="pie-wrap">
               <div id="pie-chart" class="pie-chart" role="img" aria-label="Time breakdown pie"></div>
               <div class="pie-center">
-                <div id="pie-total" class="pie-total">0 min</div>
+                <div id="pie-total" class="pie-total">0m</div>
                 <div class="pie-total-label">tracked</div>
               </div>
               <div id="pie-tip" class="pie-tip hidden" role="tooltip"></div>
@@ -118,8 +118,8 @@
               <div class="lf-kicker">Last focused</div>
               <div class="lf-row">
                 <div class="lf-main">
-                  <span id="lf-app" class="lf-app" data-full="">Waiting for an app…</span>
-                  <span id="lf-title" class="lf-title muted" data-full=""></span>
+                  <span id="lf-app" class="lf-app app-trunc" data-full="">Waiting for an app…</span>
+                  <span id="lf-title" class="lf-title muted app-trunc" data-full=""></span>
                 </div>
                 <div class="lf-actions">
                   <span id="lf-cat" class="chip other">—</span>

@@ -38,15 +38,6 @@ function fmtFriendly(s) {
   return sec === 1 ? '1 second' : sec + ' seconds';
 }
 
-/** Home donut readout: 43 min, 1h 12m — calmer than the abrupt 43m. */
-function fmtPieDuration(s) {
-  s = Math.max(0, Math.floor(+s || 0));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h >= 1) return m ? h + 'h ' + m + 'm' : h + 'h';
-  return m + ' min';
-}
-
 /** Compact goal display: 1h 12m, 2h, 45m */
 function fmtGoalShort(s) {
   s = Math.max(0, Math.floor(+s || 0));
@@ -822,7 +813,7 @@ function renderPie(stats) {
   $('prod-val').textContent = fmtDuration(prod);
   $('unprod-val').textContent = fmtDuration(unp);
   $('other-val').textContent = fmtDuration(oth);
-  if ($('pie-total')) $('pie-total').textContent = fmtPieDuration(total);
+  if ($('pie-total')) $('pie-total').textContent = fmtDuration(total);
 
   pieHoverState = {
     total,
