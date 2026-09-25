@@ -227,6 +227,10 @@ The strongest evidence is repeated voluntary use, not time spent exploring setti
 - Keep Electron sandboxing and context isolation enabled, Node integration disabled, navigation restricted, permissions denied by default, and IPC payloads narrowly validated.
 - External publication, tags, releases, and uploads require explicit user authorization.
 
+
+## A new idea
+Hotkey to quickswitch profiles that the user sets. So for example, pressing Alt+B to cycle. Ex. just now, i was watching youtube for my course, so if im in default productivity mode, i can do a quick Alt + B to cycle to Education? is this even feasible?
+
 ## Verification
 
 Run before release:
