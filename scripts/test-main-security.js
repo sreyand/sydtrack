@@ -139,7 +139,11 @@ require('../src/main.js');
 
 async function run() {
   assert(!switches.includes('no-sandbox'), 'main does not append no-sandbox');
-  assert(appliedAppId === APP_ID, 'main uses the stable packaged application identity');
+  if (process.platform === 'win32') {
+    assert(appliedAppId === APP_ID, 'Windows uses the stable packaged application identity');
+  } else {
+    assert(appliedAppId === null, 'non-Windows platforms skip the Windows application identity API');
+  }
   assert(handlers.size === channels.length, 'every known IPC channel is registered');
 
   readyResolve();
