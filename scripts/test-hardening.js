@@ -99,6 +99,19 @@ const badWeights = weightHits.filter((decl) => {
   return num && !allowedWeights.has(num[1]);
 });
 assert(badWeights.length === 0, 'renderer CSS font-weight values stay on 300/400/500/700/900' + (badWeights.length ? ' (off: ' + badWeights.join(', ') + ')' : ''));
+const radiusHits = rendererCss.match(/border-radius\s*:\s*[^;]+/gi) || [];
+const allowedRadius = /^(?:0|50%|inherit|var\(--radius-(?:sm|md)\))(?:\s+(?:0|var\(--radius-(?:sm|md)\)))*$/;
+const badRadii = radiusHits.filter((decl) => {
+  const value = String(decl).split(':')[1].replace(/\s+/g, ' ').trim();
+  return !allowedRadius.test(value);
+});
+assert(badRadii.length === 0, 'renderer radii stay on 6/10 tokens (or 0/50%/inherit)' + (badRadii.length ? ' (off: ' + badRadii.join(', ') + ')' : ''));
+assert(!/rgba\(\s*129\s*,\s*140\s*,\s*248/i.test(rendererCss), 'no hardcoded lavender accent bypass');
+assert(!/#818cf8|#c7d2fe|#949dff/i.test(rendererCss), 'no hardcoded lavender hex accent bypass');
+assert(!/rgba\(\s*52\s*,\s*211\s*,\s*153|#34d399|#86efac|#22d3ee/i.test(rendererCss), 'no neon green tracking chrome');
+const fontDir = path.join(__dirname, '..', 'renderer', 'fonts');
+const leftoverInter = fs.readdirSync(fontDir).filter((name) => /^inter/i.test(name));
+assert(leftoverInter.length === 0, 'unused Inter woff2 files are not bundled' + (leftoverInter.length ? ' (left: ' + leftoverInter.join(', ') + ')' : ''));
 
 assert(isAllowedNavigation(APP_PAGE_URL), 'app page URL is allowed');
 assert(!isAllowedNavigation('https://example.com'), 'https navigation is blocked');

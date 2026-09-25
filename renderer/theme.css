@@ -152,7 +152,7 @@
   --space-8: 48px;
   --radius-md: 10px;
   --radius-sm: 6px;
-  --shadow-overlay: 0 4px 12px rgba(20, 24, 28, 0.08);
+  --shadow-overlay: none;
   --font-sans: "Satoshi", "Segoe UI", Helvetica, Arial, sans-serif;
   --font-data: "Satoshi", "Segoe UI", Helvetica, Arial, sans-serif;
   --display-1: 500 40px/44px var(--font-data);
