@@ -38,28 +38,30 @@ Requirements:
 - Node.js 18 or newer
 - PowerShell available for the Windows foreground-window backend
 
-From the project directory:
+From the project directory in Command Prompt:
 
-```powershell
+```
 npm install
 npm start
 ```
 
+The first `npm install` downloads Electron. After that, day-to-day work is `git pull` then `npm start`. Run `npm install` again only when `package-lock.json` changed. Same Command Prompt steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 Optional demo mode:
 
-```powershell
+```
 npm run start:demo
 ```
 
 Run the smoke tests:
 
-```powershell
+```
 npm test
 ```
 
 Optional isolated Electron UI checks (no tracking or access to your activity data):
 
-```powershell
+```
 npm run test:ui
 ```
 

@@ -3,18 +3,12 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const { electronLaunchArgs } = require('./launch-args');
+const { resolveElectronBinary, MISSING_ELECTRON_MESSAGE } = require('./electron-bin');
 
 const root = path.join(__dirname, '..');
-const fs = require('fs');
-let bin;
-try {
-  bin = require('electron');
-} catch (err) {
-  bin = null;
-}
-if (!bin || !fs.existsSync(bin)) {
-  console.error('[sydtrack] Electron binary is missing. Newer npm blocks install scripts unless they are allowlisted.');
-  console.error('Run `npm ci` after package.json lists allowScripts for electron and active-win, then retry.');
+const bin = resolveElectronBinary();
+if (!bin) {
+  console.error(MISSING_ELECTRON_MESSAGE);
   process.exit(1);
 }
 const extra = process.argv.slice(2);

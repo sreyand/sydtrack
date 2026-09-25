@@ -9,8 +9,10 @@
     "start": "node scripts/start.js",
     "start:electron": "electron . --disable-gpu",
     "start:demo": "node scripts/start.js --demo",
+    "postinstall": "node scripts/ensure-install-scripts.js",
     "check": "node scripts/check-syntax.js",
-    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js && node scripts/test-storage.js",
+    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js && node scripts/test-storage.js && node scripts/test-start.js",
+    "test:start": "node scripts/test-start.js",
     "test:hardening": "node scripts/test-hardening.js",
     "generate:activity": "node scripts/generate-activity.js",
     "benchmark:storage": "node scripts/benchmark-storage.js",
@@ -31,9 +33,14 @@
     "electron": "^28.3.3",
     "electron-builder": "^24.13.3"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "allowScripts": {
     "electron": true,
-    "active-win": true
+    "electron@28.3.3": true,
+    "active-win": true,
+    "active-win@8.2.1": true
   },
   "build": {
     "appId": "com.gitpaperclip.sydtrack",
