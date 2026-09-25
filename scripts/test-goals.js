@@ -127,8 +127,8 @@ function run(assert) {
   assert(longStreak.current === 20 && longStreak.longest === 20, '20 qualified hit days are not capped at 14');
   assert(streaks.focusStreak(longHitDays.slice(-14), { goalPct: 80 }).current === 14, 'a 14-day fetch would hide a longer streak');
   const wellbeingSrc = fs.readFileSync(path.join(__dirname, '../renderer/wellbeing-ui.js'), 'utf8');
-  assert(/getHistorySummary\(STREAK_HISTORY_DAYS\)/.test(wellbeingSrc), 'renderer streak path fetches STREAK_HISTORY_DAYS');
-  assert(!/getHistorySummary\(14\)/.test(wellbeingSrc), 'renderer no longer hardcodes a 14-day streak fetch');
+  assert(/loadGoalHistory\(stats\.date, STREAK_HISTORY_DAYS\)/.test(wellbeingSrc), 'renderer streak path fetches STREAK_HISTORY_DAYS');
+  assert(/getHistorySummary\(count\)/.test(wellbeingSrc) && !/getHistorySummary\(14\)/.test(wellbeingSrc), 'renderer no longer hardcodes a 14-day streak fetch');
   const rendererSrc = fs.readFileSync(path.join(__dirname, '../renderer/renderer.js'), 'utf8');
   assert(!/productive target/i.test(rendererSrc) && !/productive goal/i.test(rendererSrc), 'roundup copy no longer says productive target');
   assert(/focus-share goal/.test(rendererSrc), 'roundup hit copy names the focus-share goal');
