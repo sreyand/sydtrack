@@ -45,16 +45,6 @@ contextBridge.exposeInMainWorld('sydtrack', {
   setBrowserKeywords: (keywords) => ipcRenderer.invoke('keywords:set', keywords),
   resetBrowserKeywords: () => ipcRenderer.invoke('keywords:reset'),
   updateSettings: (partial) => ipcRenderer.invoke('settings:update', partial),
-  wellbeing: (action, payload) => ipcRenderer.invoke('wellbeing', { action, payload }),
-  startBreak: () => ipcRenderer.invoke('wellbeing', { action: 'startBreak' }),
-  endBreak: () => ipcRenderer.invoke('wellbeing', { action: 'endBreak' }),
-  copySummary: (text) => ipcRenderer.invoke('wellbeing', { action: 'copySummary', payload: text }),
-  saveSummaryImage: (dataUrl) => ipcRenderer.invoke('wellbeing', { action: 'saveImage', payload: dataUrl }),
-  onWellbeingNotice: (cb) => {
-    const handler = (_event, payload) => cb(payload);
-    ipcRenderer.on('wellbeing:notice', handler);
-    return () => ipcRenderer.removeListener('wellbeing:notice', handler);
-  },
   exportData: (opts) => ipcRenderer.invoke('data:export', opts || {}),
   exportCsv: () => ipcRenderer.invoke('data:exportCsv'),
   importData: (opts) => ipcRenderer.invoke('data:import', opts || {}),

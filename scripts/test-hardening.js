@@ -87,7 +87,7 @@ assert(normalizeTheme(undefined) === 'midnight' && normalizeTheme(null) === 'mid
 assert(defaultSettings().theme === 'midnight', 'new installs default to Midnight');
 assert(/data-theme="midnight"/.test(html), 'renderer first paint uses Midnight');
 assert(!/Graphite is the default/i.test(html), 'Appearance copy does not call Graphite the default');
-assert(/Midnight is the default/.test(html), 'Appearance helper names Midnight as the default');
+assert(/data-theme-id="midnight"[^>]+aria-pressed="true"/.test(html), 'Appearance picker marks Midnight as selected by default');
 assert(html.includes('appearance-card'), 'Appearance picker is scoped for the theme chips');
 const homeCss = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
 assert(/\.home-layout \{[\s\S]{0,80}grid-template-columns:\s*64% 36%/.test(homeCss), 'Home uses the pre-#25 64/36 layout');
@@ -99,6 +99,7 @@ assert(/\.pie-total \{[\s\S]{0,180}font-size:\s*clamp\(22px, 12\.5cqi, 40px\)/.t
 assert(/#view-home \{[\s\S]{0,180}justify-content:\s*center/.test(homeCss), 'Home content is vertically balanced');
 assert(html.includes('class="page-title-row"') && /#view-home \.mood-pill \{[\s\S]{0,100}border:\s*0/.test(homeCss), 'Home mood is a quiet inline title status');
 assert(/@container \(max-width: 360px\)[\s\S]{0,120}\.last-focused \.lf-row[\s\S]{0,80}flex-direction:\s*column/.test(homeCss), 'Compact Last focused card gives its text a full row');
+assert(!/decompress|gamification|duck mascot|share-image/i.test(html), 'retired Decompress and gamification UI is absent');
 assert(/\.home-focus-actions \.profile-menu[\s\S]{0,80}top:\s*calc\(100% \+ 4px\)/.test(homeCss), 'Home focus-profile menu opens downward by default');
 assert(homeCss.includes('profile-menu-up'), 'Home focus-profile menu can flip only when there is room above');
 assert(!/>Actual</.test(html), 'Daily focus share card does not show an Actual label');
@@ -208,10 +209,8 @@ assert(validateIpcPayload('profiles:activate', 'default') === 'default', 'profil
 
 assert(validateIpcPayload('settings:update', { trackingPaused: true, thresholdSec: 600 }).thresholdSec === 600, 'settings:update accepts known keys');
 assert(validateIpcPayload('settings:update', { trackMusicWhileIdle: false, trackVideoWhileIdle: true }).trackVideoWhileIdle === true, 'settings:update accepts media-while-idle keys');
-assert(channels.includes('wellbeing'), 'wellbeing is a known channel');
-assert(validateIpcPayload('wellbeing', { action: 'startBreak' }).action === 'startBreak', 'wellbeing accepts startBreak');
-assert(validateIpcPayload('settings:update', { focusShareGoalPct: 80, gamificationEnabled: false, decompressBreaksPerDay: 0 }).decompressBreaksPerDay === 0, 'settings:update accepts goal keys');
-assert(validateIpcPayload('settings:update', { screenTimeLimitEnabled: false, duckEnabled: false, focusShareIncludeOther: false }).duckEnabled === false, 'settings:update accepts remaining wellbeing keys');
+assert(!channels.includes('wellbeing'), 'retired wellbeing IPC channel is absent');
+assert(validateIpcPayload('settings:update', { focusShareGoalPct: 80, focusShareIncludeOther: false }).focusShareGoalPct === 80, 'settings:update accepts active goal keys');
 throws(() => validateIpcPayload('settings:update', { onboardingComplete: true }), 'settings:update rejects orphan onboardingComplete');
 throws(() => validateIpcPayload('settings:update', { demoMode: true }), 'settings:update rejects unknown keys');
 throws(() => validateIpcPayload('settings:update', { thresholdSec: 0 }), 'settings:update rejects a 0 threshold');

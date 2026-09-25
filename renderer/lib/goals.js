@@ -161,10 +161,6 @@
       focusShareIncludeOther: false,
       screenTimeLimitEnabled: false,
       screenTimeLimitSec: DEFAULT_SCREEN_TIME_LIMIT_SEC,
-      decompressBreaksPerDay: 3,
-      decompressBreakMinutes: 10,
-      gamificationEnabled: false,
-      duckEnabled: false,
       goalsSchema: GOALS_SCHEMA
     };
   }
@@ -176,10 +172,10 @@
     next.focusShareIncludeOther = !!next.focusShareIncludeOther;
     next.screenTimeLimitEnabled = !!next.screenTimeLimitEnabled;
     next.screenTimeLimitSec = clampInt(next.screenTimeLimitSec, 15 * 60, 16 * 3600, defaults.screenTimeLimitSec);
-    next.decompressBreaksPerDay = clampInt(next.decompressBreaksPerDay, 0, 8, defaults.decompressBreaksPerDay);
-    next.decompressBreakMinutes = clampInt(next.decompressBreakMinutes, 1, 60, defaults.decompressBreakMinutes);
-    next.gamificationEnabled = !!next.gamificationEnabled;
-    next.duckEnabled = !!next.duckEnabled;
+    delete next.decompressBreaksPerDay;
+    delete next.decompressBreakMinutes;
+    delete next.gamificationEnabled;
+    delete next.duckEnabled;
     delete next.onboardingComplete;
     next.goalsSchema = GOALS_SCHEMA;
     const legacyGoal = Number(next.dailyGoalSec);
@@ -215,10 +211,6 @@
         next.legacyProductiveGoalSec = legacy;
       }
     }
-    if (!Object.prototype.hasOwnProperty.call(source, 'decompressBreaksPerDay')) next.decompressBreaksPerDay = 3;
-    if (!Object.prototype.hasOwnProperty.call(source, 'decompressBreakMinutes')) next.decompressBreakMinutes = 10;
-    if (!Object.prototype.hasOwnProperty.call(source, 'gamificationEnabled')) next.gamificationEnabled = false;
-    if (!Object.prototype.hasOwnProperty.call(source, 'duckEnabled')) next.duckEnabled = false;
     next.goalsSchema = GOALS_SCHEMA;
     return sanitizeGoalSettings(next);
   }

@@ -1,11 +1,8 @@
 'use strict';
 
-let wellbeingDecompress = null;
 let wellbeingStats = null;
 let wellbeingDate = '';
-let wellbeingStreak = 0;
 const WEEK_HISTORY_DAYS = 14;
-const STREAK_HISTORY_DAYS = 90;
 const historyCache = { date: '', at: 0, count: 0, days: null, pending: null, pendingDate: '', pendingCount: 0 };
 
 function wellbeingEl(id) {
@@ -25,8 +22,6 @@ function goalPrefs(settings) {
   return {
     goalPct: Number(src.focusShareGoalPct) || 80,
     includeOther: !!src.focusShareIncludeOther,
-    gamification: !!src.gamificationEnabled,
-    duck: !!src.duckEnabled,
     screenEnabled: !!src.screenTimeLimitEnabled,
     screenLimit: Number(src.screenTimeLimitSec) || 8 * 3600
   };
@@ -58,159 +53,17 @@ function syncWellbeingSettings(settings) {
   setNum('screen-limit-hours', Math.round(((Number(settings.screenTimeLimitSec) || 28800) / 3600) * 100) / 100);
   const field = wellbeingEl('screen-limit-field');
   if (field) field.classList.toggle('hidden', !settings.screenTimeLimitEnabled);
-  setNum('decompress-count', settings.decompressBreaksPerDay == null ? 3 : settings.decompressBreaksPerDay);
-  setNum('decompress-minutes', settings.decompressBreakMinutes == null ? 10 : settings.decompressBreakMinutes);
-  setCheck('gamification-toggle', settings.gamificationEnabled);
-  setCheck('duck-toggle', settings.duckEnabled);
-  const definition = wellbeingEl('focus-share-definition');
-  if (definition && typeof sydtrackGoals !== 'undefined') {
-    definition.textContent = sydtrackGoals.focusDefinition(!!settings.focusShareIncludeOther);
-  }
-  const hint = wellbeingEl('screen-limit-hint');
-  if (hint) {
-    let text = 'Optional and off by default. Active tracked time, not clock time.';
-    if (Number(settings.legacyProductiveGoalSec) > 0) {
-      const hours = Math.round((Number(settings.legacyProductiveGoalSec) / 3600) * 100) / 100;
-      text += ' Your earlier productivity goal was ' + hours + 'h of productive time. The limit starts from that number and stays off until you enable it.';
-    }
-    hint.textContent = text;
-  }
-  const share = wellbeingEl('share-actions');
-  if (share) share.classList.toggle('hidden', !settings.gamificationEnabled);
-  const duck = wellbeingEl('roundup-duck');
-  if (duck) duck.classList.toggle('hidden', !settings.duckEnabled);
 }
 
 function noteWellbeingPayload(payload) {
   if (!payload) return;
   if (payload.stats) wellbeingStats = payload.stats;
   if (payload.stats && payload.stats.date) wellbeingDate = payload.stats.date;
-  if (payload.decompress) {
-    wellbeingDecompress = payload.decompress;
-    renderDecompress(payload.decompress);
-  }
-}
-
-function patternText(pattern) {
-  if (!pattern || typeof sydtrackDecompress === 'undefined') return '';
-  if (pattern.reason === 'not-enough-pattern') {
-    return 'No repeated hourly dip yet. A suggestion needs 3 days with at least 5 minutes in neighboring hours.';
-  }
-  if (pattern.reason !== 'focus-dip' || pattern.hour == null) return '';
-  const when = sydtrackDecompress.formatHour(pattern.hour);
-  const detail = pattern.fromPercent + '% to ' + pattern.toPercent + '% across ' + pattern.samples + ' days';
-  return pattern.passed
-    ? 'Usual dip around ' + when + ' already started today (' + detail + ').'
-    : 'A break around ' + when + ' matches your days (' + detail + ').';
-}
-
-function fmtBreakCountdown(sec) {
-  const n = Math.max(0, Math.ceil(Number(sec) || 0));
-  const m = Math.floor(n / 60);
-  const s = n % 60;
-  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-}
-
-function fmtBreakClock(ts) {
-  const d = new Date(ts);
-  if (!Number.isFinite(d.getTime()) || d.getTime() <= 0) return '';
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
-function breakWhen(entry, today) {
-  const time = fmtBreakClock(entry && entry.startedAtMs);
-  const date = entry && entry.date ? String(entry.date) : '';
-  if (date && today && date !== today) return date + (time ? ' · ' + time : '');
-  return time || date || '';
-}
-
-function breakStatusLine(entry, active) {
-  if (!entry) return '';
-  if (entry.status === 'open') {
-    if (active && Number(active.remainingSec) >= 0) return fmtShort(active.remainingSec) + ' left';
-    return 'In progress';
-  }
-  if (entry.status === 'done') return 'Finished';
-  return 'Ended early';
-}
-
-function renderDecompressLog(state) {
-  const list = wellbeingEl('decompress-log');
-  const note = wellbeingEl('decompress-log-note');
-  if (!list || !state) return;
-  const today = state.date || wellbeingDate || '';
-  const rows = Array.isArray(state.sessions) ? state.sessions : [];
-  if (note) {
-    note.textContent = rows.some((row) => row && row.status === 'open')
-      ? 'Resume a break that is still open, or glance at the ones already taken.'
-      : 'Unfinished breaks stay here so you can pick them up again.';
-  }
-  if (!rows.length) {
-    if (state.breaksUsed > 0) {
-      list.innerHTML = '<div class="empty decompress-log-empty">' +
-        wellbeingEsc(String(state.breaksUsed)) +
-        ' break' + (state.breaksUsed === 1 ? '' : 's') +
-        ' started today. Earlier ones were not kept.</div>';
-      return;
-    }
-    list.innerHTML = '<div class="empty decompress-log-empty">No breaks yet. Start one whenever you want.</div>';
-    return;
-  }
-  list.innerHTML = rows.map((entry) => {
-    const open = entry.status === 'open';
-    const when = breakWhen(entry, today);
-    const mins = Math.max(1, Math.round((Number(entry.durationSec) || 0) / 60));
-    const resume = open
-      ? '<button type="button" class="btn decompress-resume" data-resume-break="' +
-        wellbeingEsc(entry.id) + '">Resume a break</button>'
-      : '';
-    return '<div class="decompress-log-item" data-status="' + wellbeingEsc(entry.status || '') + '">' +
-      '<div class="decompress-log-copy">' +
-      '<div class="decompress-log-title">' + wellbeingEsc(mins + ' min break') + '</div>' +
-      '<div class="decompress-log-sub muted tiny">' +
-      wellbeingEsc([when, breakStatusLine(entry, state.active)].filter(Boolean).join(' · ')) +
-      '</div></div>' + resume + '</div>';
-  }).join('');
-}
-
-function renderDecompress(state) {
-  const status = wellbeingEl('decompress-status');
-  const pattern = wellbeingEl('decompress-pattern');
-  const start = wellbeingEl('decompress-start');
-  const end = wellbeingEl('decompress-end');
-  const timer = wellbeingEl('decompress-timer');
-  const kicker = wellbeingEl('decompress-kicker');
-  const card = wellbeingEl('decompress-card');
-  if (!status || !state) return;
-  const minutes = Math.max(1, Math.round(Number(state.breakMinutes) || 10));
-  if (card) card.setAttribute('data-active', state.active ? 'on' : 'off');
-  if (kicker) kicker.textContent = state.active ? 'Continue last decompress' : 'This break';
-  if (timer) {
-    timer.textContent = state.active
-      ? fmtBreakCountdown(state.active.remainingSec)
-      : fmtBreakCountdown(minutes * 60);
-  }
-  if (state.active) {
-    status.textContent = 'Break in progress. ' + fmtShort(state.active.remainingSec) + ' left.';
-  } else if (!state.breaksPerDay) {
-    status.textContent = 'Suggestions are off. You can still start a ' + minutes + ' minute break.';
-  } else {
-    const tracked = Math.floor((Number(state.onTrackSec) || 0) / 60);
-    status.textContent = tracked + ' min on track toward 60. ' +
-      state.breaksUsed + ' of ' + state.breaksPerDay + ' suggested breaks started.';
-  }
-  if (pattern) pattern.textContent = patternText(state.pattern);
-  if (start) {
-    start.disabled = !!state.active;
-    start.classList.toggle('hidden', !!state.active);
-  }
-  if (end) end.classList.toggle('hidden', !state.active);
-  renderDecompressLog(state);
 }
 
 function historyDayCount(days) {
   const n = Math.floor(Number(days));
-  return Number.isFinite(n) ? Math.min(STREAK_HISTORY_DAYS, Math.max(1, n)) : WEEK_HISTORY_DAYS;
+  return Number.isFinite(n) ? Math.min(90, Math.max(1, n)) : WEEK_HISTORY_DAYS;
 }
 
 function loadGoalHistory(date, days) {
@@ -245,58 +98,6 @@ function loadGoalHistory(date, days) {
   return pending;
 }
 
-function applyStreakCopy(stats, days) {
-  if (!stats || typeof sydtrackGoals === 'undefined' || typeof sydtrackStreaks === 'undefined') return;
-  const prefs = goalPrefs(stats.settings);
-  const focus = sydtrackGoals.focusShareStatus(stats.byCategory, {
-    includeOther: prefs.includeOther,
-    goalPct: prefs.goalPct
-  });
-  const streak = sydtrackStreaks.focusStreak(days || [], {
-    includeOther: prefs.includeOther,
-    goalPct: prefs.goalPct
-  });
-  wellbeingStreak = streak.current;
-  const streakEl = wellbeingEl('roundup-streak');
-  if (streakEl) {
-    streakEl.classList.toggle('hidden', !prefs.gamification);
-    streakEl.textContent = prefs.gamification
-      ? 'Focus-share streak: ' + streak.current + ' day' + (streak.current === 1 ? '' : 's') +
-        '. Longest ' + streak.longest + '. Inactive days are skipped.'
-      : '';
-  }
-  const note = wellbeingEl('analytics-gamification-note');
-  if (note && typeof sydtrackGamification !== 'undefined') {
-    const text = sydtrackGamification.analyticsNote({ gamification: prefs.gamification, streak: streak.current });
-    note.textContent = text;
-    note.classList.toggle('hidden', !text);
-  }
-  if (prefs.gamification && typeof sydtrackGamification !== 'undefined') {
-    const copy = sydtrackGamification.roundupCopy({
-      thin: focus.thin,
-      noFocus: !focus.thin && focus.percent == null,
-      hit: focus.hit,
-      gamification: true,
-      goalPct: focus.goalPct,
-      includeOther: prefs.includeOther,
-      streak: streak.current
-    });
-    const headline = wellbeingEl('roundup-headline');
-    const sub = wellbeingEl('roundup-sub');
-    if (headline) headline.textContent = copy.headline;
-    if (sub) sub.textContent = copy.sub;
-  }
-  const duckLine = wellbeingEl('roundup-duck-line');
-  if (duckLine && prefs.duck && typeof sydtrackGamification !== 'undefined') {
-    duckLine.textContent = sydtrackGamification.duckLine({
-      thin: focus.thin,
-      noFocus: !focus.thin && focus.percent == null,
-      hit: focus.hit,
-      breakActive: !!(wellbeingDecompress && wellbeingDecompress.active)
-    });
-  }
-}
-
 function renderScreenGoal(stats) {
   const card = wellbeingEl('roundup-screen-card');
   if (!card || !stats || typeof sydtrackGoals === 'undefined') return;
@@ -327,15 +128,6 @@ function renderWellbeing(stats) {
   wellbeingStats = stats;
   if (stats.date) wellbeingDate = stats.date;
   renderScreenGoal(stats);
-  const duck = wellbeingEl('roundup-duck');
-  const prefs = goalPrefs(stats.settings);
-  if (duck) duck.classList.toggle('hidden', !prefs.duck);
-  const share = wellbeingEl('share-actions');
-  if (share) share.classList.toggle('hidden', !prefs.gamification);
-  loadGoalHistory(stats.date, STREAK_HISTORY_DAYS).then((days) => {
-    if (!wellbeingStats || wellbeingStats.date !== stats.date) return;
-    applyStreakCopy(stats, days);
-  });
 }
 
 function renderScoreList(target, days, windowSize) {
@@ -390,51 +182,6 @@ function renderMonthFocusScores(days) {
   renderScoreList(list, days || [], 7);
 }
 
-function summaryText(stats) {
-  const prefs = goalPrefs(stats && stats.settings);
-  const focus = sydtrackGoals.focusShareStatus(stats && stats.byCategory, {
-    includeOther: prefs.includeOther,
-    goalPct: prefs.goalPct
-  });
-  const screen = sydtrackGoals.screenTimeStatus(stats && stats.byCategory, {
-    enabled: prefs.screenEnabled,
-    limitSec: prefs.screenLimit
-  });
-  return sydtrackGamification.progressSummary({
-    date: stats && stats.date,
-    percent: focus.percent,
-    goalPct: focus.goalPct,
-    gamification: prefs.gamification,
-    streak: wellbeingStreak,
-    definition: sydtrackGoals.focusDefinition(prefs.includeOther),
-    screen: prefs.screenEnabled ? {
-      enabled: true,
-      trackedLabel: fmtShort(screen.trackedSec),
-      limitLabel: fmtShort(screen.limitSec)
-    } : null
-  });
-}
-
-function summaryImage(text) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 880;
-  canvas.height = 520;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#1c1b22';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#f4f1ea';
-  ctx.font = '28px sans-serif';
-  String(text || '').split('\n').forEach((line, index) => {
-    ctx.fillText(line.slice(0, 80), 48, 84 + index * 42);
-  });
-  return canvas.toDataURL('image/png');
-}
-
-function setShareStatus(text) {
-  const el = wellbeingEl('share-status');
-  if (el) el.textContent = text || '';
-}
-
 function bindWellbeing() {
   const on = (id, event, fn) => {
     const el = wellbeingEl(id);
@@ -448,55 +195,6 @@ function bindWellbeing() {
     if (!Number.isFinite(hours) || hours <= 0) return;
     pushSettings({ screenTimeLimitSec: Math.round(hours * 3600) });
   });
-  on('decompress-count', 'change', () => pushSettings({ decompressBreaksPerDay: Number(wellbeingEl('decompress-count').value) }));
-  on('decompress-minutes', 'change', () => pushSettings({ decompressBreakMinutes: Number(wellbeingEl('decompress-minutes').value) }));
-  on('gamification-toggle', 'change', () => pushSettings({ gamificationEnabled: !!wellbeingEl('gamification-toggle').checked }));
-  on('duck-toggle', 'change', () => pushSettings({ duckEnabled: !!wellbeingEl('duck-toggle').checked }));
-  on('decompress-start', 'click', async () => {
-    if (!window.sydtrack || !window.sydtrack.startBreak) return;
-    const result = await window.sydtrack.startBreak();
-    if (result && result.breakEnded && typeof showBanner === 'function') {
-      showBanner('The break is over.', 'Decompress');
-    }
-    if (result && result.publicState) {
-      wellbeingDecompress = result.publicState;
-      renderDecompress(result.publicState);
-    }
-  });
-  on('decompress-end', 'click', async () => {
-    if (!window.sydtrack || !window.sydtrack.endBreak) return;
-    const result = await window.sydtrack.endBreak();
-    if (result && result.publicState) {
-      wellbeingDecompress = result.publicState;
-      renderDecompress(result.publicState);
-    }
-  });
-  const log = wellbeingEl('decompress-log');
-  if (log) {
-    log.addEventListener('click', (ev) => {
-      const btn = ev.target.closest && ev.target.closest('[data-resume-break]');
-      if (!btn || !log.contains(btn)) return;
-      const card = wellbeingEl('decompress-card');
-      if (card && typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'nearest' });
-    });
-  }
-  on('share-copy', 'click', async () => {
-    if (!wellbeingStats || !window.sydtrack || !window.sydtrack.copySummary) return;
-    await window.sydtrack.copySummary(summaryText(wellbeingStats));
-    setShareStatus('Copied. Nothing was uploaded.');
-  });
-  on('share-image', 'click', async () => {
-    if (!wellbeingStats || !window.sydtrack || !window.sydtrack.saveSummaryImage) return;
-    const result = await window.sydtrack.saveSummaryImage(summaryImage(summaryText(wellbeingStats)));
-    if (result && result.canceled) setShareStatus('Save canceled.');
-    else if (result && result.ok) setShareStatus('Saved on this computer. Nothing was uploaded.');
-    else setShareStatus('Could not save the image.');
-  });
-  if (window.sydtrack && window.sydtrack.onWellbeingNotice) {
-    window.sydtrack.onWellbeingNotice((payload) => {
-      if (typeof showBanner === 'function') showBanner((payload && payload.body) || '', (payload && payload.kicker) || 'Decompress');
-    });
-  }
 }
 
 function drillSharePercent(total, active) {
@@ -515,5 +213,5 @@ function drillSharePercent(total, active) {
 
 if (typeof document !== 'undefined') bindWellbeing();
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS, renderDecompress };
+  module.exports = { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS };
 }

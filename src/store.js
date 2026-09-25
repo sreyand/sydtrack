@@ -278,6 +278,7 @@ function applyRuntimeEnvironment(settings) {
 
 function createStore(dataDir, { onRecovery = () => {} } = {}) {
   fs.mkdirSync(dataDir, { recursive: true });
+  removeRetiredFeatureFiles(dataDir);
   const historyDir = path.join(dataDir, 'history');
   fs.mkdirSync(historyDir, { recursive: true });
   const rollupDir = path.join(dataDir, 'rollups');
@@ -305,9 +306,11 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
   if (needsGoalMigration && savedSettings) backupSettingsFile(settingsPath);
   settings = applyGoalMigration(settings, savedSettings);
   const dropOnboarding = !!(savedSettings && Object.prototype.hasOwnProperty.call(savedSettings, 'onboardingComplete'));
+  const dropRetiredSettings = !!(savedSettings && ['decompressBreaksPerDay', 'decompressBreakMinutes', 'gamificationEnabled', 'duckEnabled']
+    .some((key) => Object.prototype.hasOwnProperty.call(savedSettings, key)));
   delete settings.onboardingComplete;
   if (settingsRecovered) settings.trackingPaused = true;
-  if (settingsRecovered || needsGoalMigration || dropOnboarding) persistSettings();
+  if (settingsRecovered || needsGoalMigration || dropOnboarding || dropRetiredSettings) persistSettings();
 
   function archiveDay(day) {
     summaryCache.clear();
@@ -741,6 +744,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     if (process.env.SYDTRACK_THRESHOLD_SEC && partial.thresholdSec == null) {
       settings.thresholdSec = Number(process.env.SYDTRACK_THRESHOLD_SEC);
     }
+    settings = migrateGoalSettings(settings, { existingInstall: true });
     persistSettings();
     return { ...settings };
   }
@@ -759,6 +763,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     } else {
       settings = Object.assign({}, settings, raw);
     }
+    settings = migrateGoalSettings(settings, { existingInstall: true });
     persistSettings();
     return { ...settings };
   }
@@ -781,7 +786,6 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
   function clearToday() {
     state = emptyDay(todayKey());
     persistStats();
-    resetDecompressFile(dataDir);
     return state;
   }
 
@@ -809,7 +813,6 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     if (failed.length) console.error('[store] clear history failed', failed.map((item) => item.path).join(', '));
     state = emptyDay(todayKey());
     persistStats();
-    resetDecompressFile(dataDir);
     return { ok: failed.length === 0, failed, state };
   }
 
@@ -953,7 +956,7 @@ function hourlyHistoryDays(count, { today, loadDay } = {}) {
   return days;
 }
 
-function resetDecompressFile(dir) {
+function removeRetiredFeatureFiles(dir) {
   const filePath = path.join(dir, 'decompress.json');
   try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
   return filePath;
@@ -999,5 +1002,5 @@ module.exports = {
   backupSettingsFile,
   pruneSettingsBackups,
   hourlyHistoryDays,
-  resetDecompressFile
+  removeRetiredFeatureFiles
 };
