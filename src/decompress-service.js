@@ -3,8 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 const { writeJson } = require('./json-file');
-const goals = require('./goals');
-const decompress = require('./decompress');
+const goals = require('../renderer/lib/goals');
+const decompress = require('../renderer/lib/decompress');
 
 function createDecompressService({ dataDir, getSettings, getHourlyHistory, now = () => Date.now() }) {
   const filePath = path.join(dataDir, 'decompress.json');

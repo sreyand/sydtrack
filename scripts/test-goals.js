@@ -3,11 +3,11 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const goals = require('../src/goals');
-const streaks = require('../src/streaks');
-const decompress = require('../src/decompress');
-const insights = require('../src/insights');
-const gamification = require('../src/gamification');
+const goals = require('../renderer/lib/goals');
+const streaks = require('../renderer/lib/streaks');
+const decompress = require('../renderer/lib/decompress');
+const insights = require('../renderer/lib/insights');
+const gamification = require('../renderer/lib/gamification');
 const { createDecompressService } = require('../src/decompress-service');
 const { createStore, needsGoalSettingsMigration, backupSettingsFile } = require('../src/store');
 const { importBackup } = require('../src/backup');
@@ -257,6 +257,20 @@ function run(assert) {
     screen: { enabled: true, trackedLabel: '3h', limitLabel: '8h' }
   });
   assert(summary.includes('Not uploaded') && summary.includes('80%') && summary.includes('2 days'), 'share text is a local summary');
+
+  const html = fs.readFileSync(path.join(__dirname, '../renderer/index.html'), 'utf8');
+  assert(
+    /src="lib\/goals\.js"/.test(html) &&
+      /src="lib\/streaks\.js"/.test(html) &&
+      /src="lib\/decompress\.js"/.test(html) &&
+      /src="lib\/insights\.js"/.test(html) &&
+      /src="lib\/gamification\.js"/.test(html),
+    'renderer loads wellbeing modules from renderer/lib'
+  );
+  assert(
+    !/src="\.\.\/src\/(goals|streaks|decompress|insights|gamification)\.js"/.test(html),
+    'renderer does not load wellbeing modules from src/'
+  );
 
   assert(needsGoalSettingsMigration(null) && needsGoalSettingsMigration({ dailyGoalSec: 5400 }), 'missing goalsSchema still needs migration');
   assert(!needsGoalSettingsMigration({ goalsSchema: 2 }), 'schema 2 settings skip goal migration');

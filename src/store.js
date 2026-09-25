@@ -7,7 +7,7 @@ const { buildRollup, writeRollup, readRollup, listRollupDates, dayFromRollup, re
 const { purgeExpiredRaw, clearJournal } = require('./retention');
 const { migrateStorage } = require('./storage-schema');
 const { canonicalAppName } = require('./classifier');
-const { migrateGoalSettings } = require('./goals');
+const { migrateGoalSettings } = require('../renderer/lib/goals');
 
 function todayKey(at) {
   const d = at === undefined ? new Date() : new Date(at);
