@@ -1877,7 +1877,6 @@ function renderAppList(stats) {
   const apps = (stats && (stats.activityRows || stats.topApps)) || [];
   if (!apps.length) {
     list.innerHTML = '<li class="empty">No time logged yet</li>';
-    if (typeof renderAppDrilldown === 'function') renderAppDrilldown(stats);
     return;
   }
   list.innerHTML = apps.map(a => {
@@ -1894,12 +1893,10 @@ function renderAppList(stats) {
         '<button type="button" class="btn-mini ' + cls + (category === value ? ' selected' : '') + '" aria-pressed="' + (category === value) +
         '" data-action="' + value + '" title="' + (value === 'ignored' && category === 'ignored' ? 'Unignore for today' : 'Mark this activity ' + value + ' for today') + '">' + label + '</button>').join('') +
       '</span>' +
-      '<button type="button" class="app-hours-btn" data-drill="' + esc(a.name) + '">Hours</button>' +
       '<span class="' + chip.className + '">' + chip.label + '</span>' +
       '<span class="secs">' + fmt(a.seconds) + '</span>' +
       '</div></li>';
   }).join('');
-  if (typeof renderAppDrilldown === 'function') renderAppDrilldown(stats);
 }
 
 $('app-list').addEventListener('click', async ev => {

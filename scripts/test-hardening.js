@@ -103,6 +103,9 @@ assert(!/>Actual</.test(html), 'Daily focus share card does not show an Actual l
 assert(!/>Other excluded</.test(html) && !html.includes('id="roundup-goal-scope"'), 'Daily focus share card does not show Other excluded');
 assert(/id="roundup-goal-card"[^>]*class="[^"]*has-tip/.test(html) || /class="[^"]*has-tip[^"]*"[^>]*id="roundup-goal-card"/.test(html), 'Daily focus share card uses the existing hover tip pattern');
 assert(/data-full="[^"]*Other is excluded/.test(html), 'Daily focus share tip explains the default Other-excluded metric');
+assert(!html.includes('id="app-drill"') && !html.includes('app-hours-btn'), 'app hour-breakdown detail is not in the UI');
+const wellbeingUi = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'wellbeing-ui.js'), 'utf8');
+assert(!wellbeingUi.includes('of active tracked time today'), 'app hour-breakdown copy is not rendered');
 const rendererJs = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'renderer.js'), 'utf8');
 assert(rendererJs.includes('fmtPieDuration(total)'), 'Home donut uses the natural duration format');
 assert(/return m \+ ' min'/.test(rendererJs), 'sub-hour donut time reads as min, not abrupt m');
