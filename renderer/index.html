@@ -158,11 +158,18 @@
             <span class="lf-kicker">Daily focus share</span>
           </div>
           <div class="roundup-goal-row">
-            <div id="roundup-goal-value" class="roundup-goal-value">— / 80%</div>
-            <div id="roundup-goal-pct" class="roundup-goal-pct muted">Other excluded</div>
+            <div class="roundup-goal-actual">
+              <div id="roundup-goal-value" class="roundup-goal-value">—</div>
+              <div class="roundup-goal-caption muted">Actual</div>
+            </div>
+            <div class="roundup-goal-target">
+              <div id="roundup-goal-pct" class="roundup-goal-pct">Goal 80%</div>
+              <div id="roundup-goal-scope" class="roundup-goal-caption muted">Other excluded</div>
+            </div>
           </div>
-          <div class="roundup-goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="roundup-goal-bar">
+          <div class="roundup-goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Focus share versus goal" id="roundup-goal-bar">
             <div id="roundup-goal-fill" class="roundup-goal-fill"></div>
+            <div id="roundup-goal-mark" class="roundup-goal-mark" hidden></div>
           </div>
         </article>
 
@@ -195,13 +202,15 @@
         </article>
 
         <article class="card" id="decompress-card">
-          <div class="lf-kicker">Decompress</div>
+          <div class="decompress-head">
+            <span class="lf-kicker">Decompress</span>
+            <div class="decompress-actions">
+              <button type="button" id="decompress-start" class="btn primary">Start break</button>
+              <button type="button" id="decompress-end" class="btn hidden">End break</button>
+            </div>
+          </div>
           <p id="decompress-status" class="hint">A break is available any time. Suggestions wait until an hour on track.</p>
           <p id="decompress-pattern" class="hint"></p>
-          <div class="rules-actions">
-            <button type="button" id="decompress-start" class="btn primary">Start break</button>
-            <button type="button" id="decompress-end" class="btn hidden">End break</button>
-          </div>
         </article>
 
         <div class="rules-actions hidden" id="share-actions">
@@ -221,7 +230,7 @@
             <div id="ru-distract" class="roundup-chip-value app-trunc" data-full="">—</div>
             <div id="ru-distract-sub" class="roundup-chip-sub muted tiny app-trunc">No unproductive apps yet</div>
           </article>
-<article class="card roundup-chip">
+          <article class="card roundup-chip">
             <div class="lf-kicker app-trunc" data-full="Peak hour" data-tip-label="Label">Peak hour</div>
             <div id="ru-peak" class="roundup-chip-value app-trunc">—</div>
             <div id="ru-peak-sub" class="roundup-chip-sub muted tiny app-trunc">Most productive hour</div>
@@ -251,12 +260,10 @@
         </header>
 
         <div class="analytics-toolbar" role="tablist" aria-label="Analytics views">
-          <div class="segment-control" role="group" aria-label="Time range">
+          <div class="segment-control" role="group" aria-label="Analytics views">
             <button type="button" class="segment-btn active" data-segment="day" role="tab" aria-selected="true">Day</button>
             <button type="button" class="segment-btn" data-segment="week" role="tab" aria-selected="false">Week</button>
             <button type="button" class="segment-btn" data-segment="month" role="tab" aria-selected="false">Month</button>
-          </div>
-          <div class="segment-control segment-control-solo" role="group" aria-label="Apps">
             <button type="button" class="segment-btn" data-segment="apps" role="tab" aria-selected="false">Apps</button>
           </div>
         </div>
