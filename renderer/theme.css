@@ -44,8 +44,9 @@
   --color-border: #E2E4E8;
   --color-border-strong: #C9CCD2;
   --color-ink: #14181C;
-  --color-ink-muted: #5B6169;
-  --color-ink-faint: #9297A0;
+  /* Muted/faint bumped for AA-ish body/caption contrast on light canvases. */
+  --color-ink-muted: #454A52;
+  --color-ink-faint: #7A8088;
   --color-accent: #2A3F8F;
   --color-accent-tint: #EBEEF9;
   --color-accent-hover: #24357A;
@@ -65,8 +66,8 @@
   --color-border: #EDE1DA;
   --color-border-strong: #D9C7BC;
   --color-ink: #2B2320;
-  --color-ink-muted: #74655D;
-  --color-ink-faint: #A89184;
+  --color-ink-muted: #5A4E47;
+  --color-ink-faint: #8E7A6E;
   --color-accent: #C2542F;
   --color-accent-tint: #FBEAE2;
   --color-accent-hover: #A6461F;
@@ -86,8 +87,8 @@
   --color-border: #262C36;
   --color-border-strong: #343B47;
   --color-ink: #E7E9EC;
-  --color-ink-muted: #9BA1AC;
-  --color-ink-faint: #656B76;
+  --color-ink-muted: #B6BBC5;
+  --color-ink-faint: #868C97;
   --color-accent: #6B8AFA;
   --color-accent-tint: #1B2340;
   --color-accent-hover: #85A0FF;
@@ -107,8 +108,8 @@
   --color-border: #E3E6F2;
   --color-border-strong: #CBD0E6;
   --color-ink: #1B1E2E;
-  --color-ink-muted: #5E6480;
-  --color-ink-faint: #9BA0C0;
+  --color-ink-muted: #484E68;
+  --color-ink-faint: #6F7594;
   --color-accent: #5B5FEF;
   --color-accent-tint: #ECEDFC;
   --color-accent-hover: #4A4ED9;
@@ -128,8 +129,8 @@
   --color-border: #454450;
   --color-border-strong: #54525F;
   --color-ink: #EDEBF0;
-  --color-ink-muted: #A9A6B4;
-  --color-ink-faint: #726F7D;
+  --color-ink-muted: #C2BFC9;
+  --color-ink-faint: #8E8B98;
   --color-accent: #C98A4B;
   --color-accent-tint: #3D3226;
   --color-accent-hover: #DE9C5C;
@@ -162,6 +163,7 @@
   --body-data: 400 14px/20px var(--font-data);
   --label: 500 13px/18px var(--font-sans);
   --caption: 500 12px/16px var(--font-sans);
+  /* Satoshi 300 is reserved for faint secondary copy only (font-credit, meta). */
 
   --bg: var(--color-canvas);
   --bg-elev: var(--color-surface);

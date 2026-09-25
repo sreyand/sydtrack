@@ -109,6 +109,11 @@ assert(badRadii.length === 0, 'renderer radii stay on 6/10 tokens (or 0/50%/inhe
 assert(!/rgba\(\s*129\s*,\s*140\s*,\s*248/i.test(rendererCss), 'no hardcoded lavender accent bypass');
 assert(!/#818cf8|#c7d2fe|#949dff/i.test(rendererCss), 'no hardcoded lavender hex accent bypass');
 assert(!/rgba\(\s*52\s*,\s*211\s*,\s*153|#34d399|#86efac|#22d3ee/i.test(rendererCss), 'no neon green tracking chrome');
+assert(!/\.btn\.danger[^{]*\{[^}]*#fecdd3/i.test(rendererCss), 'danger buttons do not use light-pink label color');
+assert(!/\.privacy-warning p[^{]*\{[^}]*#fef3c7/i.test(rendererCss), 'privacy warning body is not yellow-on-yellow');
+assert(!/\.danger-zone[^{]*\{[^}]*dashed/i.test(rendererCss), 'danger zone uses a flat 1px divider, not a dashed leftover');
+assert(/\.btn\.danger[^{]*\{[^}]*var\(--color-data-unproductive\)/i.test(rendererCss), 'danger fill uses the unproductive token');
+assert(/font-weight:\s*300/.test(rendererCss), 'Satoshi 300 remains on the faint-secondary allowlist');
 const fontDir = path.join(__dirname, '..', 'renderer', 'fonts');
 const leftoverInter = fs.readdirSync(fontDir).filter((name) => /^inter/i.test(name));
 assert(leftoverInter.length === 0, 'unused Inter woff2 files are not bundled' + (leftoverInter.length ? ' (left: ' + leftoverInter.join(', ') + ')' : ''));
