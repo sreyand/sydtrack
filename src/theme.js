@@ -1,7 +1,7 @@
 'use strict';
 
 const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk'];
-const DEFAULT_THEME = 'graphite';
+const DEFAULT_THEME = 'midnight';
 
 const THEMES = {
   graphite: {

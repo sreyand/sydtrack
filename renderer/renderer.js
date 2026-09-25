@@ -1242,7 +1242,7 @@ function applySettingsInputs(settings) {
 const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk'];
 
 function applyTheme(theme) {
-  const id = THEME_IDS.indexOf(theme) >= 0 ? theme : 'graphite';
+  const id = THEME_IDS.indexOf(theme) >= 0 ? theme : 'midnight';
   document.documentElement.setAttribute('data-theme', id);
   document.querySelectorAll('[data-theme-id]').forEach((btn) => {
     btn.setAttribute('aria-pressed', btn.getAttribute('data-theme-id') === id ? 'true' : 'false');

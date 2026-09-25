@@ -3189,3 +3189,168 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
 @media (max-width: 900px) {
   .rail { width: 100%; }
 }
+
+/* Soft: keep the sidebar active marker inside the nav pill. */
+.rail .nav-btn.active::before {
+  top: var(--space-2);
+  bottom: var(--space-2);
+}
+
+/* —— Home hierarchy (lane A, scoped). Do not restyle other views. —— */
+#view-home {
+  min-height: 0;
+  max-height: none;
+  justify-content: flex-start;
+  gap: var(--space-4);
+}
+#view-home .page-head {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: 0;
+}
+#view-home .page-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+#view-home .page-head > .mood-pill {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  flex-shrink: 0;
+}
+#view-home .mood-pill .mood-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  flex-shrink: 0;
+}
+#view-home .mood-pill .mood-label {
+  display: inline;
+  white-space: nowrap;
+}
+#view-home .home-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 18rem);
+  align-items: stretch;
+  gap: var(--space-4);
+  min-width: 0;
+}
+#view-home .home-focus.card,
+#view-home .chart-card.home-focus {
+  padding: var(--space-4);
+  gap: var(--space-3);
+  justify-content: flex-start;
+}
+#view-home .pie-wrap {
+  width: clamp(160px, min(28vh, 24vmin), 280px);
+  height: clamp(160px, min(28vh, 24vmin), 280px);
+  margin: 0 auto;
+}
+#view-home .pie-legend {
+  margin: 0;
+}
+#view-home .week-bars {
+  margin: var(--space-3) 0 0;
+  height: clamp(56px, 8vmin, 80px);
+}
+#view-home .home-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+}
+#view-home .home-side .home-focus-actions {
+  gap: var(--space-2);
+}
+#view-home .home-side .focusboost-btn,
+#view-home .home-side .profile-trigger {
+  padding: var(--space-2) var(--space-3);
+}
+#view-home .home-side .last-focused {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  min-width: 0;
+}
+#view-home .last-focused .lf-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+#view-home .last-focused .lf-main {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+#view-home .last-focused .lf-app,
+#view-home .last-focused .lf-app.app-trunc {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+#view-home .last-focused .lf-title,
+#view-home .last-focused .lf-title.app-trunc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: unset;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+#view-home .last-focused .lf-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+#view-settings .appearance-card > h3 {
+  margin-bottom: var(--space-2);
+}
+#view-settings .appearance-card > .hint {
+  margin: 0 0 var(--space-3);
+  max-width: 42rem;
+}
+#view-settings .appearance-card .theme-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+#view-settings .appearance-card .theme-swatch {
+  padding: var(--space-1) var(--space-3);
+  line-height: 1.2;
+}
+
+@media (max-width: 900px) {
+  #view-home .home-layout {
+    grid-template-columns: 1fr;
+  }
+  #view-home .mood-pill .mood-label {
+    white-space: normal;
+  }
+  #view-home .home-side .last-focused {
+    flex: 0 0 auto;
+  }
+}

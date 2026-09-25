@@ -17,6 +17,8 @@ const {
   windowBackgroundColor
 } = require('../src/window-security');
 const { electronLaunchArgs } = require('./launch-args');
+const { DEFAULT_THEME, normalizeTheme } = require('../src/theme');
+const { defaultSettings } = require('../src/store');
 
 let failed = 0;
 function assert(cond, msg) {
@@ -80,6 +82,16 @@ assert(/default-src 'self'/.test(html), 'renderer CSP defaults to self');
 assert(/font-src 'self'/.test(html), 'renderer CSP keeps fonts on self');
 assert(!/<(?:script|link|img|iframe)\b[^>]+\b(?:src|href)=['"]https?:/i.test(html), 'renderer HTML has no remote script/style/img URLs');
 assert(!/fonts\.googleapis|fontshare\.com|cdn\./i.test(html), 'renderer HTML has no font CDN');
+assert(DEFAULT_THEME === 'midnight', 'unset theme preference is Midnight');
+assert(normalizeTheme(undefined) === 'midnight' && normalizeTheme(null) === 'midnight', 'missing theme normalizes to Midnight');
+assert(defaultSettings().theme === 'midnight', 'new installs default to Midnight');
+assert(/data-theme="midnight"/.test(html), 'renderer first paint uses Midnight');
+assert(!/Graphite is the default/i.test(html), 'Appearance copy does not call Graphite the default');
+assert(/Midnight is the default/.test(html), 'Appearance helper names Midnight as the default');
+assert(html.includes('appearance-card'), 'Appearance picker is scoped for the theme chips');
+const homeCss = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
+assert(homeCss.includes('#view-home .page-head > .mood-pill'), 'Home status pill is scoped so the accent dot stays in the chip');
+assert(homeCss.includes('#view-home .last-focused .lf-app'), 'Home last-focused app name is scoped to stay readable');
 assert(html.includes('theme.css'), 'renderer loads the local theme sheet');
 assert(html.includes('settings-block-title'), 'Goals settings-block-title is preserved');
 const satoshiDir = path.join(__dirname, '..', 'renderer', 'fonts', 'satoshi');

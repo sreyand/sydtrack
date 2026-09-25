@@ -252,7 +252,7 @@ function defaultSettings() {
     sessionHistoryEnabled: true,
     sessionCustomMin: 45,
     notificationsEnabled: true,
-    theme: 'graphite'
+    theme: 'midnight'
   };
 }
 
