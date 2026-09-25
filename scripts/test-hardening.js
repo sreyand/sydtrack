@@ -89,7 +89,16 @@ for (const cut of ['Light', 'Regular', 'Medium', 'Bold', 'Black']) {
 assert(fs.existsSync(path.join(satoshiDir, 'FFL.txt')), 'Satoshi FFL attribution is bundled');
 const themeCss = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'theme.css'), 'utf8');
 assert(!/IBM Plex|Inter/.test(themeCss), 'theme sheet does not load IBM Plex or Inter');
-assert(!/font-weight:\s*600/.test(themeCss + html), 'theme/HTML never use Satoshi-missing 600');
+const rendererCss = ['theme.css', 'styles.css', 'wellbeing.css'].map((name) =>
+  fs.readFileSync(path.join(__dirname, '..', 'renderer', name), 'utf8')
+).join('\n');
+const weightHits = rendererCss.match(/font-weight\s*:\s*[^;]+/gi) || [];
+const allowedWeights = new Set(['300', '400', '500', '700', '900']);
+const badWeights = weightHits.filter((decl) => {
+  const num = String(decl).match(/(\d+)/);
+  return num && !allowedWeights.has(num[1]);
+});
+assert(badWeights.length === 0, 'renderer CSS font-weight values stay on 300/400/500/700/900' + (badWeights.length ? ' (off: ' + badWeights.join(', ') + ')' : ''));
 
 assert(isAllowedNavigation(APP_PAGE_URL), 'app page URL is allowed');
 assert(!isAllowedNavigation('https://example.com'), 'https navigation is blocked');
