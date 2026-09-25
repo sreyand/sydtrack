@@ -1,6 +1,5 @@
-<div align="center">
+<div align="left">
   <img src="./renderer/assets/logo-mark.png" width="150" alt="SydTrack logo">
-  <h1>SydTrack</h1>
   <p><strong>See where your day actually went.</strong></p>
   <p>A private Windows productivity tracker with live activity, focus profiles, sessions, goals, and analytics—without an account, subscription, or cloud dashboard.</p>
 
