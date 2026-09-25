@@ -104,24 +104,108 @@ function patternText(pattern) {
     : 'A break around ' + when + ' matches your days (' + detail + ').';
 }
 
+function fmtBreakCountdown(sec) {
+  const n = Math.max(0, Math.ceil(Number(sec) || 0));
+  const m = Math.floor(n / 60);
+  const s = n % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function fmtBreakClock(ts) {
+  const d = new Date(ts);
+  if (!Number.isFinite(d.getTime()) || d.getTime() <= 0) return '';
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function breakWhen(entry, today) {
+  const time = fmtBreakClock(entry && entry.startedAtMs);
+  const date = entry && entry.date ? String(entry.date) : '';
+  if (date && today && date !== today) return date + (time ? ' · ' + time : '');
+  return time || date || '';
+}
+
+function breakStatusLine(entry, active) {
+  if (!entry) return '';
+  if (entry.status === 'open') {
+    if (active && Number(active.remainingSec) >= 0) return fmtShort(active.remainingSec) + ' left';
+    return 'In progress';
+  }
+  if (entry.status === 'done') return 'Finished';
+  return 'Ended early';
+}
+
+function renderDecompressLog(state) {
+  const list = wellbeingEl('decompress-log');
+  const note = wellbeingEl('decompress-log-note');
+  if (!list || !state) return;
+  const today = state.date || wellbeingDate || '';
+  const rows = Array.isArray(state.sessions) ? state.sessions : [];
+  if (note) {
+    note.textContent = rows.some((row) => row && row.status === 'open')
+      ? 'Resume a break that is still open, or glance at the ones already taken.'
+      : 'Unfinished breaks stay here so you can pick them up again.';
+  }
+  if (!rows.length) {
+    if (state.breaksUsed > 0) {
+      list.innerHTML = '<div class="empty decompress-log-empty">' +
+        wellbeingEsc(String(state.breaksUsed)) +
+        ' break' + (state.breaksUsed === 1 ? '' : 's') +
+        ' started today. Earlier ones were not kept.</div>';
+      return;
+    }
+    list.innerHTML = '<div class="empty decompress-log-empty">No breaks yet. Start one whenever you want.</div>';
+    return;
+  }
+  list.innerHTML = rows.map((entry) => {
+    const open = entry.status === 'open';
+    const when = breakWhen(entry, today);
+    const mins = Math.max(1, Math.round((Number(entry.durationSec) || 0) / 60));
+    const resume = open
+      ? '<button type="button" class="btn decompress-resume" data-resume-break="' +
+        wellbeingEsc(entry.id) + '">Resume a break</button>'
+      : '';
+    return '<div class="decompress-log-item" data-status="' + wellbeingEsc(entry.status || '') + '">' +
+      '<div class="decompress-log-copy">' +
+      '<div class="decompress-log-title">' + wellbeingEsc(mins + ' min break') + '</div>' +
+      '<div class="decompress-log-sub muted tiny">' +
+      wellbeingEsc([when, breakStatusLine(entry, state.active)].filter(Boolean).join(' · ')) +
+      '</div></div>' + resume + '</div>';
+  }).join('');
+}
+
 function renderDecompress(state) {
   const status = wellbeingEl('decompress-status');
   const pattern = wellbeingEl('decompress-pattern');
   const start = wellbeingEl('decompress-start');
   const end = wellbeingEl('decompress-end');
+  const timer = wellbeingEl('decompress-timer');
+  const kicker = wellbeingEl('decompress-kicker');
+  const card = wellbeingEl('decompress-card');
   if (!status || !state) return;
+  const minutes = Math.max(1, Math.round(Number(state.breakMinutes) || 10));
+  if (card) card.setAttribute('data-active', state.active ? 'on' : 'off');
+  if (kicker) kicker.textContent = state.active ? 'Continue last decompress' : 'This break';
+  if (timer) {
+    timer.textContent = state.active
+      ? fmtBreakCountdown(state.active.remainingSec)
+      : fmtBreakCountdown(minutes * 60);
+  }
   if (state.active) {
     status.textContent = 'Break in progress. ' + fmtShort(state.active.remainingSec) + ' left.';
   } else if (!state.breaksPerDay) {
-    status.textContent = 'Suggestions are off. You can still start a ' + state.breakMinutes + ' minute break.';
+    status.textContent = 'Suggestions are off. You can still start a ' + minutes + ' minute break.';
   } else {
-    const minutes = Math.floor((Number(state.onTrackSec) || 0) / 60);
-    status.textContent = minutes + ' min on track toward 60. ' +
+    const tracked = Math.floor((Number(state.onTrackSec) || 0) / 60);
+    status.textContent = tracked + ' min on track toward 60. ' +
       state.breaksUsed + ' of ' + state.breaksPerDay + ' suggested breaks started.';
   }
   if (pattern) pattern.textContent = patternText(state.pattern);
-  if (start) start.disabled = !!state.active;
+  if (start) {
+    start.disabled = !!state.active;
+    start.classList.toggle('hidden', !!state.active);
+  }
   if (end) end.classList.toggle('hidden', !state.active);
+  renderDecompressLog(state);
 }
 
 function historyDayCount(days) {
@@ -387,6 +471,15 @@ function bindWellbeing() {
       renderDecompress(result.publicState);
     }
   });
+  const log = wellbeingEl('decompress-log');
+  if (log) {
+    log.addEventListener('click', (ev) => {
+      const btn = ev.target.closest && ev.target.closest('[data-resume-break]');
+      if (!btn || !log.contains(btn)) return;
+      const card = wellbeingEl('decompress-card');
+      if (card && typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'nearest' });
+    });
+  }
   on('share-copy', 'click', async () => {
     if (!wellbeingStats || !window.sydtrack || !window.sydtrack.copySummary) return;
     await window.sydtrack.copySummary(summaryText(wellbeingStats));
@@ -422,5 +515,5 @@ function drillSharePercent(total, active) {
 
 if (typeof document !== 'undefined') bindWellbeing();
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS };
+  module.exports = { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS, renderDecompress };
 }

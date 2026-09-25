@@ -3161,6 +3161,7 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
 .privacy-warning,
 .privacy-warning p,
 .session-log-card .muted,
+.decompress-log-card .muted,
 .tags-hint,
 .tags-quick-status {
   font-weight: 400;

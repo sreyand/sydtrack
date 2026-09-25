@@ -26,6 +26,9 @@
 <button class="nav-btn" data-tab="sessions" type="button" title="Sessions">
           <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 1.5"/></svg></span><span class="nav-label">Sessions</span>
         </button>
+<button class="nav-btn" data-tab="decompress" type="button" title="Decompress">
+          <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M10 9v6M14 9v6"/></svg></span><span class="nav-label">Decompress</span>
+        </button>
 <button class="nav-btn" data-tab="roundup" type="button" title="Roundup">
           <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a2 2 0 0 1 2 2v14l-4-2-4 2-4-2-4 2V6a2 2 0 0 1 2-2z"/><path d="M8 9h8M8 13h5"/></svg></span><span class="nav-label">Roundup</span>
         </button>
@@ -197,18 +200,6 @@
             </svg>
             <p id="roundup-duck-line" class="hint">The duck is decoration. It does not change the score.</p>
           </div>
-        </article>
-
-        <article class="card" id="decompress-card">
-          <div class="decompress-head">
-            <span class="lf-kicker">Decompress</span>
-            <div class="decompress-actions">
-              <button type="button" id="decompress-start" class="btn primary">Start break</button>
-              <button type="button" id="decompress-end" class="btn hidden">End break</button>
-            </div>
-          </div>
-          <p id="decompress-status" class="hint">A break is available any time. Suggestions wait until an hour on track.</p>
-          <p id="decompress-pattern" class="hint"></p>
         </article>
 
         <div class="rules-actions hidden" id="share-actions">
@@ -419,6 +410,41 @@
           </div>
           <div id="session-log-list" class="session-log-list">
             <div class="empty session-log-empty">No sessions yet today</div>
+          </div>
+        </article>
+      </section>
+
+      <!-- DECOMPRESS: timed break + past breaks -->
+      <section id="view-decompress" class="view hidden">
+        <header class="page-head">
+          <div>
+            <h1>Decompress</h1>
+            <p class="muted">Step away for a few minutes. Suggestions wait until an hour on track.</p>
+          </div>
+        </header>
+
+        <article class="card decompress-hero" id="decompress-card" data-active="off">
+          <div class="decompress-hero-copy">
+            <span class="lf-kicker" id="decompress-kicker">This break</span>
+            <div id="decompress-timer" class="decompress-timer" aria-live="polite">10:00</div>
+            <p id="decompress-status" class="hint">A break is available any time. Suggestions wait until an hour on track.</p>
+            <p id="decompress-pattern" class="hint"></p>
+          </div>
+          <div class="decompress-actions">
+            <button type="button" id="decompress-start" class="btn primary">Start break</button>
+            <button type="button" id="decompress-end" class="btn hidden">End break</button>
+          </div>
+        </article>
+
+        <article class="card decompress-log-card">
+          <div class="decompress-log-head">
+            <div>
+              <div class="lf-kicker">Past breaks</div>
+              <p class="muted tiny" id="decompress-log-note">Unfinished breaks stay here so you can pick them up again.</p>
+            </div>
+          </div>
+          <div id="decompress-log" class="decompress-log-list">
+            <div class="empty decompress-log-empty">No breaks yet. Start one whenever you want.</div>
           </div>
         </article>
       </section>
