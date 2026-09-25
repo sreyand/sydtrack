@@ -18,5 +18,6 @@
     "explorer",
     "runtimebroker",
     "searchhost"
-  ]
+  ],
+  "browserApps": []
 }

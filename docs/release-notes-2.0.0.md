@@ -1,6 +1,6 @@
-# sydtrack v1.2.0
+# sydtrack v2.0.0
 
-SydTrack 1.2 is the largest update since 1.1.1: a rebuilt interface, more dependable tracking, stronger local-data recovery, and much better defaults. It remains a local-first Windows app with no account or cloud sync.
+SydTrack 2 is a new generation of the app: a rebuilt interface, more dependable tracking, stronger local-data recovery, and much better defaults. It remains a local-first Windows app with no account or cloud sync.
 
 ## A clearer daily view
 
@@ -42,7 +42,7 @@ SydTrack 1.2 is the largest update since 1.1.1: a rebuilt interface, more depend
 
 - Electron now uses context isolation, sandboxing, strict navigation and permission guards, a local-only content security policy, and validated IPC payloads.
 - CI covers syntax, tracking, storage, startup, security, and isolated UI checks.
-- Windows downloads are named clearly: `sydtrack-1.2.0-setup.exe` and `sydtrack-1.2.0-portable.exe`.
+- Windows downloads are named clearly: `sydtrack-2.0.0-setup.exe` and `sydtrack-2.0.0-portable.exe`.
 
 ## Upgrade notes
 
@@ -51,4 +51,4 @@ SydTrack 1.2 is the largest update since 1.1.1: a rebuilt interface, more depend
 - Quit the previous SydTrack copy from the tray before installing or opening the portable build.
 - Windows binaries are currently unsigned, so Windows may show a SmartScreen warning.
 
-**Full changelog:** `dev...v1.2.0`
+**Full changelog:** `dev...v2.0.0`
