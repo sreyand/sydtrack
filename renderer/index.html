@@ -582,7 +582,6 @@
               <div class="settings-field-copy">
                 <div class="field-label-row">
                   <span>Daily focus goal (%)</span>
-                  <span class="settings-token muted tiny">Default 80</span>
                 </div>
                 <div class="hint">Target productive share of classified time. By default: productive ÷ (productive + unproductive).</div>
               </div>
@@ -619,15 +618,15 @@
             </label>
             <label class="switch-row" id="track-music-idle-row">
               <div>
-                <div class="switch-title">Track playing music while idle</div>
-                <div class="hint">Keeps counting the focused app while Windows reports music is playing.</div>
+                <div class="switch-title">Keep tracking active music</div>
+                <div class="hint">After the idle timeout, keeps counting only when the focused app is playing music. Paused or background music does not count.</div>
               </div>
               <input type="checkbox" id="track-music-idle" />
             </label>
             <label class="switch-row" id="track-video-idle-row">
               <div>
-                <div class="switch-title">Track playing video while idle</div>
-                <div class="hint">Keeps counting the focused app while Windows reports video is playing.</div>
+                <div class="switch-title">Keep tracking active video</div>
+                <div class="hint">After the idle timeout, keeps counting only when the focused app is playing video. Paused or background video does not count.</div>
               </div>
               <input type="checkbox" id="track-video-idle" />
             </label>
