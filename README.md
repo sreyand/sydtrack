@@ -142,10 +142,5 @@ Packaged builds use Electron’s SydTrack user-data directory. Raw daily activit
 
 `.sydtrack` backups can include activity, sessions, settings, profiles, browser keywords, and app identities. Import is additive for activity. Re-importing the same backup adds its activity again, while session IDs are deduplicated.
 
+<a href="https://ko-fi.com/sreyandas"><strong>Buy me a coffee</strong></a>
 </details>
-
-## Project status
-
-SydTrack is actively developed and Windows-first. It is local-first software, not an employee-monitoring service, browser-history recorder, or cloud productivity platform.
-
-Licensed under [GPL-3.0](LICENSE.md).
