@@ -783,7 +783,6 @@ function paintLivePie() {
 
 function renderLiveTotals() {
   if (!liveStats) return;
-  liveTotalsClock.tick();
   paintLivePie();
 }
 
