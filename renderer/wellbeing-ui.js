@@ -4,7 +4,6 @@ let wellbeingDecompress = null;
 let wellbeingStats = null;
 let wellbeingDate = '';
 let wellbeingStreak = 0;
-let drillApp = '';
 const WEEK_HISTORY_DAYS = 14;
 const STREAK_HISTORY_DAYS = 90;
 const historyCache = { date: '', at: 0, count: 0, days: null, pending: null, pendingDate: '', pendingCount: 0 };
@@ -391,29 +390,6 @@ function renderMonthFocusScores(days) {
   renderScoreList(list, days || [], 7);
 }
 
-function renderAppDrilldown(stats) {
-  const host = wellbeingEl('app-drill');
-  if (!host) return;
-  if (!drillApp || typeof sydtrackInsights === 'undefined' || typeof sydtrackGoals === 'undefined') {
-    host.textContent = 'Choose Hours on an app to see when it was tracked today.';
-    return;
-  }
-  const drill = sydtrackInsights.appDrilldown(stats && stats.byHour, drillApp);
-  const active = sydtrackGoals.activeTrackedSec(stats && stats.byCategory);
-  const share = drillSharePercent(drill.total, active);
-  if (!drill.total) {
-    host.textContent = drillApp + ' has no hourly time recorded today.';
-    return;
-  }
-  const hours = drill.hours.map((hour) => {
-    const label = typeof hourLabel === 'function' ? hourLabel(hour.hour) : hour.hour + ':00';
-    return label + ' ' + fmtShort(hour.seconds);
-  }).join(' · ');
-  host.textContent = drill.name + ' is ' + fmtShort(drill.total) +
-    (share == null ? '' : ' (' + share + '% of active tracked time today)') +
-    '. ' + hours + '.';
-}
-
 function summaryText(stats) {
   const prefs = goalPrefs(stats && stats.settings);
   const focus = sydtrackGoals.focusShareStatus(stats && stats.byCategory, {
@@ -516,15 +492,6 @@ function bindWellbeing() {
     else if (result && result.ok) setShareStatus('Saved on this computer. Nothing was uploaded.');
     else setShareStatus('Could not save the image.');
   });
-  const list = wellbeingEl('app-list');
-  if (list) {
-    list.addEventListener('click', (ev) => {
-      const btn = ev.target.closest && ev.target.closest('button[data-drill]');
-      if (!btn) return;
-      drillApp = btn.getAttribute('data-drill') || '';
-      renderAppDrilldown(wellbeingStats);
-    });
-  }
   if (window.sydtrack && window.sydtrack.onWellbeingNotice) {
     window.sydtrack.onWellbeingNotice((payload) => {
       if (typeof showBanner === 'function') showBanner((payload && payload.body) || '', (payload && payload.kicker) || 'Decompress');

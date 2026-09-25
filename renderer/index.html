@@ -85,7 +85,7 @@
             <div class="pie-wrap">
               <div id="pie-chart" class="pie-chart" role="img" aria-label="Time breakdown pie"></div>
               <div class="pie-center">
-                <div id="pie-total" class="pie-total">0m</div>
+                <div id="pie-total" class="pie-total">0 min</div>
                 <div class="pie-total-label">tracked</div>
               </div>
               <div id="pie-tip" class="pie-tip hidden" role="tooltip"></div>
@@ -156,18 +156,16 @@
           </div>
         </article>
 
-        <article class="card roundup-goal" id="roundup-goal-card">
+        <article class="card roundup-goal has-tip" id="roundup-goal-card" data-tip-label="Daily focus share" data-full="Productive time as a share of productive + unproductive, versus your goal. Other is excluded.">
           <div class="field-label-row roundup-goal-head">
             <span class="lf-kicker">Daily focus share</span>
           </div>
           <div class="roundup-goal-row">
             <div class="roundup-goal-actual">
               <div id="roundup-goal-value" class="roundup-goal-value">—</div>
-              <div class="roundup-goal-caption muted">Actual</div>
             </div>
             <div class="roundup-goal-target">
               <div id="roundup-goal-pct" class="roundup-goal-pct">Goal 80%</div>
-              <div id="roundup-goal-scope" class="roundup-goal-caption muted">Other excluded</div>
             </div>
           </div>
           <div class="roundup-goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Focus share versus goal" id="roundup-goal-bar">
@@ -358,7 +356,6 @@
                         <ul id="app-list" class="app-list">
               <li class="empty">No time logged yet</li>
             </ul>
-            <div id="app-drill" class="hint"></div>
           </article>
         </div>
       </section>

@@ -327,26 +327,6 @@
   white-space: nowrap;
 }
 
-#panel-apps .app-hours-btn {
-  appearance: none;
-  height: 24px;
-  width: auto;
-  padding: 0 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-ink);
-  font: var(--label);
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-#panel-apps .app-hours-btn:hover {
-  background: var(--color-surface-sunken);
-}
-
 @media (max-width: 820px) {
   #panel-apps .app-list li.app-row {
     grid-template-columns: 1fr;

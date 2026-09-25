@@ -31,7 +31,22 @@
   function closeMenu() {
     menuRequest++;
     $('focus-profile-menu').classList.add('hidden');
+    $('focus-profile-menu').classList.remove('profile-menu-up');
     $('focus-profile-btn').setAttribute('aria-expanded', 'false');
+  }
+  function placeMenu() {
+    const menu = $('focus-profile-menu');
+    const actions = menu && menu.closest('.home-focus-actions');
+    if (!menu || !actions || menu.classList.contains('hidden')) return;
+    menu.classList.remove('profile-menu-up');
+    const menuRect = menu.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    const pad = 8;
+    const spaceBelow = window.innerHeight - actionsRect.bottom - pad;
+    const spaceAbove = actionsRect.top - pad;
+    if (spaceBelow < menuRect.height && spaceAbove >= menuRect.height) {
+      menu.classList.add('profile-menu-up');
+    }
   }
   const displayName = profile => profile.id === 'default' && profile.name === 'Default' ? 'default' : profile.name;
   function drawMenu() {
@@ -126,6 +141,7 @@
       if (request !== menuRequest) return;
       $('focus-profile-menu').classList.remove('hidden');
       $('focus-profile-btn').setAttribute('aria-expanded', 'true');
+      placeMenu();
       const active = $('focus-profile-menu').querySelector('[aria-pressed="true"]'); if (active) active.focus();
     } catch (err) { status(err.message); }
   });
