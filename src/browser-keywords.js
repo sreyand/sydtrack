@@ -1,5 +1,9 @@
 'use strict';
 
+// Editor UI (edit / import / export) is lane 1 / issue #22.
+// This module is the local classification file only. Changing bundled defaults
+// must not rewrite stored history.
+
 const fs = require('fs');
 const path = require('path');
 const { writeJson } = require('./json-file');

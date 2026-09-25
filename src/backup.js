@@ -51,6 +51,12 @@ function buildExport(store, opts) {
   if (options.sessionManager) payload.sessions = options.sessionManager.exportHistory();
   if (options.identities) payload.identities = structuredClone(options.identities);
   if (options.focusProfiles) payload.profiles = options.focusProfiles.snapshot();
+  if (options.browserKeywords) {
+    payload.browserKeywords = {
+      productive: (options.browserKeywords.productive || []).slice(),
+      unproductive: (options.browserKeywords.unproductive || []).slice()
+    };
+  }
   return payload;
 }
 
@@ -134,6 +140,10 @@ function importBackup(store, obj, opts) {
     options.onIdentities(obj.identities);
     result.appliedIdentities = true;
   }
+  if (obj.browserKeywords && options.onBrowserKeywords) {
+    options.onBrowserKeywords(obj.browserKeywords);
+    result.appliedBrowserKeywords = true;
+  }
   if (obj.sessions && options.sessionManager) result.sessionsImported = options.sessionManager.importHistory(obj.sessions, mode);
   if (obj.profiles && options.focusProfiles) options.focusProfiles.restore(obj.profiles);
   result.ok = true;
@@ -185,6 +195,11 @@ function validateBackup(obj) {
     if (!record(obj.identities)) fail('invalid identities');
     for (const key of ['productiveApps', 'ignoredApps']) tags(obj.identities[key]);
     if (obj.identities.browserApps != null) tags(obj.identities.browserApps);
+  }
+  if (obj.browserKeywords != null) {
+    if (!record(obj.browserKeywords)) fail('invalid browser keywords');
+    tags(obj.browserKeywords.productive);
+    tags(obj.browserKeywords.unproductive);
   }
   if (obj.sessions != null) {
     if (!record(obj.sessions)) fail('invalid sessions');

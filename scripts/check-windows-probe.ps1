@@ -7,6 +7,13 @@ Add-Type $match.Groups[1].Value
 if ([SydTrackWin]::ElapsedTicks(5000, 1000) -ne 4000) { throw 'Idle duration incorrect' }
 if ([SydTrackWin]::ElapsedTicks(2000, [uint32]4294966296) -ne 3000) { throw 'Idle tick rollover incorrect' }
 if ([SydTrackWin]::ElapsedTicks(0, 0) -ne 0) { throw 'Idle zero incorrect' }
+if ([SydTrackWin]::EscapeJson($null) -ne '') { throw 'JSON escape null incorrect' }
+if ([SydTrackWin]::EscapeJson('plain') -ne 'plain') { throw 'JSON escape plain incorrect' }
+if ([SydTrackWin]::EscapeJson('a"b\c') -ne 'a\"b\\c') { throw 'JSON escape quote/backslash incorrect' }
+$controls = -join (0..31 | ForEach-Object { [char]$_ })
+$escaped = [SydTrackWin]::EscapeJson($controls)
+if ($escaped -notmatch '^(\\u00[0-1][0-9a-f]){32}$') { throw 'JSON escape control characters incorrect' }
+if ($escaped.Contains([char]1) -or $escaped.Contains("`n") -or $escaped.Contains("`t")) { throw 'JSON escape leaked a raw control character' }
 foreach ($file in @('get-foreground.ps1', 'get-browser-address.ps1')) {
   $parseErrors = $null
   [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $file), [ref]$null, [ref]$parseErrors)

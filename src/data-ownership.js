@@ -32,7 +32,7 @@ function removeMatchingFiles(dir, predicate, failed) {
 
 function backupUserConfig(dataDir) {
   if (!dataDir) return null;
-  const names = ['settings.json', 'focus-profiles.json', 'rules.json', 'ignore.json'];
+  const names = ['settings.json', 'focus-profiles.json', 'rules.json', 'ignore.json', 'browser-keywords.json'];
   if (!names.some((name) => fs.existsSync(path.join(dataDir, name)))) return null;
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dest = path.join(dataDir, 'import-backups', `pre-import-${stamp}`);
@@ -80,7 +80,7 @@ function deleteAllMyData({
     const erased = store.eraseActivityAndSettings();
     if (erased && Array.isArray(erased.failed)) failed.push(...erased.failed);
   }
-  for (const name of ['rules.json', 'ignore.json']) removePath(path.join(dataDir, name), failed);
+  for (const name of ['rules.json', 'ignore.json', 'browser-keywords.json']) removePath(path.join(dataDir, name), failed);
   for (const dir of [dataDir, path.join(dataDir, 'history'), path.join(dataDir, 'sessions'), path.join(dataDir, 'logs')]) {
     removeMatchingFiles(dir, (name) => name.includes('.recovery-'), failed);
   }

@@ -5,15 +5,12 @@ const os = require('os');
 const path = require('path');
 const { decideSample, assessContinuity, toleranceMs, elapsedSeconds } = require('../src/tracking-decision');
 const { reduceSystemPresence } = require('../src/tracking-lifecycle');
-const {
-  normalizeMediaReport,
-  parseMprisNames,
-  parseMprisPlayer,
-  parsePlaybackLines,
-  parseMacDisplayPower,
-  parseXsetMonitor
-} = require('../src/media-signal');
-const { classify, appLabel } = require('../src/classifier');
+const { normalizeMediaReport } = require('../src/media-signal');
+const { escapeJsonString } = require('../src/json-escape');
+const { classify, appLabel, canonicalAppName } = require('../src/classifier');
+const { buildExport, importBackup } = require('../src/backup');
+const { deleteAllMyData, backupUserConfig } = require('../src/data-ownership');
+const { validateIpcPayload } = require('../src/ipc-validate');
 const {
   defaultBrowserKeywords,
   parseBrowserKeywordPack,
@@ -130,22 +127,32 @@ async function run() {
     sessions: [{ status: 4, kind: 1, appId: 'Spotify.exe', title: 'Song' }]
   }, { owner: { name: 'Code' }, title: 'main.js' });
   assert(!backgroundMusic.foreground, 'Spotify does not attach to an unrelated foreground app');
-  const spotify = normalizeMediaReport({
-    available: true, source: 'mpris',
-    sessions: [{ status: 'Playing', kind: '', appId: 'org.mpris.MediaPlayer2.spotify', appName: 'spotify', title: 'Song' }]
-  }, { owner: { name: 'Spotify' }, title: 'Spotify' });
-  assert(spotify.foreground && spotify.kind === 'music' && spotify.status === 'playing', 'MPRIS Playing on a focused player is foreground music');
+  // Real Chrome SMTC: PlaybackStatus=4 (Playing), PlaybackType=1 (Music).
+  // Chromium reports ordinary YouTube/video tabs as Music; the title often
+  // has no "YouTube" token. Trusting kind:1 would count this as music.
+  const chromeVideoPayload = {
+    available: true,
+    source: 'smtc',
+    sessions: [{ status: 4, kind: 1, appId: 'Chrome', title: 'Never Gonna Give You Up' }]
+  };
+  const chromeVideo = normalizeMediaReport(chromeVideoPayload, {
+    owner: { name: 'chrome', path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' },
+    title: 'Never Gonna Give You Up - YouTube'
+  });
+  assert(chromeVideo.status === 'playing' && chromeVideo.kind === 'video' && chromeVideo.foreground === true, 'a real Chrome SMTC Music-type video session is video, not music');
+  assert(decideSample(sample({
+    idleSec: 400, category: 'unproductive', media: chromeVideo, trackMusicWhileIdle: true, trackVideoWhileIdle: false
+  })).count === false, 'Chromium video does not use the music-while-idle setting');
+  assert(decideSample(sample({
+    idleSec: 400, category: 'unproductive', media: chromeVideo, trackVideoWhileIdle: true
+  })).count === true, 'Chromium video uses the video-while-idle setting');
+  const chromeMusic = normalizeMediaReport({
+    available: true, source: 'smtc',
+    sessions: [{ status: 4, kind: 1, appId: 'Chrome', title: 'Night Drive - YouTube Music' }]
+  }, { owner: { name: 'chrome' }, title: 'Night Drive - YouTube Music' });
+  assert(chromeMusic.kind === 'music', 'YouTube Music in Chrome stays music');
   const missing = normalizeMediaReport(null, { owner: { name: 'chrome' }, title: 'YouTube' });
   assert(missing.available === false && missing.status === 'none', 'a missing media probe falls back to no playback');
-
-  const names = parseMprisNames('string "org.freedesktop.DBus"\nstring "org.mpris.MediaPlayer2.firefox.instance42"\nstring "org.mpris.MediaPlayer2"');
-  assert(names.length === 1 && names[0].includes('firefox'), 'MPRIS name parsing keeps players and skips the bare interface');
-  const parsed = parseMprisPlayer('string "PlaybackStatus"\nvariant string "Paused"\nstring "xesam:title"\nvariant string "Talk"', names[0]);
-  assert(parsed.status === 'Paused' && parsed.title === 'Talk' && parsed.appName === 'firefox', 'MPRIS properties keep paused state, title, and app');
-  const lines = parsePlaybackLines('Spotify\tplaying\tSong name\tmusic\n');
-  assert(lines[0].appName === 'Spotify' && lines[0].status === 'playing' && lines[0].kind === 'music', 'AppleScript playback lines split into sessions');
-  assert(parseXsetMonitor('Monitor is Off') === true && parseXsetMonitor('Monitor is On') === false && parseXsetMonitor('') === null, 'xset only reports a known monitor state');
-  assert(parseMacDisplayPower('"CurrentPowerState"=1') === true && parseMacDisplayPower('"CurrentPowerState"=4') === false && parseMacDisplayPower('no display') === null, 'macOS display power treats low states as off and missing data as unknown');
 
   const browserList = defaultBrowserKeywords();
   const emptyProfile = { productive: [], unproductive: [], browserKeywords: browserList };
@@ -158,6 +165,27 @@ async function run() {
     productive: [], unproductive: [], identities: { productiveApps: ['code'] }, browserKeywords: browserList
   }) === 'productive', 'browser keywords do not reclassify a native app');
   assert(classify({ owner: { name: 'Notepad' }, title: 'youtube notes' }, emptyProfile) === 'other', 'browser keywords ignore non-browser windows');
+  assert(classify({ owner: { name: 'chrome' }, title: 'myyoutube clone' }, {
+    productive: [], unproductive: [], browserKeywords: { productive: [], unproductive: ['youtube'] }
+  }) === 'productive', 'browser keywords require an exact token, not a substring');
+  assert(classify({ owner: { name: 'chrome' }, title: 'Watch YouTube now' }, {
+    productive: [], unproductive: [], browserKeywords: { productive: [], unproductive: ['youtube'] }
+  }) === 'unproductive', 'an exact youtube token still matches');
+  const historyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-kw-history-'));
+  const historyStore = createStore(historyRoot);
+  historyStore.addSeconds('chrome', 'unproductive', 40, { category: 'unproductive', reason: 'youtube' });
+  const beforeDefaults = historyStore.snapshot().byCategory.unproductive;
+  classify({ owner: { name: 'chrome' }, title: 'YouTube' }, {
+    productive: ['youtube'], unproductive: [], browserKeywords: { productive: ['youtube'], unproductive: [] }
+  });
+  historyStore.reclassifyStoredApps({
+    productive: ['youtube'],
+    unproductive: [],
+    browserKeywords: { productive: ['youtube'], unproductive: [] }
+  });
+  assert(historyStore.snapshot().byCategory.unproductive === beforeDefaults, 'changing bundled browser defaults does not rewrite stored history');
+  assert(historyStore.snapshot().topApps.some((row) => row.name === 'chrome' && row.category === 'unproductive'), 'reclassifyStoredApps leaves browser history on its recorded category');
+  fs.rmSync(historyRoot, { recursive: true, force: true });
   const pack = buildBrowserKeywordPack({ productive: [' Docs.Example '], unproductive: ['youtube', 'youtube'] });
   assert(parseBrowserKeywordPack(JSON.stringify(pack)).productive[0] === 'docs.example' && parseBrowserKeywordPack(pack).unproductive.length === 1, 'browser keyword files normalize and round-trip locally');
   let rejected = false;
@@ -170,11 +198,39 @@ async function run() {
   assert(loadBrowserKeywords(keywordPath).unproductive.includes('youtube') && fs.readFileSync(keywordPath, 'utf8') === '{', 'a damaged browser keyword file is preserved and defaults are used');
   saveBrowserKeywords(keywordPath, { productive: ['github'], unproductive: [] });
   assert(loadBrowserKeywords(keywordPath).productive[0] === 'github' && loadBrowserKeywords(keywordPath).unproductive.length === 0, 'clearing the browser list is saved');
+  const kept = JSON.parse(fs.readFileSync(keywordPath, 'utf8'));
+  loadBrowserKeywords(keywordPath);
+  assert(JSON.stringify(JSON.parse(fs.readFileSync(keywordPath, 'utf8'))) === JSON.stringify(kept), 'loading does not overwrite an existing user keyword file with new defaults');
 
   assert(appLabel({ owner: { name: 'Google Chrome' } }) === 'chrome', 'Chrome display names share the process label');
   assert(appLabel({ owner: { name: 'chrome.exe' } }) === 'chrome', 'executable suffixes do not split an app');
   assert(appLabel({ owner: { name: '', path: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe' }, title: 'New Tab - different every time' }) === 'firefox', 'a missing process name uses the executable, not the changing title');
   assert(appLabel({ owner: { name: 'Code' }, title: 'renamed window' }) === 'Code', 'an unaliased process name stays stable when the title changes');
+  assert(canonicalAppName('Google Chrome') === 'chrome' && canonicalAppName('chrome.exe') === 'chrome', 'old Chrome display names canonicalize');
+  const migrateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-app-migrate-'));
+  const migrateStore = createStore(migrateRoot);
+  const { todayKey } = require('../src/store');
+  const previous = new Date();
+  previous.setDate(previous.getDate() - 1);
+  const migrateDate = todayKey(previous.getTime());
+  migrateStore.writeHistoryDay({
+    date: migrateDate,
+    byApp: { 'Google Chrome::unproductive': { seconds: 9, category: 'unproductive' }, 'chrome.exe::unproductive': { seconds: 1, category: 'unproductive' } },
+    byCategory: { productive: 0, unproductive: 10, other: 0 }
+  });
+  const migrated = migrateStore.loadHistoryDay(migrateDate);
+  assert(migrated.byApp['chrome::unproductive'].seconds === 10 && !migrated.byApp['Google Chrome::unproductive'], 'old Chrome names merge into one stored app');
+  fs.rmSync(migrateRoot, { recursive: true, force: true });
+
+  const controls = Array.from({ length: 32 }, (_, i) => String.fromCharCode(i)).join('');
+  const escaped = escapeJsonString(`a"${controls}\\z`);
+  assert(!/[\u0000-\u001f]/.test(escaped), 'JSON escape contains no raw control characters');
+  assert(JSON.parse(`"${escaped}"`) === `a"${controls}\\z`, 'JSON escape round-trips every control character');
+
+  assert(validateIpcPayload('settings:update', { trackMusicWhileIdle: true, trackVideoWhileIdle: false }).trackMusicWhileIdle === true, 'settings allowlist accepts media-while-idle keys');
+  let settingsRejected = false;
+  try { validateIpcPayload('settings:update', { browserKeywords: [] }); } catch (_) { settingsRejected = true; }
+  assert(settingsRejected, 'settings allowlist still rejects unknown keys');
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-decision-tracker-'));
   const store = createStore(root);
@@ -264,6 +320,86 @@ async function run() {
   await poll();
   await poll();
   assert(reminders >= 1, 'reminders use the same media decision as tracked time');
+  const reasons = [];
+  const presenceStore = createStore(fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-presence-')));
+  presenceStore.updateSettings({ demoMode: false, idleTimeoutSec: 0, trackVideoWhileIdle: true });
+  let presenceClock = Date.now();
+  const presenceTracker = createTracker({
+    store: presenceStore,
+    rules,
+    ignore: [],
+    now: () => presenceClock,
+    backend: { getActiveWindow: async () => ({
+      window: { owner: { name: 'chrome' }, title: 'Lecture - YouTube' },
+      idleSec: 0,
+      media: { available: true, source: 'smtc', sessions: [{ status: 4, kind: 1, appId: 'Chrome', title: 'Lecture - YouTube' }] }
+    }) },
+    onTick: (tick) => { reasons.push(tick.now.idleReason); }
+  });
+  presenceClock += 1000; await presenceTracker.poll();
+  const beforeLock = presenceStore.snapshot().byCategory.unproductive || 0;
+  presenceTracker.setSystemPresence({ sleeping: false, locked: true });
+  presenceClock += 1000; await presenceTracker.poll();
+  assert(reasons.includes('lock') && (presenceStore.snapshot().byCategory.unproductive || 0) === beforeLock, 'lock reaches decideSample and adds no time');
+  presenceTracker.setSystemPresence({ sleeping: true, locked: false });
+  presenceClock += 1000; await presenceTracker.poll();
+  assert(reasons.includes('sleep'), 'sleep reaches decideSample');
+  const { EventEmitter } = require('events');
+  const { bindTrackingLifecycle } = require('../src/tracking-lifecycle');
+  const power = new EventEmitter();
+  power.getSystemIdleState = () => 'active';
+  const unbindPresence = bindTrackingLifecycle(power, presenceTracker);
+  power.emit('unlock-screen');
+  power.emit('resume');
+  presenceClock += 1000; await presenceTracker.poll();
+  power.emit('lock-screen');
+  presenceClock += 1000; await presenceTracker.poll();
+  assert(reasons.filter((reason) => reason === 'lock').length >= 2, 'lock-screen from powerMonitor reaches decideSample');
+  power.emit('unlock-screen');
+  power.emit('suspend');
+  presenceClock += 1000; await presenceTracker.poll();
+  assert(reasons.filter((reason) => reason === 'sleep').length >= 2, 'suspend from powerMonitor reaches decideSample');
+  unbindPresence();
+  presenceTracker.setSystemPresence({ sleeping: false, locked: false });
+  presenceClock += 60000; await presenceTracker.poll();
+  assert(reasons.includes('clock'), 'a clock jump reaches decideSample');
+  presenceTracker.stop();
+
+  const { createWindowsBackend } = require('../src/windows-backend');
+  let seenArgs = [];
+  const gated = createWindowsBackend({
+    includeMedia: false,
+    run(_exe, args, _opts, cb) {
+      seenArgs = args;
+      cb(null, JSON.stringify({ window: { owner: { name: 'Chrome' }, title: 'YouTube' }, idleSec: 0 }));
+    }
+  });
+  await gated.getActiveWindow();
+  assert(!seenArgs.includes('-IncludeMedia'), 'the Windows media probe stays off when no media setting is enabled');
+  const ungated = createWindowsBackend({
+    includeMedia: true,
+    run(_exe, args, _opts, cb) {
+      seenArgs = args;
+      cb(null, JSON.stringify({ window: { owner: { name: 'Chrome' }, title: 'YouTube' }, idleSec: 0 }));
+    }
+  });
+  await ungated.getActiveWindow();
+  assert(seenArgs.includes('-IncludeMedia'), 'the Windows media probe runs only when a media setting is on');
+
+  const backup = buildExport(store, { includeSettings: true, browserKeywords: { productive: ['docs'], unproductive: ['netflix'] } });
+  assert(backup.browserKeywords.unproductive[0] === 'netflix', 'full backups include browser-keywords.json');
+  const dest = createStore(fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-kw-import-')));
+  let importedKeywords;
+  importBackup(dest, backup, { onBrowserKeywords: (value) => { importedKeywords = value; } });
+  assert(importedKeywords.unproductive[0] === 'netflix', 'backup import restores browser keywords');
+  const eraseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-kw-erase-'));
+  const erasePath = path.join(eraseDir, 'browser-keywords.json');
+  saveBrowserKeywords(erasePath, { productive: ['docs'], unproductive: ['netflix'] });
+  const preImport = backupUserConfig(eraseDir);
+  assert(preImport && fs.existsSync(path.join(preImport, 'browser-keywords.json')), 'pre-import backup copies browser-keywords.json');
+  const erased = deleteAllMyData({ dataDir: eraseDir });
+  assert(erased.ok && !fs.existsSync(erasePath), 'delete-all removes browser-keywords.json');
+
   tracker.stop();
   fs.rmSync(root, { recursive: true, force: true });
   fs.rmSync(keywordDir, { recursive: true, force: true });

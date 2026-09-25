@@ -6,6 +6,7 @@ const { writeJson, validDateKey, readRecoverableJson } = require('./json-file');
 const { buildRollup, writeRollup, readRollup, listRollupDates, dayFromRollup, removeRollups } = require('./rollups');
 const { purgeExpiredRaw, clearJournal } = require('./retention');
 const { migrateStorage } = require('./storage-schema');
+const { canonicalAppName } = require('./classifier');
 
 function todayKey(at) {
   const d = at === undefined ? new Date() : new Date(at);
@@ -138,11 +139,21 @@ function migrateDay(raw) {
         })
       : emptyByHour(),
     unproductiveStreak: Number(raw.unproductiveStreak) || 0,
-    activityCorrections: Object.fromEntries(Object.entries(raw.activityCorrections || {}).filter(([key, value]) => ['productive', 'unproductive', 'ignored', 'other'].includes(value))),
-    appCorrections: Object.fromEntries(Object.entries(raw.appCorrections || {}).filter(([name, category]) => name && ['productive', 'unproductive', 'ignored', 'other'].includes(category))),
+    activityCorrections: canonicalizeActivityCorrections(raw.activityCorrections),
+    appCorrections: canonicalizeNamedMap(Object.fromEntries(Object.entries(raw.appCorrections || {}).filter(([name, category]) => name && ['productive', 'unproductive', 'ignored', 'other'].includes(category)))),
     lastReminderAt: Number(raw.lastReminderAt) || 0
   };
   return day;
+}
+
+function canonicalizeStoredKey(key, category) {
+  const parts = activityParts(key);
+  if (parts) {
+    const app = canonicalAppName(parts[0]) || parts[0];
+    return activityKey(app, parts[3], { category: parts[1], reason: parts[2] });
+  }
+  const app = canonicalAppName(appEntryName(key)) || appEntryName(key);
+  return appCategoryKey(app, category);
 }
 
 function cloneAppMap(map) {
@@ -150,11 +161,39 @@ function cloneAppMap(map) {
   for (const [key, info] of Object.entries(map || {})) {
     if (!info || typeof info !== 'object') continue;
     const category = ['productive', 'unproductive', 'ignored'].includes(info.category) ? info.category : 'other';
-    const name = activityParts(key) ? key : appCategoryKey(appEntryName(key), category);
+    const name = canonicalizeStoredKey(key, category);
     const seconds = Number(info.seconds);
     if (!Number.isFinite(seconds) || seconds < 0) continue;
     if (!out[name]) out[name] = { seconds: 0, category };
     out[name].seconds += seconds;
+    out[name].category = category;
+  }
+  return out;
+}
+
+function canonicalizeActivityCorrections(map) {
+  const out = {};
+  for (const [key, value] of Object.entries(map || {})) {
+    if (!['productive', 'unproductive', 'ignored', 'other'].includes(value)) continue;
+    let next = key;
+    try {
+      const parsed = JSON.parse(key);
+      if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
+        parsed[0] = canonicalAppName(parsed[0]) || parsed[0];
+        next = JSON.stringify(parsed);
+      }
+    } catch (_) {}
+    out[next] = value;
+  }
+  return out;
+}
+
+function canonicalizeNamedMap(map) {
+  const out = {};
+  for (const [name, value] of Object.entries(map || {})) {
+    const key = (canonicalAppName(name) || name).toLowerCase();
+    if (!key) continue;
+    if (!Object.hasOwn(out, key) || name.toLowerCase() === key) out[key] = value;
   }
   return out;
 }

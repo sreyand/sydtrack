@@ -138,8 +138,8 @@ Success is a useful app people can trust and leave running—not the longest fea
 - Retained and hardened process-identity precedence (#11): editors remain productive when project titles contain words such as “youtube,” while browser content still determines browser classification.
 - Established a browser-independent foreground-title baseline (#7), including non-Chromium and configurable browser identities. The unreliable address-capture prototype remains disabled by default.
 - Fixed ordinary idle accounting so earned time is not repeatedly subtracted (#14 groundwork).
-- Added opt-in, per-kind media playback during idle. The default is still the idle timeout. Tags choose the category; paused and background playback do not count. Windows uses SMTC, macOS uses local player scripting, and Linux uses MPRIS, each with a no-playback fallback.
-- Added a local browser keyword list with defaults, Focus Tags editing, and `.sydtrack-browser` import/export. Focus profile tags still win, and the list applies only to a focused browser (#7).
+- Added opt-in, per-kind media playback during idle. The default is still the idle timeout. Tags choose the category; paused and background playback do not count. Windows uses SMTC when a media setting is on. macOS and Linux stay parked.
+- Added a local browser keyword list with exact-token matching and backup/delete-all coverage. Focus profile tags still win. Do not add a keyword editor in the tracking PR: the Focus Tags editor for this list is lane 1 / issue #22.
 - Improved handling of sleep, lock, pause, delayed probes, stale results, clock discontinuities, and local hour/day boundaries.
 - Improved session completion delivery, deadline handling, retention, and failure behavior.
 - Added or strengthened atomic JSON writes, validation before backup replacement, malformed-file preservation, recovery notices, and bounded local error logs.

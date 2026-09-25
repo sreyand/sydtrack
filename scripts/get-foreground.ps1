@@ -1,3 +1,4 @@
+param([switch]$IncludeMedia)
 $ErrorActionPreference = "Stop"
 if (-not ("SydTrackWin" -as [type])) {
 Add-Type @"
@@ -14,6 +15,17 @@ public class SydTrackWin {
   [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
   [DllImport("kernel32.dll")] public static extern uint GetTickCount();
   public static uint ElapsedTicks(uint current, uint last) { return unchecked(current - last); }
+  public static string EscapeJson(string s) {
+    if (s == null) return "";
+    StringBuilder sb = new StringBuilder();
+    foreach (char ch in s) {
+      if (ch == '\\') sb.Append("\\\\");
+      else if (ch == '"') sb.Append("\\\"");
+      else if (ch < 32) sb.Append("\\u").Append(((int)ch).ToString("x4"));
+      else sb.Append(ch);
+    }
+    return sb.ToString();
+  }
   public const uint GW_CHILD = 5;
   public const uint GW_HWNDNEXT = 2;
   public static bool ScreenSaverRunning() {
@@ -25,9 +37,7 @@ public class SydTrackWin {
 "@
 }
 function Esc([string]$s) {
-  if ($null -eq $s) { return "" }
-  $s = $s.Replace("\", "\\").Replace('"', '\"').Replace("`r", "\r").Replace("`n", "\n").Replace("`t", "\t")
-  return $s
+  return [SydTrackWin]::EscapeJson($s)
 }
 # SMTC is the local play/pause signal. Failure here must not drop the foreground sample.
 function Get-MediaJson {
@@ -84,7 +94,8 @@ if ([SydTrackWin]::GetLastInputInfo([ref]$lastInput)) {
 }
 $screenOff = 'false'
 try { if ([SydTrackWin]::ScreenSaverRunning()) { $screenOff = 'true' } } catch {}
-$mediaJson = Get-MediaJson
+$mediaJson = '{"available":false,"source":"smtc","sessions":[]}'
+if ($IncludeMedia) { $mediaJson = Get-MediaJson }
 $hwnd = [SydTrackWin]::GetForegroundWindow()
 if ($hwnd -eq [IntPtr]::Zero) {
   Write-Output ("{`"window`":null,`"idleSec`":$idleSec,`"screenOff`":$screenOff,`"media`":$mediaJson,`"error`":null}")

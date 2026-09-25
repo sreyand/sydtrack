@@ -6,7 +6,7 @@
 const MUSIC_APPS = ['spotify', 'itunes', 'applemusic', 'music', 'foobar2000', 'winamp', 'clementine', 'rhythmbox', 'elisa', 'strawberry', 'audacious', 'cmus', 'bandcamp', 'soundcloud', 'pandora'];
 const VIDEO_APPS = ['vlc', 'mpv', 'mplayer', 'wmplayer', 'mpc', 'mpchc', 'quicktime', 'quicktimeplayer', 'tv', 'netflix', 'plex', 'kodi'];
 const VIDEO_WORDS = ['youtube', 'youtu.be', 'netflix', 'vimeo', 'twitch', 'hulu', 'disney+', 'disneyplus', 'primevideo', 'piped'];
-const MUSIC_WORDS = ['spotify', 'soundcloud', 'bandcamp', 'pandora', 'music.youtube', 'youtubemusic'];
+const MUSIC_WORDS = ['spotify', 'soundcloud', 'bandcamp', 'pandora', 'music.youtube', 'youtubemusic', 'youtube music'];
 const BROWSER_TOKENS = ['chrome', 'googlechrome', 'msedge', 'microsoftedge', 'firefox', 'mozillafirefox', 'brave', 'bravebrowser', 'opera', 'operabrowser', 'chromium', 'vivaldi', 'safari', 'waterfox', 'librewolf', 'arc', 'browser'];
 const APP_GROUPS = [
   ['chrome', 'googlechrome'],
@@ -69,12 +69,28 @@ function inferKind({ appId, appName, title }) {
   return 'unknown';
 }
 
+function isBrowserApp(appId, appName) {
+  return [appId, appName].map(compact).some((token) => BROWSER_TOKENS.some((item) => {
+    if (item.length < 4) return token === item;
+    return token === item || token.includes(item);
+  }));
+}
+
+function sessionKind(raw, appId, appName, title) {
+  const inferred = inferKind({ appId, appName, title });
+  // Chromium SMTC reports PlaybackType=Music for ordinary YouTube/video tabs.
+  if (isBrowserApp(appId, appName)) {
+    return inferred === 'music' ? 'music' : 'video';
+  }
+  return explicitKind(raw.kind) || inferred;
+}
+
 function normalizeSession(session) {
   const raw = session || {};
   const appId = String(raw.appId || raw.appName || '');
   const appName = String(raw.appName || raw.appId || '');
   const title = String(raw.title || '');
-  const kind = explicitKind(raw.kind) || inferKind({ appId, appName, title });
+  const kind = sessionKind(raw, appId, appName, title);
   return {
     status: normalizeStatus(raw.status),
     kind,
@@ -165,59 +181,13 @@ function normalizeMediaReport(raw, win) {
   };
 }
 
-function parseMprisNames(stdout) {
-  return [...String(stdout || '').matchAll(/string "(org\.mpris\.MediaPlayer2\.[^"]+)"/g)]
-    .map((match) => match[1])
-    .filter((name) => name !== 'org.mpris.MediaPlayer2');
-}
-
-function mprisAppName(busName) {
-  const parts = String(busName || '').split('.').filter(Boolean);
-  const marker = parts.indexOf('MediaPlayer2');
-  return (marker >= 0 ? parts[marker + 1] : parts[parts.length - 1]) || '';
-}
-
-function parseMprisPlayer(stdout, busName) {
-  const status = /string "PlaybackStatus"\s+variant\s+string "([^"]*)"/.exec(String(stdout || ''));
-  const title = /string "xesam:title"\s+variant\s+string "([^"]*)"/.exec(String(stdout || ''));
-  return {
-    appId: busName || mprisAppName(busName),
-    appName: mprisAppName(busName),
-    status: status ? status[1] : 'unknown',
-    title: title ? title[1] : '',
-    kind: ''
-  };
-}
-
-function parsePlaybackLines(text) {
-  return String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
-    const [appName, status, title, kind] = line.split('\t');
-    return { appId: appName || '', appName: appName || '', status: status || 'unknown', title: title || '', kind: kind || '' };
-  });
-}
-
-function parseMacDisplayPower(text) {
-  const values = [...String(text || '').matchAll(/CurrentPowerState(?:"\s*=\s*|\s*=\s*)(\d+)/g)].map((match) => Number(match[1]));
-  if (!values.length) return null;
-  return values.every((value) => value <= 1);
-}
-
-function parseXsetMonitor(text) {
-  const match = /Monitor is (On|Off)/i.exec(String(text || ''));
-  if (!match) return null;
-  return match[1].toLowerCase() === 'off';
-}
-
 module.exports = {
   normalizeStatus,
   normalizeSession,
   normalizeMediaReport,
   selectForegroundMedia,
   sessionMatchesForeground,
-  parseMprisNames,
-  parseMprisPlayer,
-  parsePlaybackLines,
-  parseMacDisplayPower,
-  parseXsetMonitor,
-  inferKind
+  inferKind,
+  sessionKind,
+  isBrowserApp
 };

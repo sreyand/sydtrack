@@ -205,6 +205,8 @@ const SETTINGS = {
   focusBoostRestoreSec: (value) => (value === null ? null : finiteInt(value, 1, 86400)),
   focusBoostSec: (value) => finiteInt(value, 5, 86400),
   idleTimeoutSec: (value) => finiteInt(value, 0, 7 * 86400),
+  trackMusicWhileIdle: bool,
+  trackVideoWhileIdle: bool,
   reminderMessage: message,
   focusBoostReminderMessage: message,
   dailyGoalSec: (value) => finiteInt(value, 900, 57600),

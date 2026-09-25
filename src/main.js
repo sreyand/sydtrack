@@ -15,10 +15,7 @@ const { validateSiteTags } = require('./browser-rules');
 const {
   loadBrowserKeywords,
   saveBrowserKeywords,
-  defaultBrowserKeywords,
-  sameKeywords,
-  writeBrowserKeywordPack,
-  readBrowserKeywordPack
+  defaultBrowserKeywords
 } = require('./browser-keywords');
 
 const {
@@ -148,17 +145,7 @@ function attachAppIdentities(rules) {
 function loadBrowserKeywordFile() {
   browserKeywordsHolder.keywords = loadBrowserKeywords(userBrowserKeywordsPath());
   if (rulesHolder.rules) rulesHolder.rules.browserKeywords = browserKeywordsHolder.keywords;
-  return browserKeywordPayload();
-}
-
-function browserKeywordPayload() {
-  const keywords = browserKeywordsHolder.keywords || defaultBrowserKeywords();
-  return {
-    productive: keywords.productive,
-    unproductive: keywords.unproductive,
-    path: userBrowserKeywordsPath(),
-    isDefault: sameKeywords(keywords, defaultBrowserKeywords())
-  };
+  return browserKeywordsHolder.keywords;
 }
 
 function loadAppRules() {
@@ -644,7 +631,8 @@ ipcMain.handle('data:export', async (event, payload) => {
     ignore: ignoreHolder.ignore,
     sessionManager,
     identities: identitiesHolder.identities,
-    focusProfiles
+    focusProfiles,
+    browserKeywords: browserKeywordsHolder.keywords
   });
   writeBackupFile(result.filePath, exportData);
   return { ok: true, path: result.filePath };
@@ -731,6 +719,10 @@ ipcMain.handle('data:import', async (event, payload) => {
     onIdentities: (identities) => {
       identitiesHolder.identities = saveAppIdentities(userAppIdentitiesPath(), identities);
       attachAppIdentities(rulesHolder.rules);
+    },
+    onBrowserKeywords: (keywords) => {
+      browserKeywordsHolder.keywords = saveBrowserKeywords(userBrowserKeywordsPath(), keywords);
+      if (rulesHolder.rules) rulesHolder.rules.browserKeywords = browserKeywordsHolder.keywords;
     },
     mode: options.mode === 'replace' ? 'replace' : 'merge',
     onSettings: applySettings,
@@ -856,6 +848,7 @@ ipcMain.handle('data:deleteAll', async (event, payload) => {
     appData: app.getPath('appData')
   });
   loadAppIdentities();
+  loadBrowserKeywordFile();
   if (tracker) tracker.invalidateClassification();
   return {
     ...deleted,

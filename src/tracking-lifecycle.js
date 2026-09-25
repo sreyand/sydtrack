@@ -26,7 +26,13 @@ function readIdleState(powerMonitor) {
 
 function bindTrackingLifecycle(powerMonitor, tracker) {
   let presence = reduceSystemPresence({ sleeping: false, locked: false }, 'resume', readIdleState(powerMonitor));
-  const update = () => tracker.setSystemInactive(presence.inactive);
+  const update = () => {
+    if (typeof tracker.setSystemPresence === 'function') {
+      tracker.setSystemPresence({ sleeping: presence.sleeping, locked: presence.locked });
+    } else {
+      tracker.setSystemInactive(presence.inactive);
+    }
+  };
   const apply = (event) => {
     const idleState = event === 'resume' ? readIdleState(powerMonitor) : undefined;
     presence = reduceSystemPresence(presence, event, idleState);
