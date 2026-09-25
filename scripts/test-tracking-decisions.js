@@ -393,6 +393,34 @@ async function run() {
   }
   cadenceTracker.stop();
   assert(cadenceDeltas.every((delta) => Math.abs(delta - 1) < 0.001), 'under a 1s fake clock the live path adds ~1s per sample');
+
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  const scheduledCadences = [];
+  const clearedCadences = [];
+  global.setInterval = (fn, ms) => {
+    const handle = { fn, ms, unref() {} };
+    scheduledCadences.push(handle);
+    return handle;
+  };
+  global.clearInterval = (handle) => { clearedCadences.push(handle); };
+  try {
+    cadenceStore.updateSettings({ pollMs: 3000 });
+    cadenceTracker.start();
+    const mediumHandle = scheduledCadences.at(-1);
+    assert(mediumHandle && mediumHandle.ms === 3000, 'Med polling schedules a 3s foreground check');
+    cadenceStore.updateSettings({ pollMs: 1000 });
+    cadenceTracker.refreshCadence();
+    const maxHandle = scheduledCadences.at(-1);
+    assert(clearedCadences.includes(mediumHandle) && maxHandle.ms === 1000, 'Max polling applies live at 1s');
+    cadenceStore.updateSettings({ pollMs: 5000 });
+    cadenceTracker.refreshCadence();
+    assert(clearedCadences.includes(maxHandle) && scheduledCadences.at(-1).ms === 5000, 'Low polling applies live at 5s');
+    cadenceTracker.stop();
+  } finally {
+    global.setInterval = originalSetInterval;
+    global.clearInterval = originalClearInterval;
+  }
   assert(Math.abs(previousTotal - 20) < 0.001, 'twenty 1s samples earn twenty seconds');
   assert(!cadenceReasons.includes('clock') && !cadenceReasons.includes('sleep') && !cadenceReasons.includes('lock'), 'clock-jump / sleep / lock do not over-fire under normal 1s load');
   fs.rmSync(cadenceRoot, { recursive: true, force: true });

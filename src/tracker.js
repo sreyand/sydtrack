@@ -343,17 +343,28 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     }
   }
 
+  const runPoll = () => poll().catch((err) => console.error('[tracker] poll failed:', err.message));
+
+  function schedulePolls() {
+    if (timer) clearInterval(timer);
+    const ms = store.getSettings().pollMs || 3000;
+    timer = setInterval(runPoll, ms);
+    if (timer.unref) timer.unref();
+  }
+
   function start() {
     if (timer) return; // idempotent
     stopped = false;
     resetStreakSafely();
     lastTick = clock();
     lastHeartbeat = lastTick;
-    const run = () => poll().catch((err) => console.error('[tracker] poll failed:', err.message));
-    run();
-    const ms = store.getSettings().pollMs || 1500;
-    timer = setInterval(run, ms);
-    if (timer.unref) timer.unref();
+    runPoll();
+    schedulePolls();
+  }
+
+  function refreshCadence() {
+    if (!timer || stopped) return;
+    schedulePolls();
   }
 
   function stop() {
@@ -396,7 +407,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     resetStreakSafely();
   }
 
-  return { start, stop, poll, getLastFocused, setSystemInactive, setSystemPresence, invalidateClassification };
+  return { start, stop, poll, refreshCadence, getLastFocused, setSystemInactive, setSystemPresence, invalidateClassification };
 }
 
 module.exports = { createTracker, createRealBackend };

@@ -28,9 +28,12 @@ async function throws(fn, msg) {
 }
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-main-sec-'));
+if (!process.resourcesPath) process.resourcesPath = path.join(__dirname, '..');
 const handlers = new Map();
 const switches = [];
 let appliedAppId = null;
+let loginItemSettings = null;
+let windowShowCount = 0;
 const appListeners = {};
 let readyResolve;
 const ready = new Promise((resolve) => { readyResolve = resolve; });
@@ -61,7 +64,7 @@ let windowOpts = null;
 const fakeWindow = {
   webContents,
   isDestroyed: () => false,
-  show() {},
+  show() { windowShowCount += 1; },
   hide() {},
   focus() {},
   restore() {},
@@ -86,8 +89,11 @@ const electron = {
     on(event, fn) { appListeners[event] = fn; },
     quit() {},
     isPackaged: true,
+    getLoginItemSettings: () => ({ wasOpenedAsHidden: false }),
+    setLoginItemSettings(value) { loginItemSettings = value; },
     getPath: () => userData,
     getAppPath: () => path.join(__dirname, '..'),
+    resourcesPath: path.join(__dirname, '..', 'renderer', 'assets'),
     setName() {},
     setAppUserModelId(value) { appliedAppId = value; }
   },
@@ -151,6 +157,14 @@ async function run() {
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
+  if (process.platform === 'win32') {
+    assert(loginItemSettings && loginItemSettings.openAtLogin === true, 'packaged Windows app enables startup by default');
+    assert(loginItemSettings.args.includes('--hidden'), 'Windows startup registration launches hidden');
+  } else if (process.platform === 'darwin') {
+    assert(loginItemSettings && loginItemSettings.openAsHidden === true, 'packaged macOS app enables hidden startup by default');
+  } else {
+    assert(loginItemSettings === null, 'unsupported platforms do not register a login item');
+  }
   assert(!!windowOpts, 'createWindow constructed a BrowserWindow');
   assert(windowOpts.webPreferences.sandbox === true, 'BrowserWindow sandbox stays on');
   assert(windowOpts.webPreferences.contextIsolation === true, 'BrowserWindow contextIsolation stays on');
@@ -159,6 +173,12 @@ async function run() {
   assert(typeof webContents.openHandler === 'function', 'installNavigationGuards ran on window creation');
   assert(session.webRequest.called === true, 'applyContentSecurityPolicy ran on window creation');
   assert(session.permissionDenied === true, 'denyPermissionRequests ran on window creation');
+
+  const showsAfterReady = windowShowCount;
+  appListeners['second-instance']({}, ['sydtrack.exe', '--hidden']);
+  assert(windowShowCount === showsAfterReady, 'duplicate hidden startup does not surface the existing window');
+  appListeners['second-instance']({}, ['sydtrack.exe']);
+  assert(windowShowCount === showsAfterReady + 1, 'ordinary second launch surfaces the existing window');
 
   const goodEvent = { sender: webContents, senderFrame: { url: APP_PAGE_URL } };
   const badEvent = { sender: { id: 'other' }, senderFrame: { url: APP_PAGE_URL } };

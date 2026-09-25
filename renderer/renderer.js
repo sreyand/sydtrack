@@ -1222,6 +1222,13 @@ function applySettingsInputs(settings) {
   if ($('track-video-idle') && document.activeElement !== $('track-video-idle')) {
     $('track-video-idle').checked = settings.trackVideoWhileIdle === true;
   }
+  if ($('launch-startup-toggle') && document.activeElement !== $('launch-startup-toggle')) {
+    $('launch-startup-toggle').checked = settings.launchAtStartup !== false;
+  }
+  if ($('poll-mode') && document.activeElement !== $('poll-mode')) {
+    const pollMs = Number(settings.pollMs);
+    $('poll-mode').value = pollMs === 1000 || pollMs === 5000 ? String(pollMs) : '3000';
+  }
   if ($('reminder-message') && document.activeElement !== $('reminder-message')) {
     $('reminder-message').value = settings.reminderMessage || "You've been on {app} for a while... maybe it's time to get back?";
   }
@@ -1920,6 +1927,16 @@ if ($('track-music-idle')) {
 if ($('track-video-idle')) {
   $('track-video-idle').addEventListener('change', () => {
     pushSettings({ trackVideoWhileIdle: $('track-video-idle').checked === true });
+  });
+}
+if ($('launch-startup-toggle')) {
+  $('launch-startup-toggle').addEventListener('change', () => {
+    pushSettings({ launchAtStartup: $('launch-startup-toggle').checked === true });
+  });
+}
+if ($('poll-mode')) {
+  $('poll-mode').addEventListener('change', () => {
+    pushSettings({ pollMs: Number($('poll-mode').value) });
   });
 }
 if ($('reminder-message')) {
@@ -2943,6 +2960,9 @@ async function boot() {
   try {
     const state = await api.getState();
     if (state) {
+      if ($('launch-startup-row')) {
+        $('launch-startup-row').classList.toggle('hidden', state.platform !== 'win32' && state.platform !== 'darwin');
+      }
       updateSourcePill(state.now);
       renderLastFocused(state.lastFocused, state.now);
       setLiveStats(state.stats, state.now);

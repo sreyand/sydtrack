@@ -43,6 +43,7 @@ const { buildCsvExport, importCsv } = require('./data-export');
 const { deleteAllMyData, backupUserConfig } = require('./data-ownership');
 const { migrateLegacyUserData } = require('./legacy-data-dir');
 const { APP_ID } = require('./app-identity');
+const { HIDDEN_ARG, syncLoginItem, shouldStartHidden } = require('./startup');
 const {
   buildProfilePack,
   writeProfilePackFile,
@@ -90,6 +91,7 @@ let lastPayload = { now: null, stats: null, lastFocused: null };
 let servicesStarted = false;
 let appTray = null;
 let isQuitting = false;
+const startHidden = shouldStartHidden({ argv: process.argv, platform: process.platform, appApi: app });
 
 function dataDir() {
   let dir;
@@ -254,7 +256,7 @@ function createWindow() {
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error('[main] renderer did-fail-load:', errorCode, errorDescription, validatedURL);
   });
-  mainWindow.show();
+  if (!startHidden) mainWindow.show();
   mainWindow.once('ready-to-show', () => {
     // Start tracker after window is visible
     ensureTrackerStarted();
@@ -390,6 +392,20 @@ function startServices() {
   }
 }
 
+function syncStartupPreference(settings) {
+  try {
+    return syncLoginItem(app, settings && settings.launchAtStartup !== false, {
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      env: process.env
+    });
+  } catch (err) {
+    console.warn('[startup] could not update login item:', err && err.message ? err.message : err);
+    return { supported: false, enabled: false };
+  }
+}
+
 function applyFocusProfile(profile) {
   const signature = JSON.stringify(profile);
   if (signature === appliedProfile) return;
@@ -465,7 +481,8 @@ if (!ownsInstance) {
   console.log('[sydtrack] Another copy is already running. Quit it from the tray before starting this build.');
   app.quit();
 }
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
+  if (Array.isArray(argv) && argv.includes(HIDDEN_ARG)) return;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
@@ -478,6 +495,7 @@ app.whenReady().then(() => {
   installErrorLogging(errorLog);
   installAppProtocol();
   startServices();
+  syncStartupPreference(store.getSettings());
   createWindow();
   createTray();
   app.on('activate', () => {
@@ -626,12 +644,19 @@ ipcMain.handle('settings:update', async (event, payload) => {
 });
 
 function applySettings(partial) {
-  return updateAppSettings(store, sessionManager, partial, () => {
+  const next = updateAppSettings(store, sessionManager, partial, () => {
     if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
     if (partial && partial.theme && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setBackgroundColor(windowBackgroundColor(partial.theme));
     }
   });
+  if (partial && Object.prototype.hasOwnProperty.call(partial, 'launchAtStartup')) {
+    syncStartupPreference(next);
+  }
+  if (partial && Object.prototype.hasOwnProperty.call(partial, 'pollMs') && tracker && typeof tracker.refreshCadence === 'function') {
+    tracker.refreshCadence();
+  }
+  return next;
 }
 
 ipcMain.handle('data:export', async (event, payload) => {

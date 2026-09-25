@@ -3003,6 +3003,11 @@ h4 {
   width: 96px;
   flex: 0 0 96px;
 }
+.settings-inline-field select {
+  width: 132px;
+  flex: 0 0 132px;
+  padding: 9px 10px;
+}
 #view-home .page-head {
   display: flex;
   flex-direction: row;

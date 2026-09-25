@@ -5,12 +5,12 @@
     <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
-    <a href="docs/release-notes-2.0.1.md">What’s new in v2.0.1</a>
+    <a href="docs/release-notes-2.1.0.md">What’s new in v2.1.0</a>
   </p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
-    <img alt="Version 2.0.1" src="https://img.shields.io/badge/version-2.0.1-8B7CF6?style=flat-square">
+    <img alt="Version 2.1.0" src="https://img.shields.io/badge/version-2.1.0-8B7CF6?style=flat-square">
     <img alt="GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-EF6A6A?style=flat-square">
   </p>
 </div>
@@ -66,10 +66,21 @@ Changing profiles affects future tracking; it does not rewrite history. Analytic
 
 SydTrack currently targets **Windows 10/11 x64**.
 
-- `sydtrack-2.0.1-setup.exe` — standard installer
-- `sydtrack-2.0.1-portable.exe` — run without installation
+- `sydtrack-2.1.0-setup.exe` — standard installer
+- `sydtrack-2.1.0-portable.exe` — run without installation
 
 Get both from [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
+
+## System requirements
+
+| | Minimum | Recommended |
+| --- | --- | --- |
+| **OS** | Windows 10 x64 | Windows 11 x64 |
+| **Processor** | 2-core x64 processor, 2 GHz | Modern 4-core processor or better |
+| **Memory** | 4 GB RAM | 8 GB RAM |
+| **Storage** | 350 MB free | 500 MB free |
+
+On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memory** and an estimated **~1% total CPU** with the 3-second tracking cadence. The short Windows foreground probe accounts for most of that CPU time; results will vary with the machine and other activity.
 
 ## What’s new in v2
 
@@ -85,7 +96,7 @@ Get both from [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Q
 - Hardened Electron sandbox, navigation, permissions, content security policy, and IPC validation
 - Clear Windows installer and portable artifact names
 
-Read the [v2 overview](docs/release-notes-2.0.0.md) and [v2.0.1 patch notes](docs/release-notes-2.0.1.md).
+Read the [v2 overview](docs/release-notes-2.0.0.md), [v2.0.1 patch notes](docs/release-notes-2.0.1.md), and [v2.1.0 release notes](docs/release-notes-2.1.0.md).
 
 ## Run from source
 

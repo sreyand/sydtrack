@@ -175,6 +175,7 @@ assert(savedIgn.join(',') === 'explorer,dwm', 'saveIgnore normalizes');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-'));
 const store = createStore(dir);
 assert(store.getSettings().dailyGoalSec === 7200, 'default dailyGoalSec === 7200');
+assert(store.getSettings().pollMs === 3000, 'default tracking cadence avoids constant PowerShell startup load');
 store.updateSettings({ dailyGoalSec: 3600 });
 assert(store.getSettings().dailyGoalSec === 3600, 'updateSettings persists dailyGoalSec');
 const settingsOnDisk = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
@@ -421,6 +422,9 @@ async function regressionChecks() {
     fs.writeFileSync(settingsPath, JSON.stringify({ dailyGoalSec: 1234, futureSetting: 'retain' }));
     const legacy = createStore(recoveryDir, { onRecovery }).getSettings();
     assert(legacy.dailyGoalSec === 1234 && legacy.futureSetting === 'retain' && legacy.idleTimeoutSec === 300, 'partial settings retain values and gain compatible defaults');
+    fs.writeFileSync(settingsPath, JSON.stringify({ pollMs: 750 }));
+    const cadenceMigrated = createStore(recoveryDir, { onRecovery }).getSettings();
+    assert(cadenceMigrated.pollMs === 3000, 'legacy 750ms tracking cadence migrates to the quieter default');
     fs.writeFileSync(settingsPath, '[]');
     createStore(recoveryDir, { onRecovery });
     assert(notices.length === 2, 'wrong settings container is recovered');

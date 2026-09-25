@@ -1,6 +1,6 @@
 {
   "name": "sydtrack",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Desktop productivity tracker — active window time, classification, and focus reminders",
   "main": "src/main.js",
   "author": "SydTrack",
@@ -11,7 +11,7 @@
     "start:demo": "node scripts/start.js --demo",
     "postinstall": "node scripts/ensure-install-scripts.js",
     "check": "node scripts/check-syntax.js",
-    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js && node scripts/test-storage.js && node scripts/test-start.js && node scripts/test-live-ticker.js",
+    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js && node scripts/test-storage.js && node scripts/test-start.js && node scripts/test-startup.js && node scripts/test-live-ticker.js",
     "test:start": "node scripts/test-start.js",
     "test:hardening": "node scripts/test-hardening.js",
     "generate:activity": "node scripts/generate-activity.js",

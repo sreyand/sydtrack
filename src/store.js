@@ -234,12 +234,13 @@ function defaultSettings() {
   return {
     thresholdSec: defaultThresholdSec(),
     demoMode: false,
+    launchAtStartup: true,
     trackingPaused: false,
     reminderCooldownSec: 90,
     idleTimeoutSec: 300,
     trackMusicWhileIdle: false,
     trackVideoWhileIdle: false,
-    pollMs: 750,
+    pollMs: 3000,
     focusBoost: false,
     focusBoostRestoreSec: null,
     focusBoostSec: 180,
@@ -302,6 +303,8 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     (value) => value !== null && typeof value === 'object' && !Array.isArray(value),
     (report) => { settingsRecovered = true; onRecovery(report); });
   let settings = applyRuntimeEnvironment(Object.assign(defaultSettings(), savedSettings || {}));
+  const needsPollMigration = !!(savedSettings && Number(savedSettings.pollMs) === 750);
+  if (needsPollMigration) settings.pollMs = 3000;
   const needsGoalMigration = needsGoalSettingsMigration(savedSettings);
   if (needsGoalMigration && savedSettings) backupSettingsFile(settingsPath);
   settings = applyGoalMigration(settings, savedSettings);
@@ -310,7 +313,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     .some((key) => Object.prototype.hasOwnProperty.call(savedSettings, key)));
   delete settings.onboardingComplete;
   if (settingsRecovered) settings.trackingPaused = true;
-  if (settingsRecovered || needsGoalMigration || dropOnboarding || dropRetiredSettings) persistSettings();
+  if (settingsRecovered || needsPollMigration || needsGoalMigration || dropOnboarding || dropRetiredSettings) persistSettings();
 
   function archiveDay(day) {
     summaryCache.clear();

@@ -519,6 +519,12 @@
           <h3>Tracker</h3>
           <!-- Toggles first: Pause → session history → focusboost schedule (last) -->
           <div class="settings-toggles">
+            <label class="switch-row" id="launch-startup-row">
+              <div>
+                <div class="switch-title">Open at login</div>
+              </div>
+              <input type="checkbox" id="launch-startup-toggle" checked />
+            </label>
             <div class="switch-row pause-settings-row">
               <div>
                 <div class="switch-title">Pause tracking</div>
@@ -553,7 +559,22 @@
             </div>
           </div>
 
-          <!-- Timing fields -->
+          <div class="settings-block" id="polling-settings">
+            <div class="settings-block-title">Polling</div>
+            <label class="field settings-inline-field">
+              <div class="settings-field-copy">
+                <span>Polling mode</span>
+                <div class="hint">How quickly SydTrack notices an app switch.</div>
+              </div>
+              <select id="poll-mode">
+                <option value="5000">Low · 5 sec</option>
+                <option value="3000" selected>Med · 3 sec</option>
+                <option value="1000">Max · 1 sec</option>
+              </select>
+            </label>
+          </div>
+
+          <!-- Reminder timing fields -->
           <div class="settings-block">
             <div class="settings-block-title">Reminders</div>
             <div class="settings-row-2">

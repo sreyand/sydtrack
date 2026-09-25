@@ -223,6 +223,12 @@ const SETTINGS = {
   reminderMessage: message,
   focusBoostReminderMessage: message,
   dailyGoalSec: (value) => finiteInt(value, 900, 57600),
+  launchAtStartup: bool,
+  pollMs: (value) => {
+    const ms = finiteInt(value, 1000, 5000);
+    if (ms !== 1000 && ms !== 3000 && ms !== 5000) invalid();
+    return ms;
+  },
   trackingPaused: bool,
   notificationsEnabled: bool,
   focusBoostScheduleEnabled: bool,

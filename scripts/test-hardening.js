@@ -85,6 +85,7 @@ assert(!/fonts\.googleapis|fontshare\.com|cdn\./i.test(html), 'renderer HTML has
 assert(DEFAULT_THEME === 'midnight', 'unset theme preference is Midnight');
 assert(normalizeTheme(undefined) === 'midnight' && normalizeTheme(null) === 'midnight', 'missing theme normalizes to Midnight');
 assert(defaultSettings().theme === 'midnight', 'new installs default to Midnight');
+assert(defaultSettings().launchAtStartup === true, 'new installs open at login by default');
 assert(/data-theme="midnight"/.test(html), 'renderer first paint uses Midnight');
 assert(!/Graphite is the default/i.test(html), 'Appearance copy does not call Graphite the default');
 assert(/data-theme-id="midnight"[^>]+aria-pressed="true"/.test(html), 'Appearance picker marks Midnight as selected by default');
@@ -111,6 +112,8 @@ assert(!html.includes('id="ru-share"') && !html.includes('Focus share: 73%'), 'R
 assert(!html.includes('month-focus-average') && !html.includes('The score is that day'), 'Focus score cards omit explanatory subtitles');
 assert((html.match(/class="focus-score-wordmark"/g) || []).length === 2, 'week and month use the focusscore wordmark');
 assert(/<span class="logo-mark"[^>]*>S<\/span>/.test(html), 'sidebar keeps the S wordmark');
+assert(html.includes('id="launch-startup-toggle"') && html.includes('Open at login'), 'Settings exposes a concise startup toggle');
+assert(html.includes('id="poll-mode"') && html.includes('Low · 5 sec') && html.includes('Med · 3 sec') && html.includes('Max · 1 sec'), 'Settings exposes low, med, and max polling modes');
 const iconPath = path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico');
 assert(fs.existsSync(iconPath) && fs.readFileSync(iconPath).readUInt16LE(2) === 1, 'Windows icon is a valid ICO asset');
 assert(!html.includes('id="app-drill"') && !html.includes('app-hours-btn'), 'app hour-breakdown detail is not in the UI');
@@ -215,6 +218,9 @@ throws(() => validateIpcPayload('profiles:activate', ''), 'profiles:activate rej
 assert(validateIpcPayload('profiles:activate', 'default') === 'default', 'profiles:activate accepts default');
 
 assert(validateIpcPayload('settings:update', { trackingPaused: true, thresholdSec: 600 }).thresholdSec === 600, 'settings:update accepts known keys');
+assert(validateIpcPayload('settings:update', { launchAtStartup: false }).launchAtStartup === false, 'settings:update accepts the startup preference');
+assert(validateIpcPayload('settings:update', { pollMs: 3000 }).pollMs === 3000, 'settings:update accepts a polling preset');
+throws(() => validateIpcPayload('settings:update', { pollMs: 2000 }), 'settings:update rejects arbitrary polling intervals');
 assert(validateIpcPayload('settings:update', { trackMusicWhileIdle: false, trackVideoWhileIdle: true }).trackVideoWhileIdle === true, 'settings:update accepts media-while-idle keys');
 assert(!channels.includes('wellbeing'), 'retired wellbeing IPC channel is absent');
 assert(validateIpcPayload('settings:update', { focusShareGoalPct: 80, focusShareIncludeOther: false }).focusShareGoalPct === 80, 'settings:update accepts active goal keys');
