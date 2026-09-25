@@ -7,11 +7,14 @@ const { validateIpcPayload, channels } = require('../src/ipc-validate');
 const {
   APP_PAGE_URL,
   CONTENT_SECURITY_POLICY,
+  WINDOW_BACKGROUND_DARK,
+  WINDOW_BACKGROUND_LIGHT,
   assertIpcSender,
   buildBrowserWindowOptions,
   hardenedWebPreferences,
   isAllowedNavigation,
-  resolveAppFile
+  resolveAppFile,
+  windowBackgroundColor
 } = require('../src/window-security');
 const { electronLaunchArgs } = require('./launch-args');
 
@@ -56,6 +59,14 @@ assert(win.webPreferences === prefs || (
   win.webPreferences.webSecurity
 ), 'BrowserWindow options stay hardened');
 assert(win.show === false, 'window stays hidden until ready');
+assert(WINDOW_BACKGROUND_DARK === '#121418', 'dark window fill is #121418');
+assert(WINDOW_BACKGROUND_LIGHT === '#f3f4f6', 'light window fill is #f3f4f6');
+assert(windowBackgroundColor(true) === WINDOW_BACKGROUND_DARK, 'dark theme uses the dark window fill');
+assert(windowBackgroundColor(false) === WINDOW_BACKGROUND_LIGHT, 'light theme uses the light window fill');
+assert(buildBrowserWindowOptions({
+  preloadPath: preload,
+  backgroundColor: windowBackgroundColor(false)
+}).backgroundColor === '#f3f4f6', 'BrowserWindow options accept the light fill');
 
 assert(CONTENT_SECURITY_POLICY.includes("default-src 'self'"), 'CSP default-src is self');
 assert(!/https?:/.test(CONTENT_SECURITY_POLICY), 'CSP has no remote origins');
@@ -144,8 +155,12 @@ assert(headless.headless && headless.args.includes('--no-sandbox'), 'headless Li
 
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 assert(pkg.build.publish === null, 'electron-builder publish is disabled');
+assert(pkg.build.linux.maintainer === 'SydTrack <noreply@sydtrack.app>', 'Linux deb maintainer is set');
 assert(pkg.build.win.signAndEditExecutable === false, 'Windows signing is off by default');
 assert(pkg.build.mac && pkg.build.linux, 'macOS and Linux package targets exist');
+const builder = require('../build/electron-builder.config.js');
+assert(builder.publish === null, 'builder config publish is null');
+assert(builder.linux.maintainer === pkg.build.linux.maintainer, 'builder config keeps the Linux maintainer');
 const preloadSrc = fs.readFileSync(preload, 'utf8');
 assert(!preloadSrc.includes('correctAppToday'), 'preload no longer exposes unused correctAppToday');
 assert(!preloadSrc.includes('importProfilePack'), 'preload no longer exposes unused importProfilePack');

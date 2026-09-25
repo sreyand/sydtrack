@@ -10,7 +10,7 @@
     "start:electron": "electron . --disable-gpu",
     "start:demo": "node scripts/start.js --demo",
     "check": "node scripts/check-syntax.js",
-    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js",
+    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js",
     "test:hardening": "node scripts/test-hardening.js",
     "test:ui": "node scripts/check-ui.js",
     "test:profiles-ui": "node scripts/check-profiles-ui.js",
@@ -88,6 +88,7 @@
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "linux": {
+      "maintainer": "SydTrack <noreply@sydtrack.app>",
       "icon": "build/icon.png",
       "category": "Utility",
       "target": [

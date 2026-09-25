@@ -3,7 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme } = require('electron');
 const { bindTrackingLifecycle } = require('./tracking-lifecycle');
 const { createErrorLog, installErrorLogging } = require('./error-log');
 let errorLog;
@@ -47,6 +47,7 @@ const {
   buildBrowserWindowOptions,
   denyPermissionRequests,
   installNavigationGuards,
+  windowBackgroundColor,
   registerAppScheme,
   resolveAppFile
 } = require('./window-security');
@@ -184,7 +185,8 @@ function createWindow() {
   const winOpts = buildBrowserWindowOptions({
     preloadPath: path.join(__dirname, 'preload.js'),
     iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png'),
-    platform: process.platform
+    platform: process.platform,
+    backgroundColor: windowBackgroundColor(!!(nativeTheme && nativeTheme.shouldUseDarkColors))
   });
   mainWindow = new BrowserWindow(winOpts);
   installNavigationGuards(mainWindow.webContents);

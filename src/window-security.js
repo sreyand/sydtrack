@@ -5,6 +5,12 @@ const path = require('path');
 
 const APP_SCHEME = 'sydtrack';
 const APP_PAGE_URL = 'sydtrack://app/renderer/index.html';
+const WINDOW_BACKGROUND_DARK = '#121418';
+const WINDOW_BACKGROUND_LIGHT = '#f3f4f6';
+
+function windowBackgroundColor(shouldUseDarkColors) {
+  return shouldUseDarkColors ? WINDOW_BACKGROUND_DARK : WINDOW_BACKGROUND_LIGHT;
+}
 
 // Inline style attributes are set by the renderer (tooltips, layout). No remote
 // origins, no unsafe-eval. img-src data: keeps the local SVG mask in styles.css.
@@ -57,14 +63,14 @@ function hardenedWebPreferences(preloadPath) {
   };
 }
 
-function buildBrowserWindowOptions({ preloadPath, iconPath, platform }) {
+function buildBrowserWindowOptions({ preloadPath, iconPath, platform, backgroundColor }) {
   const options = {
     width: 1040,
     height: 760,
     minWidth: 800,
     minHeight: 600,
     title: 'sydtrack',
-    backgroundColor: '#0b0d12',
+    backgroundColor: backgroundColor || windowBackgroundColor(true),
     autoHideMenuBar: true,
     show: false,
     webPreferences: hardenedWebPreferences(preloadPath)
@@ -195,6 +201,9 @@ function resolveAppFile(requestUrl, appRoot) {
 module.exports = {
   APP_SCHEME,
   APP_PAGE_URL,
+  WINDOW_BACKGROUND_DARK,
+  WINDOW_BACKGROUND_LIGHT,
+  windowBackgroundColor,
   CONTENT_SECURITY_POLICY,
   registerAppScheme,
   hardenedWebPreferences,
