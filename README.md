@@ -17,8 +17,6 @@
   </p>
 </div>
 
-<video src="https://github.com/user-attachments/assets/71ab84a4-04a8-404e-9be7-914084e00791" width="100%" autoplay loop muted playsinline></video>
-
 ## Your workday, made legible
 
 SydTrack watches the app in front of you, classifies the time, and turns the result into a clean picture of your day. It runs quietly in the tray and keeps the data on your computer.
