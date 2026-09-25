@@ -142,5 +142,6 @@ Packaged builds use Electron’s SydTrack user-data directory. Raw daily activit
 
 `.sydtrack` backups can include activity, sessions, settings, profiles, browser keywords, and app identities. Import is additive for activity. Re-importing the same backup adds its activity again, while session IDs are deduplicated.
 
-<a href="https://ko-fi.com/sreyandas"><strong>Buy me a coffee</strong></a>
 </details>
+
+<a href="https://ko-fi.com/sreyandas"><strong>Like sydtrack? Buy me a coffee</strong></a>
