@@ -1,14 +1,12 @@
 <div align="left">
   <img src="./renderer/assets/logo-mark.png" width="150" alt="SydTrack logo">
   <p><strong>See where your day actually went.</strong></p>
-  <p>A private Windows productivity tracker with live activity, focus profiles, sessions, goals, and analytics—without an account, subscription, or cloud dashboard.</p>
-
-  <p>
+    <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
     <a href="docs/release-notes-2.0.0.md">What’s new in v2</a>
   </p>
-
+  <p>A private Windows productivity tracker with live activity, focus profiles, sessions, goals, and analytics—without an account, subscription, or cloud dashboard.</p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
