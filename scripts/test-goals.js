@@ -11,7 +11,7 @@ const gamification = require('../renderer/lib/gamification');
 const { createDecompressService } = require('../src/decompress-service');
 const { createStore, needsGoalSettingsMigration, backupSettingsFile, SETTINGS_BACKUP_KEEP } = require('../src/store');
 const { importBackup } = require('../src/backup');
-const { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS } = require('../renderer/wellbeing-ui');
+const { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS, renderDecompress } = require('../renderer/wellbeing-ui');
 
 function run(assert) {
   const eighty = goals.focusParts({ productive: 80, unproductive: 20, other: 90 }, false);
@@ -331,6 +331,60 @@ function run(assert) {
     !!roundupChunk && !roundupChunk.includes('decompress-card') && !roundupChunk.includes('decompress-start'),
     'Roundup no longer owns Decompress UI'
   );
+  const fake = {};
+  const makeEl = (id) => {
+    const cls = new Set();
+    fake[id] = {
+      textContent: '',
+      innerHTML: '',
+      disabled: false,
+      classList: {
+        toggle(name, on) { if (on) cls.add(name); else cls.delete(name); },
+        contains(name) { return cls.has(name); }
+      },
+      setAttribute(name, value) { fake[id][name] = value; }
+    };
+    return fake[id];
+  };
+  [
+    'decompress-status', 'decompress-pattern', 'decompress-start', 'decompress-end',
+    'decompress-timer', 'decompress-kicker', 'decompress-card', 'decompress-log', 'decompress-log-note'
+  ].forEach(makeEl);
+  const prevDoc = global.document;
+  global.document = { getElementById: (id) => fake[id] || null };
+  try {
+    renderDecompress({
+      date: '2026-09-25',
+      breaksUsed: 2,
+      breaksPerDay: 3,
+      breakMinutes: 10,
+      active: { startedAtMs: Date.parse('2026-09-25T15:42:00'), durationSec: 600, remainingSec: 247 },
+      onTrackSec: 0,
+      sessions: [
+        { id: 'open-1', date: '2026-09-25', startedAtMs: Date.parse('2026-09-25T15:42:00'), durationSec: 600, status: 'open' },
+        { id: 'done-1', date: '2026-09-25', startedAtMs: Date.parse('2026-09-25T14:10:00'), durationSec: 600, status: 'done' }
+      ],
+      pattern: { reason: 'not-enough-pattern' }
+    });
+    assert(fake['decompress-kicker'].textContent === 'Continue last decompress', 'active hero names the restore path');
+    assert(fake['decompress-timer'].textContent === '04:07', 'active hero shows remaining time');
+    assert(fake['decompress-start'].classList.contains('hidden') && !fake['decompress-end'].classList.contains('hidden'), 'active hero swaps Start for End');
+    assert(fake['decompress-log'].innerHTML.includes('Resume a break') && fake['decompress-log'].innerHTML.includes('Finished'), 'past breaks list can resume an open session');
+    renderDecompress({
+      date: '2026-09-25',
+      breaksUsed: 0,
+      breaksPerDay: 3,
+      breakMinutes: 10,
+      active: null,
+      onTrackSec: 0,
+      sessions: [],
+      pattern: null
+    });
+    assert(fake['decompress-kicker'].textContent === 'This break', 'idle hero is a start path');
+    assert(fake['decompress-log'].innerHTML.includes('No breaks yet'), 'empty past breaks uses human wording');
+  } finally {
+    global.document = prevDoc;
+  }
 
   assert(needsGoalSettingsMigration(null) && needsGoalSettingsMigration({ dailyGoalSec: 5400 }), 'missing goalsSchema still needs migration');
   assert(!needsGoalSettingsMigration({ goalsSchema: 2 }), 'schema 2 settings skip goal migration');

@@ -548,5 +548,5 @@ function drillSharePercent(total, active) {
 
 if (typeof document !== 'undefined') bindWellbeing();
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS };
+  module.exports = { goalPrefs, drillSharePercent, WEEK_HISTORY_DAYS, STREAK_HISTORY_DAYS, renderDecompress };
 }
