@@ -1166,6 +1166,10 @@ async function appCorrectionChecks() {
 async function activityReasonChecks() {
   const { createFocusProfiles } = require('../src/focus-profiles');
   const defaults = require('../src/default-focus-profiles.json');
+  const presetSource = require('./sync-focus-presets');
+  assert(JSON.stringify(defaults) === JSON.stringify(presetSource.buildDefaults()), 'Bundled Focus profile JSON matches its researched preset source');
+  assert(defaults.profiles.every(profile => profile.ignore.includes('explorer') && profile.ignore.includes('snippingtool') && profile.ignore.includes('sydtrack')), 'Every bundled profile carries the Windows Ignore baseline');
+  assert(defaults.profiles.reduce((total, profile) => total + profile.productive.length + profile.unproductive.length, 0) > 1000, 'Bundled presets provide broad role-specific coverage');
   const seedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-bundled-profiles-'));
   const seedOptions = { dataDir: seedRoot, rules: { productive: ['custom'], unproductive: [] }, ignore: [] };
   let seeded = createFocusProfiles(seedOptions);

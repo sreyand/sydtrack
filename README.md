@@ -75,7 +75,7 @@ Classification checks process names, window titles, URLs, and configured keyword
 3. For browsers with a captured address, `site:` tags take precedence over keywords. The most specific matching domain wins; the same domain in both lists is unproductive. For example, productive `site:learn.youtube.com` overrides unproductive `site:youtube.com` on that subdomain only. Rules match domain boundaries, never a domain mentioned in a page title or URL path.
 4. Unproductive keyword matches in the active Focus profile take priority over ordinary productive keywords.
 5. Productive keyword matches in the active Focus profile are applied next.
-6. If the focused window is a browser and the profile did not match, the local browser keyword list is checked with exact tokens (not substrings). Unproductive keywords in that list win over productive ones. The list ships with a local default and travels with backups. Editing it in the UI is a later Focus Tags change. It does not apply to native apps. Changing bundled defaults does not rewrite stored history.
+6. If the focused window is a browser and the profile did not match, the local browser keyword list is checked with exact tokens (not substrings). Unproductive keywords in that list win over productive ones. The list ships with a local default, can be edited under Focus Tags, and travels with backups. It does not apply to native apps. Changing bundled defaults does not rewrite stored history.
 7. Recognized browsers with no matching keyword default to productive.
 8. Unknown applications without a match are other.
 

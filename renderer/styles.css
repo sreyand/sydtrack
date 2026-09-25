@@ -1898,6 +1898,9 @@ body[data-boost="on"]::after {
   padding-left: 0;
   padding-bottom: 0;
 }
+#view-settings #screen-limit-row {
+  border-bottom: 0;
+}
 
 /* Data / privacy / clear — theme-aware contrast (Starlight + light + dark) */
 .privacy-warning {

@@ -98,6 +98,7 @@ assert(/\.pie-total \{[\s\S]{0,180}white-space:\s*nowrap/.test(homeCss), 'Home d
 assert(/\.pie-total \{[\s\S]{0,180}font-size:\s*clamp\(22px, 12\.5cqi, 40px\)/.test(homeCss), 'Home donut total scales to fit the full daily range');
 assert(/#view-home \{[\s\S]{0,180}justify-content:\s*center/.test(homeCss), 'Home content is vertically balanced');
 assert(html.includes('class="page-title-row"') && /#view-home \.mood-pill \{[\s\S]{0,100}border:\s*0/.test(homeCss), 'Home mood is a quiet inline title status');
+assert(/#view-settings #screen-limit-row \{[\s\S]{0,50}border-bottom:\s*0/.test(homeCss), 'Settings screen-time row does not double the next section divider');
 assert(/@container \(max-width: 360px\)[\s\S]{0,120}\.last-focused \.lf-row[\s\S]{0,80}flex-direction:\s*column/.test(homeCss), 'Compact Last focused card gives its text a full row');
 assert(!/decompress|gamification|duck mascot|share-image/i.test(html), 'retired Decompress and gamification UI is absent');
 assert(/\.home-focus-actions \.profile-menu[\s\S]{0,80}top:\s*calc\(100% \+ 4px\)/.test(homeCss), 'Home focus-profile menu opens downward by default');

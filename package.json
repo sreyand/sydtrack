@@ -1,6 +1,6 @@
 {
   "name": "sydtrack",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Desktop productivity tracker — active window time, classification, and focus reminders",
   "main": "src/main.js",
   "author": "SydTrack",
@@ -15,6 +15,7 @@
     "test:start": "node scripts/test-start.js",
     "test:hardening": "node scripts/test-hardening.js",
     "generate:activity": "node scripts/generate-activity.js",
+    "sync:profiles": "node scripts/sync-focus-presets.js",
     "benchmark:storage": "node scripts/benchmark-storage.js",
     "test:ui": "node scripts/check-ui.js",
     "test:profiles-ui": "node scripts/check-profiles-ui.js",
@@ -77,14 +78,17 @@
             "x64"
           ]
         }
-      ],
-      "artifactName": "${productName}.${ext}"
+      ]
     },
     "nsis": {
+      "artifactName": "sydtrack-${version}-setup.exe",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "sydtrack-${version}-portable.exe"
     },
     "mac": {
       "icon": "build/icon.png",
