@@ -96,6 +96,7 @@ function deleteAllMyData({
     if (focusProfiles && profileDefaults && typeof focusProfiles.resetBundled === 'function') {
       focusProfiles.resetBundled(profileDefaults);
     }
+    // TODO(#18): after erase-all, re-run goal migration so bundled goals are restored.
   } catch (err) {
     collectFailure(failed, focusProfiles && focusProfiles.filePath || path.join(dataDir, 'focus-profiles.json'), err);
   }
