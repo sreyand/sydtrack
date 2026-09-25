@@ -154,8 +154,10 @@ app.whenReady().then(async () => {
       byCategory: {productive: 3600, unproductive: 1200, other: 600}
     })));
     const panel = document.getElementById('month-history');
+    const scoreCard = document.getElementById('month-focus-scores');
     return { share: document.getElementById('month-focus-share').textContent, visible: !document.getElementById('panel-month').classList.contains('hidden'),
-      overflow: panel.scrollWidth > panel.clientWidth + 1 };
+      overflow: panel.scrollWidth > panel.clientWidth + 1, scoreCells: document.querySelectorAll('.month-score-day').length,
+      scoreHeight: scoreCard.getBoundingClientRect().height };
   })()`);
   console.log('History checks:', JSON.stringify(historyChecks));
   await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
@@ -165,7 +167,7 @@ app.whenReady().then(async () => {
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-home.png'), screenshot.toPNG());
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-results.json'), JSON.stringify(results.flat(), null, 2));
   const failed = results.flat().some((r) => r.overflow || !r.timeInside) || !tagChecks.loaded || !tagChecks.removed || hoverChecks.some(r => !r.stayedVisible || !r.leftHidden) || !segmentChecks.analyticsPreserved || !segmentChecks.sessionPreserved;
-  app.exit(failed || historyChecks.share !== '75%' || !historyChecks.visible || historyChecks.overflow || layoutChecks.some(r => !r.sidebarAligned || !r.mobileRail || !r.customAligned || !r.controlsInside) ? 1 : 0);
+  app.exit(failed || historyChecks.share !== '75%' || !historyChecks.visible || historyChecks.overflow || historyChecks.scoreCells !== 30 || historyChecks.scoreHeight > 520 || layoutChecks.some(r => !r.sidebarAligned || !r.mobileRail || !r.customAligned || !r.controlsInside) ? 1 : 0);
 }).catch((error) => { console.error(error); app.exit(1); });
 
 setTimeout(() => { console.error('UI checks timed out'); app.exit(1); }, 20000).unref();

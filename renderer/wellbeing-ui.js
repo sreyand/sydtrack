@@ -175,11 +175,22 @@ function renderMonthFocusScores(days) {
   const week = sydtrackGoals.rollingAverage(days || [], { window: 7, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
   const month = sydtrackGoals.rollingAverage(days || [], { window: 30, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
   if (average) {
-    const weekText = week.latest && week.latest.percent != null ? week.latest.percent + '% over ' + week.latest.samples + ' scored day' + (week.latest.samples === 1 ? '' : 's') : 'not enough scored days';
-    const monthText = month.latest && month.latest.percent != null ? month.latest.percent + '% over ' + month.latest.samples + ' scored day' + (month.latest.samples === 1 ? '' : 's') : 'not enough scored days';
-    average.textContent = '7-day average ' + weekText + '. 30-day average ' + monthText + '. Empty days are skipped, not counted as zero.';
+    const weekText = week.latest && week.latest.percent != null ? week.latest.percent + '% (' + week.latest.samples + ' scored)' : '—';
+    const monthText = month.latest && month.latest.percent != null ? month.latest.percent + '% (' + month.latest.samples + ' scored)' : '—';
+    average.textContent = '7-day ' + weekText + ' · 30-day ' + monthText + '. Empty days are skipped.';
   }
-  renderScoreList(list, days || [], 7);
+  if (!list) return;
+  list.innerHTML = '<div class="month-score-grid">' + month.days.map((day, index) => {
+    const avg = month.series[index];
+    const date = String(day.date || '');
+    const label = date.length >= 10 ? date.slice(5, 7) + '/' + date.slice(8, 10) : date;
+    const score = day.scored ? day.percent + '%' : '—';
+    const title = date + ': ' + (day.scored ? day.percent + '% focus share' : 'no scored activity') +
+      (avg && avg.percent != null ? '; 30-day average ' + avg.percent + '%' : '');
+    return '<div class="month-score-day" data-hit="' + (day.scored ? (day.hit ? 'yes' : 'no') : 'na') +
+      '" title="' + wellbeingEsc(title) + '"><span class="month-score-date">' + wellbeingEsc(label) +
+      '</span><strong>' + score + '</strong></div>';
+  }).join('') + '</div>';
 }
 
 function bindWellbeing() {
