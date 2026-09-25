@@ -744,7 +744,13 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...settings };
     if (needsGoalSettingsMigration(raw)) {
       if (fs.existsSync(settingsPath)) backupSettingsFile(settingsPath);
-      settings = migrateGoalSettings(Object.assign({}, settings, raw, { goalsSchema: 0 }), { existingInstall: true });
+      // Migrate the imported snapshot itself. Merging current schema-2
+      // fields first would hide dailyGoalSec-only backups.
+      settings = Object.assign(
+        {},
+        settings,
+        migrateGoalSettings(Object.assign({}, raw, { goalsSchema: 0 }), { existingInstall: true })
+      );
     } else {
       settings = Object.assign({}, settings, raw);
     }
