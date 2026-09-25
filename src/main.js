@@ -291,6 +291,7 @@ function formatReminderBody(template, payload) {
 function fireLocalNotice(title, body, kicker) {
   const settings = (store && store.getSettings && store.getSettings()) || {};
   if (settings.notificationsEnabled === false) return;
+  if (!(Number(settings.decompressBreaksPerDay) > 0)) return;
   const text = String(body || '').trim();
   if (!text) return;
   if (Notification.isSupported()) {
@@ -641,36 +642,30 @@ ipcMain.handle('profiles:delete', async (event, payload) => {
   return focusProfiles.remove(id);
 });
 
-ipcMain.handle('wellbeing:startBreak', async (event, payload) => {
-  guardIpc(event, 'wellbeing:startBreak', payload);
-  return decompressService ? decompressService.startBreak() : { started: false };
-});
-
-ipcMain.handle('wellbeing:endBreak', async (event, payload) => {
-  guardIpc(event, 'wellbeing:endBreak', payload);
-  return decompressService ? decompressService.endBreak() : { ended: false };
-});
-
-ipcMain.handle('wellbeing:copySummary', async (event, payload) => {
-  const text = guardIpc(event, 'wellbeing:copySummary', payload);
-  clipboard.writeText(String(text || '').slice(0, 4000));
-  return { ok: true };
-});
-
-ipcMain.handle('wellbeing:saveImage', async (event, payload) => {
-  const dataUrl = guardIpc(event, 'wellbeing:saveImage', payload);
-  const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
-  if (!match || !mainWindow) return { ok: false, error: 'invalid image' };
-  const buffer = Buffer.from(match[1], 'base64');
-  if (!buffer.length || buffer.length > 2 * 1024 * 1024) return { ok: false, error: 'invalid image' };
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: 'Save focus summary',
-    defaultPath: 'sydtrack-focus.png',
-    filters: [{ name: 'PNG image', extensions: ['png'] }]
-  });
-  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-  fs.writeFileSync(result.filePath, buffer);
-  return { ok: true, filePath: result.filePath };
+ipcMain.handle('wellbeing', async (event, payload) => {
+  const msg = guardIpc(event, 'wellbeing', payload);
+  const action = msg && msg.action;
+  if (action === 'startBreak') return decompressService ? decompressService.startBreak() : { started: false };
+  if (action === 'endBreak') return decompressService ? decompressService.endBreak() : { ended: false };
+  if (action === 'copySummary') {
+    clipboard.writeText(String((msg && msg.payload) || '').slice(0, 4000));
+    return { ok: true };
+  }
+  if (action === 'saveImage') {
+    const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String((msg && msg.payload) || ''));
+    if (!match || !mainWindow) return { ok: false, error: 'invalid image' };
+    const buffer = Buffer.from(match[1], 'base64');
+    if (!buffer.length || buffer.length > 2 * 1024 * 1024) return { ok: false, error: 'invalid image' };
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save focus summary',
+      defaultPath: 'sydtrack-focus.png',
+      filters: [{ name: 'PNG image', extensions: ['png'] }]
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    fs.writeFileSync(result.filePath, buffer);
+    return { ok: true, filePath: result.filePath };
+  }
+  return { ok: false, error: 'unknown action' };
 });
 
 ipcMain.handle('settings:update', async (event, payload) => {
@@ -800,7 +795,10 @@ ipcMain.handle('data:import', async (event, payload) => {
       if (rulesHolder.rules) rulesHolder.rules.browserKeywords = browserKeywordsHolder.keywords;
     },
     mode: options.mode === 'replace' ? 'replace' : 'merge',
-    onSettings: applySettings,
+    onSettings: (next) => {
+      if (sessionManager && next) sessionManager.applyHistorySetting(next.sessionHistoryEnabled !== false);
+      if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
+    },
     onRules: (rules) => {
       if (!obj.profiles) focusProfiles.save('default', { productive: rules.productive, unproductive: rules.unproductive });
     },
@@ -893,6 +891,7 @@ ipcMain.handle('data:clearToday', async (event, payload) => {
   guardIpc(event, 'data:clearToday', payload);
   if (!store) return { ok: false };
   store.clearToday();
+  if (decompressService) decompressService.reset();
   return { ok: true, stats: store.snapshot() };
 });
 
@@ -900,6 +899,7 @@ ipcMain.handle('data:clearAll', async (event, payload) => {
   guardIpc(event, 'data:clearAll', payload);
   if (!store) return { ok: false };
   store.clearAllHistory();
+  if (decompressService) decompressService.reset();
   return { ok: true, stats: store.snapshot() };
 });
 
@@ -924,6 +924,7 @@ ipcMain.handle('data:deleteAll', async (event, payload) => {
   });
   loadAppIdentities();
   loadBrowserKeywordFile();
+  if (decompressService) decompressService.reset();
   if (tracker) tracker.invalidateClassification();
   return {
     ...deleted,

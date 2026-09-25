@@ -9,7 +9,9 @@ const decompress = require('../src/decompress');
 const insights = require('../src/insights');
 const gamification = require('../src/gamification');
 const { createDecompressService } = require('../src/decompress-service');
-const { createStore } = require('../src/store');
+const { createStore, needsGoalSettingsMigration, backupSettingsFile } = require('../src/store');
+const { importBackup } = require('../src/backup');
+const { goalPrefs } = require('../renderer/wellbeing-ui');
 
 function run(assert) {
   const eighty = goals.focusParts({ productive: 80, unproductive: 20, other: 90 }, false);
@@ -45,10 +47,33 @@ function run(assert) {
   assert(rolling.series[2].percent === 65 && rolling.series[2].samples === 2, 'rolling average skips unscored days');
   assert(rolling.latest.percent === 65 && rolling.latest.samples === 2, 'latest rolling average uses the scored days in the window');
 
+  const defaults = goals.goalSettingsDefaults();
+  assert(
+    defaults.focusShareGoalPct === 80 &&
+      defaults.focusShareIncludeOther === false &&
+      defaults.screenTimeLimitEnabled === false &&
+      defaults.screenTimeLimitSec === 8 * 3600 &&
+      defaults.decompressBreaksPerDay === 3 &&
+      defaults.decompressBreakMinutes === 10 &&
+      defaults.gamificationEnabled === false &&
+      defaults.duckEnabled === false &&
+      defaults.goalsSchema === 2,
+    'goalSettingsDefaults are 80% share, Other off, screen limit off at 8h, 3x10 breaks, gamification off'
+  );
+  const prefs = goalPrefs({});
+  assert(
+    prefs.includeOther === false &&
+      prefs.gamification === false &&
+      prefs.duck === false &&
+      prefs.screenEnabled === false &&
+      prefs.goalPct === 80,
+    'renderer goalPrefs defaults are all off'
+  );
+
   const fresh = goals.migrateGoalSettings({}, { existingInstall: false });
   assert(fresh.focusShareGoalPct === 80 && fresh.focusShareIncludeOther === false, 'new install defaults to 80% focus share excluding other');
   assert(fresh.screenTimeLimitEnabled === false && fresh.screenTimeLimitSec === 8 * 3600, 'screen-time limit is off and presets to 8h');
-  assert(fresh.onboardingComplete === false && fresh.gamificationEnabled === false && fresh.duckEnabled === false, 'onboarding, gamification, and duck start off');
+  assert(fresh.gamificationEnabled === false && fresh.duckEnabled === false, 'gamification and duck start off');
   assert(fresh.decompressBreaksPerDay === 3 && fresh.decompressBreakMinutes === 10 && fresh.goalsSchema === 2, 'decompress defaults are 3 breaks of 10 minutes');
 
   const untouched = goals.migrateGoalSettings({ dailyGoalSec: 7200, futureSetting: 'retain' }, { existingInstall: true });
@@ -86,8 +111,9 @@ function run(assert) {
   assert(streak.marks[2].hit === true && streak.marks[3].hit === false, 'streak uses the rounded focus-share goal');
   assert(streak.current === 1 && streak.longest === 2 && streak.lastQualifiedDate === '2026-09-06', 'inactive days do not break a streak and a miss does');
 
+  assert(decompress.ON_TRACK_SEC === 3600, 'on-track hour is 3600 seconds');
   let state = decompress.createBreakState('2026-09-24');
-  let step = decompress.applyTrackedTime(state, { category: 'productive', seconds: 3599 }, { goalPct: 80, breaksPerDay: 3 });
+  let step = decompress.applyTrackedTime(state, { category: 'productive', seconds: decompress.ON_TRACK_SEC - 1 }, { goalPct: 80, breaksPerDay: 3 });
   assert(!step.suggest && step.onTrackSec === 3599, '59:59 on track does not suggest a break');
   step = decompress.applyTrackedTime(step.state, { category: 'other', seconds: 5000 }, { goalPct: 80, includeOther: false, breaksPerDay: 3 });
   assert(!step.suggest && step.onTrackSec === 3599, 'other time does not count or reset the default stretch');
@@ -156,6 +182,8 @@ function run(assert) {
     { nowHour: 16, includeOther: false }
   );
   assert(passed.hour === 14 && passed.passed === true, 'a dip that already started is labeled passed');
+  const emptyPattern = decompress.suggestDecompressHour([]);
+  assert(emptyPattern.reason === 'not-enough-pattern' && emptyPattern.hour === null, 'empty history does not invent a break hour');
   const thinPattern = decompress.suggestDecompressHour(
     [{ date: '2026-09-01', byHour: Array.from({ length: 24 }, () => hour(60, 0)) }],
     { nowHour: 9 }
@@ -206,6 +234,14 @@ function run(assert) {
   byHour[11].byApp['Chrome::unproductive'] = { seconds: 45, category: 'unproductive' };
   const drill = insights.appDrilldown(byHour, 'Chrome');
   assert(drill.total === 75 && drill.hours.length === 2 && drill.hours[0].hour === 9 && drill.categories.unproductive === 75, 'app drill-down sums hourly rows for one app');
+  byHour[9].byApp['CHROME::unproductive'] = { seconds: 25, category: 'unproductive' };
+  byHour[9].byApp['@activity:' + JSON.stringify(['Chrome', 'unproductive', 'youtube', 'ignored'])] = { seconds: 600, category: 'ignored' };
+  const merged = insights.appDrilldown(byHour, 'chrome');
+  assert(merged.total === 100 && merged.categories.unproductive === 100 && merged.categories.other === 0, 'drill-down merges case variants and skips ignored time');
+  const active = 100;
+  const share = insights.appShare(merged.total, active);
+  const over = insights.appShare(700, active);
+  assert(share != null && share <= 1 && over === 1, 'app share never exceeds 100% even if ignored time is still in hourly rows');
 
   const calm = gamification.roundupCopy({ thin: false, hit: false, gamification: false, goalPct: 80 });
   const playful = gamification.roundupCopy({ thin: false, hit: true, gamification: true, goalPct: 80, streak: 3 });
@@ -222,20 +258,49 @@ function run(assert) {
   });
   assert(summary.includes('Not uploaded') && summary.includes('80%') && summary.includes('2 days'), 'share text is a local summary');
 
+  assert(needsGoalSettingsMigration(null) && needsGoalSettingsMigration({ dailyGoalSec: 5400 }), 'missing goalsSchema still needs migration');
+  assert(!needsGoalSettingsMigration({ goalsSchema: 2 }), 'schema 2 settings skip goal migration');
+
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-goals-'));
+  const extraDirs = [];
   try {
-    fs.writeFileSync(path.join(root, 'settings.json'), JSON.stringify({ dailyGoalSec: 5400, futureSetting: 'keep' }));
+    const settingsPath = path.join(root, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({ dailyGoalSec: 5400, futureSetting: 'keep' }));
+    const helperBak = backupSettingsFile(settingsPath, new Date('2026-09-24T15:00:00.000Z'));
+    assert(helperBak && path.basename(helperBak) === 'settings.json.2026-09-24T15-00-00-000Z.bak', 'backupSettingsFile writes a timestamped copy next to settings.json');
+    assert(JSON.parse(fs.readFileSync(helperBak, 'utf8')).dailyGoalSec === 5400, 'helper backup keeps the original settings bytes');
+    fs.unlinkSync(helperBak);
     const store = createStore(root);
     const saved = store.getSettings();
     assert(saved.focusShareGoalPct === 80 && saved.legacyProductiveGoalSec === 5400 && saved.futureSetting === 'keep', 'store migrates an existing productivity goal on load');
-    assert(saved.screenTimeLimitEnabled === false && saved.onboardingComplete === true, 'store migration leaves the screen limit off for existing users');
+    assert(saved.screenTimeLimitEnabled === false && saved.gamificationEnabled === false, 'store migration leaves the screen limit and gamification off');
+    const backups = fs.readdirSync(root).filter((f) => f.startsWith('settings.json.') && f.endsWith('.bak'));
+    assert(backups.length === 1, 'goal migration writes a timestamped settings backup');
+    assert(JSON.parse(fs.readFileSync(path.join(root, backups[0]), 'utf8')).dailyGoalSec === 5400, 'settings backup keeps the pre-migration file');
     store.updateSettings({ focusShareGoalPct: 65, gamificationEnabled: true });
     const restarted = createStore(root);
     assert(restarted.getSettings().focusShareGoalPct === 65 && restarted.getSettings().gamificationEnabled === true, 'a later launch does not overwrite saved goal settings');
 
     const freshDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-goals-new-'));
+    extraDirs.push(freshDir);
     const freshStore = createStore(freshDir);
-    assert(freshStore.getSettings().onboardingComplete === false && freshStore.getSettings().dailyGoalSec === 7200, 'a new store still defaults dailyGoalSec and asks for onboarding');
+    assert(freshStore.getSettings().gamificationEnabled === false && freshStore.getSettings().dailyGoalSec === 7200, 'a new store keeps dailyGoalSec and leaves gamification off');
+
+    const importDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-goals-import-'));
+    extraDirs.push(importDir);
+    const importStore = createStore(importDir);
+    importStore.updateSettings({ focusShareGoalPct: 80, goalsSchema: 2 });
+    const imported = importBackup(importStore, {
+      format: 'sydtrack-backup',
+      schemaVersion: 1,
+      days: {},
+      settings: { dailyGoalSec: 5400, futureSetting: 'from-backup' }
+    });
+    assert(imported.ok && imported.appliedSettings, 'older backup settings are applied');
+    const afterImport = importStore.getSettings();
+    assert(afterImport.legacyProductiveGoalSec === 5400 && afterImport.screenTimeLimitEnabled === false && afterImport.futureSetting === 'from-backup', 'importing an older backup runs goal migration');
+    const importBackups = fs.readdirSync(importDir).filter((f) => f.startsWith('settings.json.') && f.endsWith('.bak'));
+    assert(importBackups.length >= 1, 'importing an older backup backs up settings.json first');
 
     let clock = Date.parse('2026-09-24T15:00:00');
     const service = createDecompressService({
@@ -261,8 +326,19 @@ function run(assert) {
       now: () => clock
     });
     assert(reloaded.publicState().breaksUsed === 1, 'break count persists locally');
+    const decompressPath = path.join(root, 'decompress.json');
+    assert(fs.existsSync(decompressPath), 'started breaks are stored in decompress.json');
+    const mtime = fs.statSync(decompressPath).mtimeMs;
+    reloaded.observe({ date: '2026-09-24', byCategory: { productive: 4000, unproductive: 0, other: 0 } });
+    reloaded.observe({ date: '2026-09-24', byCategory: { productive: 4000, unproductive: 0, other: 0 } });
+    assert(fs.statSync(decompressPath).mtimeMs === mtime, 'decompress.json is not rewritten when state is unchanged');
+    store.clearAllHistory();
+    assert(!fs.existsSync(decompressPath), 'clearing data removes decompress.json');
+    reloaded.reset();
+    assert(reloaded.publicState().breaksUsed === 0 && !fs.existsSync(decompressPath), 'decompress reset clears memory and file');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+    for (const dir of extraDirs) fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 

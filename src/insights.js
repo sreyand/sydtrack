@@ -119,6 +119,10 @@
     return lines;
   }
 
+  function namesMatch(a, b) {
+    return String(a || '').toLowerCase() === String(b || '').toLowerCase();
+  }
+
   function appDrilldown(byHour, appName) {
     const name = String(appName || '');
     const hours = [];
@@ -130,7 +134,8 @@
       const byApp = bucket.byApp && typeof bucket.byApp === 'object' ? bucket.byApp : {};
       let seconds = 0;
       for (const [key, info] of Object.entries(byApp)) {
-        if (appNameFromStorageKey(key) !== name) continue;
+        if (!namesMatch(appNameFromStorageKey(key), name)) continue;
+        if (info && info.category === 'ignored') continue;
         const sec = Math.max(0, Number(info && info.seconds) || 0);
         if (!sec) continue;
         seconds += sec;
@@ -145,11 +150,20 @@
     return { name, total, hours, categories };
   }
 
+  function appShare(totalSec, activeSec) {
+    const active = Math.max(0, Number(activeSec) || 0);
+    const total = Math.max(0, Number(totalSec) || 0);
+    if (!active) return null;
+    return Math.min(1, total / active);
+  }
+
   const api = {
     appNameFromStorageKey,
+    namesMatch,
     sumDays,
     compareWeeks,
-    appDrilldown
+    appDrilldown,
+    appShare
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.sydtrackInsights = api;

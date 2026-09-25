@@ -42,10 +42,11 @@ contextBridge.exposeInMainWorld('sydtrack', {
   setIgnore: (list) => ipcRenderer.invoke('ignore:set', { ignore: list, profileId: activeProfileId }),
   resetIgnore: () => ipcRenderer.invoke('ignore:reset', activeProfileId),
   updateSettings: (partial) => ipcRenderer.invoke('settings:update', partial),
-  startBreak: () => ipcRenderer.invoke('wellbeing:startBreak'),
-  endBreak: () => ipcRenderer.invoke('wellbeing:endBreak'),
-  copySummary: (text) => ipcRenderer.invoke('wellbeing:copySummary', text),
-  saveSummaryImage: (dataUrl) => ipcRenderer.invoke('wellbeing:saveImage', dataUrl),
+  wellbeing: (action, payload) => ipcRenderer.invoke('wellbeing', { action, payload }),
+  startBreak: () => ipcRenderer.invoke('wellbeing', { action: 'startBreak' }),
+  endBreak: () => ipcRenderer.invoke('wellbeing', { action: 'endBreak' }),
+  copySummary: (text) => ipcRenderer.invoke('wellbeing', { action: 'copySummary', payload: text }),
+  saveSummaryImage: (dataUrl) => ipcRenderer.invoke('wellbeing', { action: 'saveImage', payload: dataUrl }),
   onWellbeingNotice: (cb) => {
     const handler = (_event, payload) => cb(payload);
     ipcRenderer.on('wellbeing:notice', handler);

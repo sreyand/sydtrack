@@ -27,8 +27,7 @@ function goalPrefs(settings) {
     gamification: !!src.gamificationEnabled,
     duck: !!src.duckEnabled,
     screenEnabled: !!src.screenTimeLimitEnabled,
-    screenLimit: Number(src.screenTimeLimitSec) || 8 * 3600,
-    onboardingComplete: !!src.onboardingComplete
+    screenLimit: Number(src.screenTimeLimitSec) || 8 * 3600
   };
 }
 
@@ -40,11 +39,6 @@ function fmtShort(seconds) {
   if (h && m) return h + 'h ' + m + 'm';
   if (h) return h + 'h';
   return m + 'm';
-}
-
-function wellbeingOwnsScreen() {
-  const view = wellbeingEl('view-onboarding');
-  return !!(view && !view.classList.contains('hidden'));
 }
 
 function syncWellbeingSettings(settings) {
@@ -84,27 +78,6 @@ function syncWellbeingSettings(settings) {
   if (share) share.classList.toggle('hidden', !settings.gamificationEnabled);
   const duck = wellbeingEl('roundup-duck');
   if (duck) duck.classList.toggle('hidden', !settings.duckEnabled);
-  const onboard = wellbeingEl('view-onboarding');
-  const views = ['view-home', 'view-roundup', 'view-analytics', 'view-sessions', 'view-tags', 'view-settings'];
-  if (onboard) {
-    const show = !settings.onboardingComplete;
-    onboard.classList.toggle('hidden', !show);
-    if (show) {
-      views.forEach((id) => {
-        const el = wellbeingEl(id);
-        if (el) el.classList.add('hidden');
-      });
-    } else if (views.every((id) => {
-      const el = wellbeingEl(id);
-      return !el || el.classList.contains('hidden');
-    })) {
-      const home = wellbeingEl('view-home');
-      if (home) home.classList.remove('hidden');
-      document.querySelectorAll('.nav-btn').forEach((b) => {
-        b.classList.toggle('active', b.getAttribute('data-tab') === 'home');
-      });
-    }
-  }
 }
 
 function noteWellbeingPayload(payload) {
@@ -158,7 +131,7 @@ function loadGoalHistory(date) {
   if (historyCache.pending && historyCache.pendingDate === key) return historyCache.pending;
   const bridge = window.sydtrack;
   if (!bridge || !bridge.getHistorySummary) return Promise.resolve([]);
-  const pending = bridge.getHistorySummary(90).then((days) => {
+  const pending = bridge.getHistorySummary(14).then((days) => {
     historyCache.date = key;
     historyCache.at = Date.now();
     historyCache.days = days || [];
@@ -329,7 +302,8 @@ function renderAppDrilldown(stats) {
   }
   const drill = sydtrackInsights.appDrilldown(stats && stats.byHour, drillApp);
   const active = sydtrackGoals.activeTrackedSec(stats && stats.byCategory);
-  const share = active > 0 ? Math.round((drill.total / active) * 100) : null;
+  const ratio = sydtrackInsights.appShare(drill.total, active);
+  const share = ratio == null ? null : Math.round(ratio * 100);
   if (!drill.total) {
     host.textContent = drillApp + ' has no hourly time recorded today.';
     return;
@@ -405,22 +379,6 @@ function bindWellbeing() {
   on('decompress-minutes', 'change', () => pushSettings({ decompressBreakMinutes: Number(wellbeingEl('decompress-minutes').value) }));
   on('gamification-toggle', 'change', () => pushSettings({ gamificationEnabled: !!wellbeingEl('gamification-toggle').checked }));
   on('duck-toggle', 'change', () => pushSettings({ duckEnabled: !!wellbeingEl('duck-toggle').checked }));
-  on('onboarding-start', 'click', async () => {
-    await pushSettings({
-      focusShareGoalPct: Number(wellbeingEl('onboarding-goal').value),
-      focusShareIncludeOther: !!(wellbeingEl('onboarding-include-other') && wellbeingEl('onboarding-include-other').checked),
-      decompressBreaksPerDay: Number(wellbeingEl('onboarding-breaks').value),
-      decompressBreakMinutes: Number(wellbeingEl('onboarding-minutes').value),
-      onboardingComplete: true
-    });
-    const onboard = wellbeingEl('view-onboarding');
-    if (onboard) onboard.classList.add('hidden');
-    const homeView = wellbeingEl('view-home');
-    if (homeView) homeView.classList.remove('hidden');
-    document.querySelectorAll('.nav-btn').forEach((b) => {
-      b.classList.toggle('active', b.getAttribute('data-tab') === 'home');
-    });
-  });
   on('decompress-start', 'click', async () => {
     if (!window.sydtrack || !window.sydtrack.startBreak) return;
     const result = await window.sydtrack.startBreak();
@@ -468,4 +426,5 @@ function bindWellbeing() {
   }
 }
 
-bindWellbeing();
+if (typeof document !== 'undefined') bindWellbeing();
+if (typeof module !== 'undefined' && module.exports) module.exports = { goalPrefs };

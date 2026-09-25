@@ -16,10 +16,7 @@ const CHANNELS = [
   'profiles:activate',
   'profiles:delete',
   'profiles:import',
-  'wellbeing:startBreak',
-  'wellbeing:endBreak',
-  'wellbeing:copySummary',
-  'wellbeing:saveImage',
+  'wellbeing',
   'settings:update',
   'data:export',
   'data:exportCsv',
@@ -304,6 +301,16 @@ function wellbeingImage(payload) {
   return payload;
 }
 
+function wellbeingMessage(payload) {
+  const obj = plainObject(payload);
+  assertKeys(obj, ['action', 'payload']);
+  if (typeof obj.action !== 'string') invalid();
+  if (obj.action === 'startBreak' || obj.action === 'endBreak') return { action: obj.action };
+  if (obj.action === 'copySummary') return { action: obj.action, payload: wellbeingText(obj.payload) };
+  if (obj.action === 'saveImage') return { action: obj.action, payload: wellbeingImage(obj.payload) };
+  invalid();
+}
+
 function sessionDelete(payload) {
   const obj = plainObject(payload);
   assertKeys(obj, ['id', 'dateKey']);
@@ -332,10 +339,7 @@ const VALIDATORS = {
   'profiles:activate': requiredProfileId,
   'profiles:delete': requiredProfileId,
   'profiles:import': noPayload,
-  'wellbeing:startBreak': noPayload,
-  'wellbeing:endBreak': noPayload,
-  'wellbeing:copySummary': wellbeingText,
-  'wellbeing:saveImage': wellbeingImage,
+  'wellbeing': wellbeingMessage,
   'settings:update': settingsUpdate,
   'data:export': dataExport,
   'data:exportCsv': noPayload,

@@ -379,7 +379,6 @@ function setAnalyticsSegment(segment) {
 
 document.querySelectorAll('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    if (typeof wellbeingOwnsScreen === 'function' && wellbeingOwnsScreen()) return;
     hideChartTip('day-tip');
     hideChartTip('week-tip');
     document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
@@ -1223,12 +1222,6 @@ function applySettingsInputs(settings) {
     $('focusboost-message').value =
       settings.focusBoostReminderMessage || "Hey! focusboost is enabled. Maybe it's time to refocus?";
   }
-  let goalSec = Number(settings.dailyGoalSec);
-  if (!Number.isFinite(goalSec) || goalSec <= 0) goalSec = 7200;
-  const hoursVal = Math.round((goalSec / 3600) * 100) / 100;
-  if ($('daily-goal-hours') && document.activeElement !== $('daily-goal-hours')) {
-    $('daily-goal-hours').value = hoursVal;
-  }
   syncPauseUi(settings);
   syncNotifUi(settings);
   syncFocusBoostUi(settings);
@@ -1653,23 +1646,33 @@ function formatRoundupDate(dateKey) {
   }
 }
 
-function roundupHeadlines(_moodId, hit, thin) {
+function roundupHeadlines(moodId, hit, thin) {
   if (thin) {
     return {
       headline: 'Quiet start',
-      sub: 'Not enough tracked time yet to judge the focus-share goal.'
+      sub: 'Not enough tracked time yet for a full wrap. Keep working — Roundup fills in as the day goes.'
     };
   }
   if (hit) {
-    return {
-      headline: 'Focus share met',
-      sub: 'Today’s focus share is at or above your goal.'
+    const map = {
+      thriving: ['Goal crushed', 'You killed it today! 🥳'],
+      focused: ['Goal hit', 'Solid focus day — you met the productive target.'],
+      meh: ['Goal hit, mixed vibe', 'You made the productive goal even if the mix wasn’t perfect.'],
+      distracted: ['Goal hit, rough edges', 'You still cleared the target despite some drift.'],
+      doomscroll: ['Goal hit somehow', 'Productive target cleared — maybe tighten Focus Tags next.']
     };
+    const row = map[moodId] || map.meh;
+    return { headline: row[0], sub: row[1] };
   }
-  return {
-    headline: 'Below the focus-share goal',
-    sub: 'Today’s mix is under the goal. The notes below are totals, not a verdict.'
+  const map = {
+    thriving: ['Almost there', "Let's finish strong! 💪"],
+    focused: ['Close call', 'Good focus day. Nudge the goal or keep stacking productive time.'],
+    meh: ['Mixed day', 'Some focus, some drift. Tags and FocusBoost can tighten tomorrow.'],
+    distracted: ['Drift day', 'Unproductive time led. Tag distractions and arm FocusBoost.'],
+    doomscroll: ['Doomscroll o’clock', 'Heavy unproductive stretch. Reset with Focus Tags + Boost.']
   };
+  const row = map[moodId] || map.meh;
+  return { headline: row[0], sub: row[1] };
 }
 
 function renderRoundup(stats) {
@@ -1942,25 +1945,6 @@ if ($('focusboost-message')) {
     pushSettings({ focusBoostReminderMessage: text });
   };
   $('focusboost-message').addEventListener('change', saveBoostMsg);
-}
-
-function clampGoalHours(h) {
-  if (!Number.isFinite(h) || h <= 0) return null;
-  return Math.min(16, Math.max(0.25, Math.round(h * 100) / 100));
-}
-
-async function persistDailyGoalHours(hours) {
-  const h = clampGoalHours(hours);
-  if (h == null) return;
-  const sec = Math.round(h * 3600);
-  return pushSettings({ dailyGoalSec: sec });
-}
-
-
-if ($('daily-goal-hours')) {
-  $('daily-goal-hours').addEventListener('change', () => {
-    persistDailyGoalHours(Number($('daily-goal-hours').value));
-  });
 }
 
 async function setTrackingPaused(paused) {

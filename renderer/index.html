@@ -63,36 +63,6 @@
         <button id="banner-dismiss" type="button">Dismiss</button>
       </div>
 
-      <section id="view-onboarding" class="view hidden">
-        <article class="card">
-          <h1>Daily focus share</h1>
-          <p class="hint">Focus share is productive time divided by productive + unproductive time. Other apps are left out unless you include them. 80% is the recommended starting goal.</p>
-          <label class="field">
-            <span>Focus share goal (%)</span>
-            <input type="number" id="onboarding-goal" min="50" max="100" step="1" value="80" />
-          </label>
-          <label class="switch-row">
-            <div>
-              <div class="switch-title">Include Other apps</div>
-              <div class="hint">Put uncategorized apps in the denominator.</div>
-            </div>
-            <input type="checkbox" id="onboarding-include-other" />
-          </label>
-          <div class="settings-row-2">
-            <label class="field">
-              <span>Decompress breaks per day</span>
-              <input type="number" id="onboarding-breaks" min="0" max="8" step="1" value="3" />
-            </label>
-            <label class="field">
-              <span>Minutes each</span>
-              <input type="number" id="onboarding-minutes" min="1" max="60" step="1" value="10" />
-            </label>
-          </div>
-          <p class="hint">After an hour on track, sydtrack can suggest a local break. Set breaks to 0 if you do not want suggestions. Nothing is uploaded.</p>
-          <button type="button" id="onboarding-start" class="btn primary">Start</button>
-        </article>
-      </section>
-
       <!-- HOME: pie + mood + last focused -->
       <section id="view-home" class="view">
         <article class="card home-focus">

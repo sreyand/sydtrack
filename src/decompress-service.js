@@ -11,6 +11,7 @@ function createDecompressService({ dataDir, getSettings, getHourlyHistory, now =
   let state = decompress.createBreakState('');
   let previous = null;
   let patternCache = { key: '', pattern: null };
+  let lastPersisted = '';
 
   function load() {
     try {
@@ -18,16 +19,22 @@ function createDecompressService({ dataDir, getSettings, getHourlyHistory, now =
       const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
       state = decompress.cloneState(raw);
+      lastPersisted = JSON.stringify(decompress.cloneState(state));
     } catch (err) {
       console.error('[decompress] read failed', err.message);
     }
   }
 
   function persist() {
+    const serialized = JSON.stringify(decompress.cloneState(state));
+    if (serialized === lastPersisted) return false;
     try {
       writeJson(filePath, decompress.cloneState(state));
+      lastPersisted = serialized;
+      return true;
     } catch (err) {
       console.error('[decompress] persist failed', err.message);
+      return false;
     }
   }
 
@@ -91,7 +98,6 @@ function createDecompressService({ dataDir, getSettings, getHourlyHistory, now =
     const date = stats && stats.date ? String(stats.date) : '';
     const cats = goals.totals(stats && stats.byCategory);
     const current = { date, ...cats };
-    const before = JSON.stringify(decompress.cloneState(state));
     let suggest = false;
     if (!previous || previous.date !== date) {
       state = decompress.rollState(state, date);
@@ -113,7 +119,7 @@ function createDecompressService({ dataDir, getSettings, getHourlyHistory, now =
     }
     const ended = decompress.completeBreakIfDue(state, now());
     state = ended.state;
-    if (JSON.stringify(decompress.cloneState(state)) !== before) persist();
+    persist();
     const pattern = suggest ? patternFor(date) : null;
     return {
       suggest,
@@ -158,8 +164,17 @@ function createDecompressService({ dataDir, getSettings, getHourlyHistory, now =
     return { ended: ended.ended, publicState: publicState() };
   }
 
+  function reset() {
+    state = decompress.createBreakState('');
+    previous = null;
+    patternCache = { key: '', pattern: null };
+    lastPersisted = '';
+    try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
+    return { publicState: publicState() };
+  }
+
   load();
-  return { observe, startBreak, endBreak, publicState, filePath };
+  return { observe, startBreak, endBreak, reset, publicState, filePath };
 }
 
 module.exports = { createDecompressService };

@@ -7,7 +7,7 @@ const { buildRollup, writeRollup, readRollup, listRollupDates, dayFromRollup, re
 const { purgeExpiredRaw, clearJournal } = require('./retention');
 const { migrateStorage } = require('./storage-schema');
 const { canonicalAppName } = require('./classifier');
-const { migrateGoalSettings, sanitizeGoalSettings } = require('./goals');
+const { migrateGoalSettings } = require('./goals');
 
 function todayKey(at) {
   const d = at === undefined ? new Date() : new Date(at);
@@ -299,14 +299,11 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     (value) => value !== null && typeof value === 'object' && !Array.isArray(value),
     (report) => { settingsRecovered = true; onRecovery(report); });
   let settings = applyRuntimeEnvironment(Object.assign(defaultSettings(), savedSettings || {}));
-  const hadGoalSchema = !!(savedSettings && Number(savedSettings.goalsSchema) >= 2);
-  settings = migrateGoalSettings(settings, { existingInstall: !!savedSettings });
-  if (settingsRecovered) {
-    settings.trackingPaused = true;
-    persistSettings();
-  } else if (!hadGoalSchema) {
-    persistSettings();
-  }
+  const needsGoalMigration = needsGoalSettingsMigration(savedSettings);
+  if (needsGoalMigration && savedSettings) backupSettingsFile(settingsPath);
+  settings = applyGoalMigration(settings, savedSettings);
+  if (settingsRecovered) settings.trackingPaused = true;
+  if (settingsRecovered || needsGoalMigration) persistSettings();
 
   function archiveDay(day) {
     summaryCache.clear();
@@ -736,9 +733,20 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function updateSettings(partial) {
     Object.assign(settings, partial);
-    settings = sanitizeGoalSettings(settings);
     if (process.env.SYDTRACK_THRESHOLD_SEC && partial.thresholdSec == null) {
       settings.thresholdSec = Number(process.env.SYDTRACK_THRESHOLD_SEC);
+    }
+    persistSettings();
+    return { ...settings };
+  }
+
+  function applyImportedSettings(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...settings };
+    if (needsGoalSettingsMigration(raw)) {
+      if (fs.existsSync(settingsPath)) backupSettingsFile(settingsPath);
+      settings = migrateGoalSettings(Object.assign({}, settings, raw, { goalsSchema: 0 }), { existingInstall: true });
+    } else {
+      settings = Object.assign({}, settings, raw);
     }
     persistSettings();
     return { ...settings };
@@ -762,6 +770,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
   function clearToday() {
     state = emptyDay(todayKey());
     persistStats();
+    resetDecompressFile(dataDir);
     return state;
   }
 
@@ -789,6 +798,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     if (failed.length) console.error('[store] clear history failed', failed.map((item) => item.path).join(', '));
     state = emptyDay(todayKey());
     persistStats();
+    resetDecompressFile(dataDir);
     return { ok: failed.length === 0, failed, state };
   }
 
@@ -844,26 +854,13 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     },
     hourlyHistory: (count = 14) => {
       rollIfNeeded();
-      const n = Math.min(90, Math.max(1, Math.floor(Number(count) || 14)));
-      const days = [];
-      const now = new Date();
-      for (let i = n - 1; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        const dayObj = key === state.date ? state : loadHistoryDay(key);
-        const byHour = dayObj && Array.isArray(dayObj.byHour) ? dayObj.byHour : emptyByHour();
-        days.push({
-          date: key,
-          byHour: byHour.map((bucket) => ({
-            productive: Math.max(0, Number(bucket && bucket.productive) || 0),
-            unproductive: Math.max(0, Number(bucket && bucket.unproductive) || 0),
-            other: Math.max(0, Number(bucket && bucket.other) || 0)
-          }))
-        });
-      }
-      return days;
+      return hourlyHistoryDays(count, {
+        today: new Date(),
+        loadDay: (key) => (key === state.date ? state : loadHistoryDay(key))
+      });
     },
     updateSettings,
+    applyImportedSettings,
     getSettings,
     getState,
     replaceToday,
@@ -883,6 +880,50 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     settingsPath,
     dataDir
   };
+}
+
+function needsGoalSettingsMigration(saved) {
+  // Missing or non-numeric schema must migrate. Number(undefined) < 2 is false.
+  return !saved || !(Number(saved.goalsSchema) >= 2);
+}
+
+function applyGoalMigration(settings, savedSettings) {
+  return migrateGoalSettings(settings, { existingInstall: !!savedSettings });
+}
+
+function backupSettingsFile(settingsPath, at) {
+  if (!settingsPath || !fs.existsSync(settingsPath)) return null;
+  const stamp = (at || new Date()).toISOString().replace(/[:.]/g, '-');
+  const dest = settingsPath + '.' + stamp + '.bak';
+  fs.copyFileSync(settingsPath, dest);
+  return dest;
+}
+
+function hourlyHistoryDays(count, { today, loadDay } = {}) {
+  const n = Math.min(90, Math.max(1, Math.floor(Number(count) || 14)));
+  const now = today || new Date();
+  const days = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dayObj = loadDay ? loadDay(key) : null;
+    const byHour = dayObj && Array.isArray(dayObj.byHour) ? dayObj.byHour : emptyByHour();
+    days.push({
+      date: key,
+      byHour: byHour.map((bucket) => ({
+        productive: Math.max(0, Number(bucket && bucket.productive) || 0),
+        unproductive: Math.max(0, Number(bucket && bucket.unproductive) || 0),
+        other: Math.max(0, Number(bucket && bucket.other) || 0)
+      }))
+    });
+  }
+  return days;
+}
+
+function resetDecompressFile(dir) {
+  const filePath = path.join(dir, 'decompress.json');
+  try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
+  return filePath;
 }
 
 function defaultThresholdSec() {
@@ -918,5 +959,10 @@ module.exports = {
   activityKey,
   toRollup,
   retentionCutoffKey,
-  defaultSettings
+  defaultSettings,
+  needsGoalSettingsMigration,
+  applyGoalMigration,
+  backupSettingsFile,
+  hourlyHistoryDays,
+  resetDecompressFile
 };
