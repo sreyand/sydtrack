@@ -7,15 +7,20 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "start": "node scripts/start.js",
-    "start:electron": "electron . --no-sandbox --disable-gpu",
+    "start:electron": "electron . --disable-gpu",
     "start:demo": "node scripts/start.js --demo",
-    "test": "node scripts/smoke.js",
+    "check": "node scripts/check-syntax.js",
+    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js",
+    "test:hardening": "node scripts/test-hardening.js",
     "test:ui": "node scripts/check-ui.js",
     "test:profiles-ui": "node scripts/check-profiles-ui.js",
     "test:windows-backend": "node scripts/test-win.js",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder --win",
-    "dist:portable": "electron-builder --win portable"
+    "pack": "node scripts/dist.js dir",
+    "dist": "node scripts/dist.js win",
+    "dist:win": "node scripts/dist.js win",
+    "dist:mac": "node scripts/dist.js mac",
+    "dist:linux": "node scripts/dist.js linux",
+    "dist:portable": "node scripts/dist.js portable"
   },
   "dependencies": {
     "active-win": "^8.1.1"
@@ -23,6 +28,10 @@
   "devDependencies": {
     "electron": "^28.3.3",
     "electron-builder": "^24.13.3"
+  },
+  "allowScripts": {
+    "electron": true,
+    "active-win": true
   },
   "build": {
     "appId": "com.gitpaperclip.sydtrack",
@@ -37,6 +46,7 @@
       "package.json"
     ],
     "asar": true,
+    "publish": null,
     "extraResources": [
       { "from": "renderer/assets/sydtrack.ico", "to": "sydtrack.ico" },
       { "from": "scripts/get-foreground.ps1", "to": "get-foreground.ps1" },
@@ -44,7 +54,7 @@
     ],
     "win": {
       "icon": "renderer/assets/sydtrack.ico",
-      "signAndEditExecutable": true,
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
@@ -66,6 +76,26 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "maintainer": "SydTrack <noreply@sydtrack.app>",
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   }
 }

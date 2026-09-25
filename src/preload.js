@@ -1,28 +1,39 @@
 'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');
-let activeProfileId = null;
-const rememberProfile = value => { if (value) activeProfileId = value.activeId || value.profileId || activeProfileId; return value; };
 
+let activeProfileId = null;
+const rememberProfile = (value) => {
+  if (value) activeProfileId = value.activeId || value.profileId || activeProfileId;
+  return value;
+};
+
+function asFunction(cb) {
+  if (typeof cb !== 'function') throw new Error('Expected a function');
+  return cb;
+}
+
+// Surface is limited to the calls the renderer makes through window.sydtrack.
 contextBridge.exposeInMainWorld('sydtrack', {
   onUpdate: (cb) => {
-    const handler = (_e, payload) => cb(payload);
+    const listener = asFunction(cb);
+    const handler = (_event, payload) => listener(payload);
     ipcRenderer.on('tracker:update', handler);
     return () => ipcRenderer.removeListener('tracker:update', handler);
   },
   onReminder: (cb) => {
-    const handler = (_e, payload) => cb(payload);
+    const listener = asFunction(cb);
+    const handler = (_event, payload) => listener(payload);
     ipcRenderer.on('reminder:fired', handler);
     return () => ipcRenderer.removeListener('reminder:fired', handler);
   },
   getState: () => ipcRenderer.invoke('state:get'),
   getProfiles: () => ipcRenderer.invoke('profiles:get').then(rememberProfile),
   saveProfile: (id, fields) => ipcRenderer.invoke('profiles:save', { id, fields }),
-  activateProfile: id => ipcRenderer.invoke('profiles:activate', id).then(rememberProfile),
-  deleteProfile: id => ipcRenderer.invoke('profiles:delete', id),
+  activateProfile: (id) => ipcRenderer.invoke('profiles:activate', id).then(rememberProfile),
+  deleteProfile: (id) => ipcRenderer.invoke('profiles:delete', id),
   importNamedProfile: () => ipcRenderer.invoke('profiles:import'),
   correctActivityToday: (id, category) => ipcRenderer.invoke('apps:correctActivityToday', { id, category }),
-  correctAppToday: (name, category) => ipcRenderer.invoke('apps:correctToday', { name, category }),
   getHistorySummary: (days) => ipcRenderer.invoke('history:summary', days),
   getRules: () => ipcRenderer.invoke('rules:get').then(rememberProfile),
   setRules: (rules) => ipcRenderer.invoke('rules:set', { ...rules, profileId: activeProfileId }),
@@ -34,7 +45,6 @@ contextBridge.exposeInMainWorld('sydtrack', {
   exportData: (opts) => ipcRenderer.invoke('data:export', opts || {}),
   importData: (opts) => ipcRenderer.invoke('data:import', opts || {}),
   exportProfilePack: (opts) => ipcRenderer.invoke('profile:export', opts || {}),
-  importProfilePack: () => ipcRenderer.invoke('profile:import'),
   clearToday: () => ipcRenderer.invoke('data:clearToday'),
   clearAllHistory: () => ipcRenderer.invoke('data:clearAll'),
   startSession: (opts) => ipcRenderer.invoke('session:start', opts || {}),

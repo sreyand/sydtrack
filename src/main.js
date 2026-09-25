@@ -2,7 +2,8 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor } = require('electron');
+const { pathToFileURL } = require('url');
+const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme } = require('electron');
 const { bindTrackingLifecycle } = require('./tracking-lifecycle');
 const { createErrorLog, installErrorLogging } = require('./error-log');
 let errorLog;
@@ -38,8 +39,21 @@ const {
   writeProfilePackFile,
   readProfilePackFile
 } = require('./profile-pack');
+const { validateIpcPayload } = require('./ipc-validate');
+const {
+  APP_PAGE_URL,
+  applyContentSecurityPolicy,
+  assertIpcSender,
+  buildBrowserWindowOptions,
+  denyPermissionRequests,
+  installNavigationGuards,
+  windowBackgroundColor,
+  registerAppScheme,
+  resolveAppFile
+} = require('./window-security');
 
-app.commandLine.appendSwitch('no-sandbox');
+registerAppScheme(protocol);
+
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-dev-shm-usage');
 
@@ -152,27 +166,32 @@ function ignorePayload() {
   };
 }
 
+function installAppProtocol() {
+  const root = path.join(__dirname, '..');
+  protocol.handle('sydtrack', (request) => {
+    const filePath = resolveAppFile(request.url, root);
+    if (!filePath) return new Response('Forbidden', { status: 403 });
+    return net.fetch(pathToFileURL(filePath).href);
+  });
+}
+
+function guardIpc(event, channel, payload) {
+  const contents = mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null;
+  assertIpcSender(event, contents);
+  return validateIpcPayload(channel, payload);
+}
+
 function createWindow() {
-  const winOpts = {
-    width: 1040,
-    height: 760,
-    minWidth: 800,
-    minHeight: 600,
-    title: 'sydtrack',
-    backgroundColor: '#0b0d12',
-    autoHideMenuBar: true,
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  };
-  if (process.platform === 'win32' || process.platform === 'linux') {
-    winOpts.icon = path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png');
-  }
+  const winOpts = buildBrowserWindowOptions({
+    preloadPath: path.join(__dirname, 'preload.js'),
+    iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'logo-wordmark.png'),
+    platform: process.platform,
+    backgroundColor: windowBackgroundColor(!!(nativeTheme && nativeTheme.shouldUseDarkColors))
+  });
   mainWindow = new BrowserWindow(winOpts);
+  installNavigationGuards(mainWindow.webContents);
+  applyContentSecurityPolicy(mainWindow.webContents.session);
+  denyPermissionRequests(mainWindow.webContents.session);
   if (process.platform === 'win32') {
     // Windows uses these shell properties for the taskbar menu, independently
     // of the document title. Portable builds must relaunch their outer EXE.
@@ -181,7 +200,7 @@ function createWindow() {
       : process.execPath;
     const relaunchCommand = app.isPackaged
       ? `"${executable}"`
-      : `"${executable}" "${app.getAppPath()}" --no-sandbox --disable-gpu`;
+      : `"${executable}" "${app.getAppPath()}" --disable-gpu`;
     mainWindow.setAppDetails({
       appId: 'com.gitpaperclip.sydtrack',
       appIconPath: app.isPackaged
@@ -199,7 +218,7 @@ function createWindow() {
     if (errorLog && level >= 2) errorLog.write('renderer', message);
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html')).catch((err) => {
+  mainWindow.loadURL(APP_PAGE_URL).catch((err) => {
     console.error('[main] renderer failed to load:', err && err.message ? err.message : err);
   });
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -422,6 +441,7 @@ app.whenReady().then(() => {
   if (!ownsInstance) return;
   errorLog = createErrorLog(dataDir());
   installErrorLogging(errorLog);
+  installAppProtocol();
   startServices();
   createWindow();
   createTray();
@@ -450,56 +470,73 @@ app.on('before-quit', () => {
   isQuitting = true;
 });
 
-ipcMain.handle('state:get', async () => ({
-  now: lastPayload.now || null,
-  lastFocused: lastPayload.lastFocused || (tracker && tracker.getLastFocused && tracker.getLastFocused()) || null,
-  stats: store ? store.snapshot([], { includeWeek: false }) : lastPayload.stats,
-  session: sessionManager ? sessionManager.getActiveSession() : lastPayload.session || null,
-  platform: process.platform
-}));
+ipcMain.handle('state:get', async (event, payload) => {
+  guardIpc(event, 'state:get', payload);
+  return {
+    now: lastPayload.now || null,
+    lastFocused: lastPayload.lastFocused || (tracker && tracker.getLastFocused && tracker.getLastFocused()) || null,
+    stats: store ? store.snapshot([], { includeWeek: false }) : lastPayload.stats,
+    session: sessionManager ? sessionManager.getActiveSession() : lastPayload.session || null,
+    platform: process.platform
+  };
+});
 
-ipcMain.handle('apps:correctActivityToday', async (_event, { id, category }) => {
+ipcMain.handle('apps:correctActivityToday', async (event, payload) => {
+  const { id, category } = guardIpc(event, 'apps:correctActivityToday', payload);
   const stats = store.correctActivityToday(id, category);
   if (tracker) tracker.invalidateClassification();
   if (sessionManager) sessionManager.resetClassification();
   return stats;
 });
 
-ipcMain.handle('apps:correctToday', async (_event, { name, category }) => {
+ipcMain.handle('apps:correctToday', async (event, payload) => {
+  const { name, category } = guardIpc(event, 'apps:correctToday', payload);
   const stats = store.correctAppToday(name, category);
   if (tracker) tracker.invalidateClassification();
   if (sessionManager) sessionManager.resetClassification();
   return stats;
 });
 
-ipcMain.handle('history:summary', async (_event, days) => store ? store.historySummary(days) : []);
+ipcMain.handle('history:summary', async (event, payload) => {
+  const days = guardIpc(event, 'history:summary', payload);
+  return store ? store.historySummary(days) : [];
+});
 
-ipcMain.handle('rules:get', async () => rulesPayload());
+ipcMain.handle('rules:get', async (event, payload) => {
+  guardIpc(event, 'rules:get', payload);
+  return rulesPayload();
+});
 
-ipcMain.handle('rules:set', async (_e, next) => {
-  assertActiveProfile(next && next.profileId);
+ipcMain.handle('rules:set', async (event, payload) => {
+  const next = guardIpc(event, 'rules:set', payload);
+  assertActiveProfile(next.profileId);
   validateSiteTags(next);
   focusProfiles.save(focusProfiles.snapshot().activeId, { productive: next.productive, unproductive: next.unproductive });
   return rulesPayload();
 });
 
-ipcMain.handle('rules:reset', async (_event, profileId) => {
+ipcMain.handle('rules:reset', async (event, payload) => {
+  const profileId = guardIpc(event, 'rules:reset', payload);
   assertActiveProfile(profileId);
   const defaults = loadRulesFrom(DEFAULT_RULES_PATH);
   focusProfiles.save(focusProfiles.snapshot().activeId, { productive: defaults.productive, unproductive: defaults.unproductive });
   return rulesPayload();
 });
 
-ipcMain.handle('ignore:get', async () => ignorePayload());
-
-ipcMain.handle('ignore:set', async (_e, next) => {
-  assertActiveProfile(next && next.profileId);
-  const list = Array.isArray(next) ? next : (next && next.ignore) || [];
-  focusProfiles.save(focusProfiles.snapshot().activeId, { ignore: list });
+ipcMain.handle('ignore:get', async (event, payload) => {
+  guardIpc(event, 'ignore:get', payload);
   return ignorePayload();
 });
 
-ipcMain.handle('ignore:reset', async (_event, profileId) => {
+ipcMain.handle('ignore:set', async (event, payload) => {
+  const next = guardIpc(event, 'ignore:set', payload);
+  assertActiveProfile(next.profileId);
+  focusProfiles.save(focusProfiles.snapshot().activeId, { ignore: next.ignore });
+  return ignorePayload();
+});
+
+ipcMain.handle('ignore:reset', async (event, payload) => {
+  const profileId = guardIpc(event, 'ignore:reset', payload);
   assertActiveProfile(profileId);
   focusProfiles.save(focusProfiles.snapshot().activeId, { ignore: loadIgnoreFrom(DEFAULT_IGNORE_PATH) });
   return ignorePayload();
@@ -509,12 +546,25 @@ function assertActiveProfile(id) {
   if (id != null && id !== focusProfiles.snapshot().activeId) throw new Error('Focus profile changed. Reload tags before saving.');
 }
 
-ipcMain.handle('profiles:get', async () => focusProfiles.snapshot());
-ipcMain.handle('profiles:save', async (_event, { id, fields }) => focusProfiles.save(id, fields));
-ipcMain.handle('profiles:activate', async (_event, id) => focusProfiles.activate(id));
-ipcMain.handle('profiles:delete', async (_event, id) => focusProfiles.remove(id));
+ipcMain.handle('profiles:get', async (event, payload) => {
+  guardIpc(event, 'profiles:get', payload);
+  return focusProfiles.snapshot();
+});
+ipcMain.handle('profiles:save', async (event, payload) => {
+  const { id, fields } = guardIpc(event, 'profiles:save', payload);
+  return focusProfiles.save(id, fields);
+});
+ipcMain.handle('profiles:activate', async (event, payload) => {
+  const id = guardIpc(event, 'profiles:activate', payload);
+  return focusProfiles.activate(id);
+});
+ipcMain.handle('profiles:delete', async (event, payload) => {
+  const id = guardIpc(event, 'profiles:delete', payload);
+  return focusProfiles.remove(id);
+});
 
-ipcMain.handle('settings:update', async (_e, partial) => {
+ipcMain.handle('settings:update', async (event, payload) => {
+  const partial = guardIpc(event, 'settings:update', payload);
   if (!store) return {};
   return applySettings(partial);
 });
@@ -525,9 +575,9 @@ function applySettings(partial) {
   });
 }
 
-ipcMain.handle('data:export', async (_e, opts) => {
+ipcMain.handle('data:export', async (event, payload) => {
+  const options = guardIpc(event, 'data:export', payload);
   if (!store || !mainWindow) return { ok: false, error: 'not ready' };
-  const options = opts || {};
   const result = await dialog.showSaveDialog(mainWindow, {
     title: 'Export SydTrack backup',
     defaultPath: `sydtrack-backup-${new Date().toISOString().slice(0, 10)}.sydtrack`,
@@ -538,7 +588,7 @@ ipcMain.handle('data:export', async (_e, opts) => {
   });
   if (result.canceled || !result.filePath) return { ok: false, canceled: true };
 
-  const payload = buildExport(store, {
+  const exportData = buildExport(store, {
     includeSettings: options.includeSettings !== false,
     includeRules: options.includeRules !== false,
     includeIgnore: options.includeIgnore !== false,
@@ -548,13 +598,13 @@ ipcMain.handle('data:export', async (_e, opts) => {
     identities: identitiesHolder.identities,
     focusProfiles
   });
-  writeBackupFile(result.filePath, payload);
+  writeBackupFile(result.filePath, exportData);
   return { ok: true, path: result.filePath };
 });
 
-ipcMain.handle('data:import', async (_e, opts) => {
+ipcMain.handle('data:import', async (event, payload) => {
+  const options = guardIpc(event, 'data:import', payload);
   if (!store || !mainWindow) return { ok: false, error: 'not ready' };
-  const options = opts || {};
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Import SydTrack backup',
     properties: ['openFile'],
@@ -599,9 +649,9 @@ ipcMain.handle('data:import', async (_e, opts) => {
 });
 
 
-ipcMain.handle('profile:export', async (_e, opts) => {
+ipcMain.handle('profile:export', async (event, payload) => {
+  const options = guardIpc(event, 'profile:export', payload);
   if (!mainWindow) return { ok: false, error: 'not ready' };
-  const options = opts || {};
   const selected = focusProfiles.snapshot().profiles.find(profile => profile.id === options.id) || focusProfiles.active();
   options.name = selected.name;
   const baseName = (typeof options.name === 'string' && options.name.trim())
@@ -627,7 +677,8 @@ ipcMain.handle('profile:export', async (_e, opts) => {
   return { ok: true, path: result.filePath, name: pack.name || null };
 });
 
-ipcMain.handle('profile:import', async () => {
+ipcMain.handle('profile:import', async (event, payload) => {
+  guardIpc(event, 'profile:import', payload);
   if (!mainWindow) return { ok: false, error: 'not ready' };
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Import Focus profile pack',
@@ -665,7 +716,8 @@ ipcMain.handle('profile:import', async () => {
   };
 });
 
-ipcMain.handle('profiles:import', async () => {
+ipcMain.handle('profiles:import', async (event, payload) => {
+  guardIpc(event, 'profiles:import', payload);
   if (focusProfiles.snapshot().profiles.length >= 5) throw new Error('All five slots are used. Delete a profile before importing another.');
   const result = await dialog.showOpenDialog(mainWindow, { title: 'Add Focus profile', properties: ['openFile'], filters: [{ name: 'Focus profile', extensions: ['sydtrack-profile', 'json'] }] });
   if (result.canceled || !result.filePaths[0]) return null;
@@ -674,21 +726,23 @@ ipcMain.handle('profiles:import', async () => {
     productive: pack.productive, unproductive: pack.unproductive, ignore: pack.ignore });
 });
 
-ipcMain.handle('data:clearToday', async () => {
+ipcMain.handle('data:clearToday', async (event, payload) => {
+  guardIpc(event, 'data:clearToday', payload);
   if (!store) return { ok: false };
   store.clearToday();
   return { ok: true, stats: store.snapshot() };
 });
 
-ipcMain.handle('data:clearAll', async () => {
+ipcMain.handle('data:clearAll', async (event, payload) => {
+  guardIpc(event, 'data:clearAll', payload);
   if (!store) return { ok: false };
   store.clearAllHistory();
   return { ok: true, stats: store.snapshot() };
 });
 
-ipcMain.handle('session:start', async (_e, opts) => {
+ipcMain.handle('session:start', async (event, payload) => {
+  const options = guardIpc(event, 'session:start', payload);
   if (!sessionManager || !store) return null;
-  const options = opts || {};
   if (options.mode === 'custom' && options.customMin != null) {
     const mins = Number(options.customMin);
     if (Number.isFinite(mins) && mins > 0) {
@@ -698,17 +752,20 @@ ipcMain.handle('session:start', async (_e, opts) => {
   return sessionManager.startSession(options);
 });
 
-ipcMain.handle('session:stop', async () => {
+ipcMain.handle('session:stop', async (event, payload) => {
+  guardIpc(event, 'session:stop', payload);
   if (!sessionManager) return { ok: false };
   return sessionManager.stopSession();
 });
 
-ipcMain.handle('session:getActive', async () => {
+ipcMain.handle('session:getActive', async (event, payload) => {
+  guardIpc(event, 'session:getActive', payload);
   if (!sessionManager) return null;
   return sessionManager.getActiveSession();
 });
 
-ipcMain.handle('session:getForDay', async (_e, dateKey) => {
+ipcMain.handle('session:getForDay', async (event, payload) => {
+  const dateKey = guardIpc(event, 'session:getForDay', payload) || undefined;
   if (!sessionManager) return { date: dateKey, sessions: [], historyEnabled: true };
   const settings = store ? store.getSettings() : {};
   const key = dateKey || undefined;
@@ -721,8 +778,8 @@ ipcMain.handle('session:getForDay', async (_e, dateKey) => {
   };
 });
 
-ipcMain.handle('session:delete', async (_e, payload) => {
+ipcMain.handle('session:delete', async (event, payload) => {
+  const opts = guardIpc(event, 'session:delete', payload);
   if (!sessionManager) return { ok: false, reason: 'no-manager' };
-  const opts = payload || {};
   return sessionManager.deleteSession(opts.id, opts.dateKey);
 });

@@ -7,4 +7,5 @@ data/history/
 *.log
 *.sydtrack
 dist/
+out/
 *.exe
