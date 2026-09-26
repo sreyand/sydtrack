@@ -232,12 +232,27 @@
         </div>
 
         <div id="panel-day" class="analytics-panel" data-panel="day">
-          <article class="card day-chart-card">
+          <article class="card timeline-card" aria-labelledby="timeline-heading">
+            <div class="timeline-head">
+              <div><h2 id="timeline-heading">Day timeline</h2><p id="timeline-precision" class="muted" aria-live="polite">Loading activity…</p></div>
+              <label class="timeline-date-label">Day <input id="timeline-date" type="date" aria-label="Timeline date" /></label>
+            </div>
+            <div class="timeline-filters">
+              <label>Show <select id="timeline-category" aria-label="Timeline category"><option value="all">All activity</option><option value="productive">Productive</option><option value="unproductive">Unproductive</option><option value="other">Other</option><option value="idle">Idle</option></select></label>
+              <label>Profile <select id="timeline-profile" aria-label="Timeline profile"><option value="all">All profiles</option></select></label>
+            </div>
             <div class="day-legend" aria-hidden="true">
               <span><span class="swatch prod"></span> Productive</span>
               <span><span class="swatch unprod"></span> Unproductive</span>
               <span><span class="swatch other"></span> Other</span>
+              <span><span class="timeline-idle-key"></span> Idle</span>
             </div>
+            <div id="timeline-visual" class="timeline-visual" role="img" aria-label="No timeline yet"></div>
+            <p id="timeline-longest" class="timeline-insight hidden" aria-live="polite"></p>
+            <details class="timeline-details"><summary>Timeline in text</summary><p>Categories reflect tracking at the time. Later corrections may change the totals below.</p><ol id="timeline-text"></ol></details>
+          </article>
+          <article class="card day-chart-card">
+            <h2 class="timeline-hourly-heading">Hourly totals</h2>
             <div class="chart-tip-wrap">
               <div class="chart-frame">
                 <div id="day-y-axis" class="chart-y" aria-hidden="true"></div>
@@ -367,6 +382,11 @@
             </div>
           </div>
 
+          <label class="session-intention-field" for="session-intention">
+            <span>Working on <span class="muted">(optional)</span></span>
+            <input id="session-intention" type="text" maxlength="80" autocomplete="off" spellcheck="true" placeholder="A short intention" />
+          </label>
+          <p id="session-intention-status" class="session-intention-status" role="alert"></p>
           <div class="session-alarm-row">
             <div class="session-alarm-left">
               <span class="session-mode-label-sr" id="session-timer-mode-label">Pomodoro</span>
@@ -419,8 +439,19 @@
 
         <article class="card tags-other-card" id="tags-other-card" hidden>
           <div class="lf-kicker tag-kicker">Unclassified today</div>
-          <p class="hint tags-hint">Largest sources of Other time. Test a title to find a useful rule; corrections in Analytics apply only to today.</p>
+          <p class="hint tags-hint">Start with the apps taking the most unclassified time.</p>
           <div id="tags-other-list" class="tags-other-list"></div>
+          <div id="tags-other-editor" class="tags-other-editor" hidden>
+            <h3 id="tags-other-editor-title">Review app</h3>
+            <p id="tags-other-editor-note" class="muted"></p>
+            <div class="tags-other-fields">
+              <label>Apply to <select id="tags-other-scope"><option value="today">Other time today</option><option value="future">Future activity in this profile</option><option value="ignore">Ignore this app in this profile</option></select></label>
+              <label id="tags-other-category-field">Classify as <select id="tags-other-category"><option value="productive">Productive</option><option value="unproductive">Unproductive</option></select></label>
+              <label id="tags-other-keyword-field" hidden>App or title keyword <input id="tags-other-keyword" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="A word from the app or window title" /></label>
+            </div>
+            <div class="tags-other-actions"><button type="button" id="tags-other-apply" class="btn primary">Apply</button><button type="button" id="tags-other-cancel" class="btn ghost">Cancel</button></div>
+            <p id="tags-other-status" class="muted tiny" role="status" aria-live="polite"></p>
+          </div>
         </article>
 
         <article class="card tags-card tags-quick-card">
@@ -723,15 +754,24 @@
               <textarea id="focusboost-message" class="rules-textarea settings-textarea" rows="2" spellcheck="true" placeholder="Hey! focusboost is enabled..."></textarea>
             </label>
           </div>
-          <p class="settings-meta muted tiny">Data: <code id="data-path">./data</code></p>
+          <p class="settings-meta muted tiny">Saved in <code id="data-path">Loading…</code></p>
           <p class="font-credit">Satoshi typeface © Indian Type Foundry, licensed under Fontshare FFL. See renderer/fonts/satoshi/FFL.txt.</p>
         </article>
 
         <article class="card data-card" id="settings-data-card">
           <h3>Data</h3>
+          <details class="storage-details" id="settings-storage-details">
+            <summary>What SydTrack stores</summary>
+            <div class="storage-details-body">
+              <p>SydTrack checks the app you're using and its window title. On Windows, it does not read browser addresses. Pause tracking to stop these checks.</p>
+              <p>Daily history keeps app names, categories, time, and the word or rule that matched. The active title appears live, but SydTrack does not save a title-by-title log. Sessions and optional session labels, Focus profiles, settings, and error logs also stay on this computer.</p>
+              <p>Detailed history and the day timeline stay for 90 days. After that, daily, hourly, and app totals remain for lifetime stats. The exact sequence and matched words expire.</p>
+              <p>No screenshots, keystrokes, background-window history, or automatic activity uploads. Exports are files you choose to save and can contain private activity details.</p>
+            </div>
+          </details>
           <div class="privacy-warning" role="note">
             <strong>Backups are private</strong>
-            <p>They can contain app names, window titles, and activity history.</p>
+            <p>They can contain app names, matched words, session labels, and activity history.</p>
           </div>
           <p class="hint">Import merges activity with your existing data. Importing the same backup twice adds its activity twice.</p>
           <p class="hint">Error logs stay on this computer and are not included in backups.</p>
@@ -787,6 +827,7 @@
   <script src="lib/live-ticker.js"></script>
   <script src="lib/goals.js"></script>
   <script src="lib/insights.js"></script>
+  <script src="lib/day-timeline.js"></script>
   <script src="wellbeing-ui.js"></script>
   <script src="renderer.js"></script>
   <script src="focus-profiles-ui.js"></script>

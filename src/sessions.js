@@ -23,6 +23,14 @@ function plannedSecFor(mode, customMin) {
   return mins * 60;
 }
 
+function normalizeIntention(value) {
+  if (value == null) return '';
+  if (typeof value !== 'string' || value.length > 80 || /[\x00-\x1f\x7f]/.test(value)) {
+    throw new Error('Invalid session intention');
+  }
+  return value.trim();
+}
+
 function newId() {
   return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -57,6 +65,7 @@ function publicActive(session) {
     id: session.id,
     mode: session.mode,
     modeLabel: session.modeLabel || modeLabel(session.mode),
+    intention: session.intention || '',
     plannedSec,
     startedAt,
     endsAt,
@@ -197,6 +206,7 @@ function createSessionManager({ dataDir, getSettings, onRecovery = () => {} }) {
       date,
       mode: session.mode,
       modeLabel: session.modeLabel || modeLabel(session.mode),
+      intention: session.intention || '',
       plannedSec: Number(session.plannedSec) || 0,
       startedAt,
       endedAt: end,
@@ -256,6 +266,8 @@ function createSessionManager({ dataDir, getSettings, onRecovery = () => {} }) {
       id: raw.id || newId(),
       mode: raw.mode || 'pomodoro',
       modeLabel: raw.modeLabel || modeLabel(raw.mode || 'pomodoro'),
+      intention: typeof raw.intention === 'string' && raw.intention.length <= 80 && !/[\x00-\x1f\x7f]/.test(raw.intention)
+        ? raw.intention.trim() : '',
       plannedSec: Number(raw.plannedSec) || 25 * 60,
       startedAt: Number(raw.startedAt) || Date.now(),
       endsAt: Number(raw.endsAt) || Date.now(),
@@ -277,6 +289,7 @@ function createSessionManager({ dataDir, getSettings, onRecovery = () => {} }) {
   function startSession(opts) {
     checkExpiry();
     const options = opts || {};
+    const intention = normalizeIntention(options.intention);
     const mode = MODE_DEFS[options.mode] ? options.mode : 'pomodoro';
     const settings = (getSettings && getSettings()) || {};
     const customMin =
@@ -291,6 +304,7 @@ function createSessionManager({ dataDir, getSettings, onRecovery = () => {} }) {
       id: newId(),
       mode,
       modeLabel: modeLabel(mode),
+      intention,
       plannedSec,
       startedAt: now,
       endsAt: now + plannedSec * 1000,

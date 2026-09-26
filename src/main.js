@@ -438,6 +438,7 @@ function applyFocusProfile(profile) {
   if (signature === appliedProfile) return;
   appliedProfile = signature;
   rulesHolder.rules = attachAppIdentities({ productive: profile.productive, unproductive: profile.unproductive });
+  rulesHolder.rules.profileId = profile.id;
   ignoreHolder.ignore = profile.ignore;
   rulesFilePath = ignoreFilePath = focusProfiles.filePath;
   rulesIsCustom = ignoreIsCustom = true;
@@ -594,9 +595,22 @@ ipcMain.handle('history:summary', async (event, payload) => {
   return store ? store.historySummary(days) : [];
 });
 
+ipcMain.handle('apps:correctOtherToday', async (event, payload) => {
+  const { name, category } = guardIpc(event, 'apps:correctOtherToday', payload);
+  const stats = store.correctOtherAppToday(name, category);
+  if (tracker) tracker.invalidateClassification();
+  if (sessionManager) sessionManager.resetClassification();
+  return stats;
+});
+
 ipcMain.handle('history:lifetime', async (event, payload) => {
   guardIpc(event, 'history:lifetime', payload);
   return store ? store.lifetimeSummary() : null;
+});
+
+ipcMain.handle('history:timelineDay', async (event, payload) => {
+  const date = guardIpc(event, 'history:timelineDay', payload);
+  return store ? store.timelineDay(date || require('./store').todayKey()) : null;
 });
 
 ipcMain.handle('rules:get', async (event, payload) => {

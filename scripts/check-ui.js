@@ -75,7 +75,14 @@ app.whenReady().then(async () => {
         ['tooltip category', tip.querySelector('.pt-cat'), tip],
         ['focusboost label', document.querySelector('.fb-focus'), document.querySelector('.focusboost-btn')],
         ['profile choice', profileMenu.querySelector('.profile-choice'), profileMenu.querySelector('.profile-choice')],
-        ['profile input', profileInput, profileInput]
+        ['profile input', profileInput, profileInput],
+        ['timeline heading', document.getElementById('timeline-heading'), document.querySelector('.timeline-card')],
+        ['timeline note', document.getElementById('timeline-precision'), document.querySelector('.timeline-card')],
+        ['timeline date', document.getElementById('timeline-date'), document.getElementById('timeline-date')],
+        ['longest block', document.getElementById('timeline-longest'), document.querySelector('.timeline-card')],
+        ['data disclosure', document.querySelector('.storage-details summary'), document.querySelector('.storage-details summary')],
+        ['data explanation', document.querySelector('.storage-details-body p'), document.querySelector('.storage-details-body')],
+        ['session intention', document.getElementById('session-intention'), document.getElementById('session-intention')]
       ];
       for (const [name, foreground, background] of samples) {
         const fg = getComputedStyle(foreground).color;
@@ -89,6 +96,57 @@ app.whenReady().then(async () => {
     return checks;
   })()`);
   console.log('Theme contrast checks:', JSON.stringify(contrastChecks));
+  const timelineChecks = await win.webContents.executeJavaScript(`(() => {
+    const date = document.getElementById('timeline-date').value;
+    const [y, m, d] = date.split('-').map(Number);
+    const at = hour => new Date(y, m - 1, d, hour).getTime();
+    timelineDayData = { date, timeline: [
+      { start: at(9), end: at(11), kind: 'productive', profileId: 'coding' },
+      { start: at(11), end: at(12), kind: 'idle', profileId: null },
+      { start: at(12), end: at(13), kind: 'unproductive', profileId: 'default' }
+    ], byHour: [{ productive: 7200, unproductive: 3600, other: 0 }] };
+    renderTimeline();
+    const blocks = document.querySelectorAll('#timeline-visual .timeline-block').length;
+    const text = document.getElementById('timeline-text').textContent;
+    const longest = document.getElementById('timeline-longest').textContent;
+    const category = document.getElementById('timeline-category');
+    category.value = 'idle'; renderTimeline();
+    const filtered = document.querySelectorAll('#timeline-visual .timeline-block').length;
+    const hiddenWhenIdle = document.getElementById('timeline-longest').classList.contains('hidden');
+    category.value = 'all';
+    const profile = document.getElementById('timeline-profile');
+    profile.innerHTML = '<option value="all">All profiles</option><option value="coding">Coding</option>';
+    profile.value = 'coding'; renderTimeline();
+    const profileFiltered = document.querySelectorAll('#timeline-visual .timeline-block').length;
+    profile.value = 'all';
+    timelineDayData = { date, timeline: [], byHour: [{ productive: 7200 }] };
+    renderTimeline();
+    const older = document.getElementById('timeline-precision').textContent;
+    const oldHidden = document.getElementById('timeline-visual').classList.contains('hidden');
+    const oldLongestHidden = document.getElementById('timeline-longest').classList.contains('hidden');
+    return { blocks, text, longest, filtered, hiddenWhenIdle, profileFiltered, older, oldHidden, oldLongestHidden };
+  })()`);
+  console.log('Timeline checks:', JSON.stringify(timelineChecks));
+  await win.webContents.executeJavaScript(`(() => {
+    const date = document.getElementById('timeline-date').value;
+    const [y, m, d] = date.split('-').map(Number);
+    const at = (h, min = 0) => new Date(y, m - 1, d, h, min).getTime();
+    timelineDayData = { date, timeline: [
+      { start: at(8), end: at(10, 30), kind: 'productive', profileId: 'coding' },
+      { start: at(10, 30), end: at(11), kind: 'idle', profileId: null },
+      { start: at(11), end: at(12, 30), kind: 'unproductive', profileId: 'default' },
+      { start: at(13), end: at(15), kind: 'productive', profileId: 'coding' }
+    ], byHour: Array.from({ length: 24 }, (_, hour) => ({ productive: hour >= 8 && hour <= 14 ? 2400 : 0, unproductive: hour === 11 ? 3600 : 0, other: 0 })) };
+    renderTimeline();
+    renderDay(timelineDayData);
+    document.getElementById('view-home').classList.add('hidden');
+    document.getElementById('view-analytics').classList.remove('hidden');
+    document.querySelector('.main').scrollTop = 0;
+    applyTheme('coral');
+  })()`);
+  await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-timeline-coral.png'), (await win.webContents.capturePage()).toPNG());
+  await win.webContents.executeJavaScript(`(() => { applyTheme('midnight'); document.getElementById('view-analytics').classList.add('hidden'); document.getElementById('view-home').classList.remove('hidden'); })()`);
   const boostSyncChecks = await win.webContents.executeJavaScript(`(() => {
     const button = document.getElementById('focusboost-btn');
     const base = { thresholdSec: 600, focusBoostSec: 180, focusBoostScheduleEnabled: false };
@@ -273,9 +331,8 @@ app.whenReady().then(async () => {
     renderOtherInbox(stats);
     const story = document.getElementById('roundup-story');
     const other = document.getElementById('tags-other-card');
-    other.querySelector('button').click();
     return { productive: story.textContent.includes('github'), unproductive: story.textContent.includes('youtube'),
-      otherVisible: !other.hidden, previewApp: document.getElementById('tags-preview-app').value };
+      otherVisible: !other.hidden, reviewLabel: other.querySelector('button').getAttribute('aria-label') };
   })()`);
   console.log('Roundup evidence checks:', JSON.stringify(roundupEvidence));
   const settingsChecks = await win.webContents.executeJavaScript(`(() => {
@@ -289,9 +346,23 @@ app.whenReady().then(async () => {
     document.querySelector('[data-settings-tab="notifications"]').click();
     const notifications = visible('notifications') && document.getElementById('settings-reminder-timing').closest('#settings-panel-notifications') != null &&
       document.getElementById('fb-schedule-toggle').closest('#settings-panel-notifications') != null;
-    return { initial, wellbeing, notifications, overflow: document.getElementById('view-settings').scrollWidth > document.getElementById('view-settings').clientWidth + 1 };
+    document.querySelector('[data-settings-tab="tracking"]').click();
+    const storage = document.getElementById('settings-storage-details');
+    storage.open = true;
+    const storageText = storage.textContent;
+    const dataPrivacy = storage.closest('#settings-data-card') != null && storageText.includes("app you're using") &&
+      storageText.includes('does not read browser addresses') && storageText.includes('90 days') &&
+      storageText.includes('lifetime stats') && storageText.includes('No screenshots') &&
+      document.getElementById('data-path').closest('#settings-data-card') != null;
+    return { initial, wellbeing, notifications, dataPrivacy,
+      overflow: document.getElementById('view-settings').scrollWidth > document.getElementById('view-settings').clientWidth + 1 };
   })()`);
   console.log('Settings tabs checks:', JSON.stringify(settingsChecks));
+  await win.webContents.executeJavaScript(`(async () => {
+    document.getElementById('settings-storage-details').scrollIntoView({block: 'center'});
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  })()`);
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-data.png'), (await win.webContents.capturePage()).toPNG());
   await win.webContents.executeJavaScript(`(async () => {
     document.querySelector('[data-tab="settings"]').click();
     document.querySelector('[data-settings-tab="wellbeing"]').click();
@@ -305,8 +376,8 @@ app.whenReady().then(async () => {
   const screenshot = await win.webContents.capturePage();
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-home.png'), screenshot.toPNG());
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-results.json'), JSON.stringify(results.flat(), null, 2));
-  const failed = contrastChecks.some(check => check.ratio < 4.5) || !boostSyncChecks.trayEnabled || !boostSyncChecks.trayDisabled || !timedPauseUi.active || !timedPauseUi.cleared || results.flat().some((r) => r.overflow || !r.timeInside) || !tagChecks.loaded || !tagChecks.removed || !titleOnlyCheck || hoverChecks.some(r => !r.stayedVisible || !r.leftHidden) || !segmentChecks.analyticsPreserved || !segmentChecks.sessionPreserved;
-  app.exit(failed || historyChecks.share !== '75%' || !historyChecks.visible || historyChecks.overflow || historyChecks.scoreCells !== 30 || historyChecks.scoreHeight > 520 || !lifetimeChecks.visible || lifetimeChecks.total !== '10h tracked' || lifetimeChecks.days !== '4' || lifetimeChecks.bars !== 3 || lifetimeChecks.overflow || !roundupEvidence.productive || !roundupEvidence.unproductive || !roundupEvidence.otherVisible || roundupEvidence.previewApp !== 'Unmatched App' || !settingsChecks.initial || !settingsChecks.wellbeing || !settingsChecks.notifications || settingsChecks.overflow || layoutChecks.some(r => !r.sidebarAligned || !r.mobileRail || !r.customAligned || !r.controlsInside) ? 1 : 0);
+  const failed = contrastChecks.some(check => check.ratio < 4.5) || timelineChecks.blocks !== 3 || !timelineChecks.text.includes('Idle') || !timelineChecks.text.includes('Untracked') || !timelineChecks.longest.includes('Longest productive block: 2h') || timelineChecks.filtered !== 1 || !timelineChecks.hiddenWhenIdle || timelineChecks.profileFiltered !== 1 || !timelineChecks.older.includes('hourly totals') || !timelineChecks.oldHidden || !timelineChecks.oldLongestHidden || !boostSyncChecks.trayEnabled || !boostSyncChecks.trayDisabled || !timedPauseUi.active || !timedPauseUi.cleared || results.flat().some((r) => r.overflow || !r.timeInside) || !tagChecks.loaded || !tagChecks.removed || !titleOnlyCheck || hoverChecks.some(r => !r.stayedVisible || !r.leftHidden) || !segmentChecks.analyticsPreserved || !segmentChecks.sessionPreserved;
+  app.exit(failed || historyChecks.share !== '75%' || !historyChecks.visible || historyChecks.overflow || historyChecks.scoreCells !== 30 || historyChecks.scoreHeight > 520 || !lifetimeChecks.visible || lifetimeChecks.total !== '10h tracked' || lifetimeChecks.days !== '4' || lifetimeChecks.bars !== 3 || lifetimeChecks.overflow || !roundupEvidence.productive || !roundupEvidence.unproductive || !roundupEvidence.otherVisible || roundupEvidence.reviewLabel !== 'Review unclassified time for Unmatched App' || !settingsChecks.initial || !settingsChecks.wellbeing || !settingsChecks.notifications || !settingsChecks.dataPrivacy || settingsChecks.overflow || layoutChecks.some(r => !r.sidebarAligned || !r.mobileRail || !r.customAligned || !r.controlsInside) ? 1 : 0);
 }).catch((error) => { console.error(error); app.exit(1); });
 
 setTimeout(() => { console.error('UI checks timed out'); app.exit(1); }, 20000).unref();

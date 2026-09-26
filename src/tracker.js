@@ -108,6 +108,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
   let pendingDiscontinuity = false;
   let lastTick = clock();
   let lastHeartbeat = lastTick;
+  let idleTimelineEnd = null;
   let current = {
     window: null,
     app: '—',
@@ -133,6 +134,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     });
     lastHeartbeat = at;
     if (result.discontinuity) {
+      idleTimelineEnd = null;
       breakReminder.reset();
       pendingDiscontinuity = true;
       generation += 1;
@@ -257,8 +259,21 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     }
 
     // One foreground sample per tick. Sessions and reminders use this same decision.
+    if (decision.reason === 'idle' && !discontinuous && !startedPaused) {
+      const from = idleTimelineEnd === null ? intervalStart : idleTimelineEnd;
+      if (store.addTimelineGap && (idleTimelineEnd === null || now - from >= 60000)) {
+        store.addTimelineGap(from, now);
+        idleTimelineEnd = now;
+      }
+    } else {
+      if (idleTimelineEnd !== null && !discontinuous && !startedPaused &&
+          decision.count && intervalStart > idleTimelineEnd && store.addTimelineGap) {
+        store.addTimelineGap(idleTimelineEnd, intervalStart);
+      }
+      idleTimelineEnd = null;
+    }
     if (decision.count && decision.elapsedSec > 0) {
-      if (store.addInterval) store.addInterval(app, category, intervalStart, now, activity);
+      if (store.addInterval) store.addInterval(app, category, intervalStart, now, activity, rHolder.rules && rHolder.rules.profileId);
       else store.addSeconds(app, category, decision.elapsedSec, activity);
     } else if (store.resetStreak) {
       store.resetStreak();
@@ -381,6 +396,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
 
   function stop() {
     stopped = true;
+    idleTimelineEnd = null;
     breakReminder.reset();
     generation += 1;
     if (timer) {
@@ -398,6 +414,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     const nextLocked = !!nextLock;
     if (sleeping === nextSleeping && locked === nextLocked) return;
     sleeping = nextSleeping;
+    idleTimelineEnd = null;
     breakReminder.reset();
     locked = nextLocked;
     generation += 1;
@@ -413,6 +430,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
   }
 
   function invalidateClassification() {
+    idleTimelineEnd = null;
     generation++;
     lastTick = clock();
     lastHeartbeat = lastTick;
@@ -422,6 +440,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
   }
 
   function markPauseBoundary() {
+    idleTimelineEnd = null;
     breakReminder.reset();
     generation++;
     lastTick = clock();

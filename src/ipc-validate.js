@@ -4,8 +4,10 @@ const CHANNELS = [
   'state:get',
   'apps:correctActivityToday',
   'apps:correctToday',
+  'apps:correctOtherToday',
   'history:summary',
   'history:lifetime',
+  'history:timelineDay',
   'rules:get',
   'rules:set',
   'rules:reset',
@@ -260,6 +262,12 @@ function settingsUpdate(payload) {
   return out;
 }
 
+function otherAppCorrection(payload) {
+  const value = appCorrection(payload);
+  if (value.category !== 'productive' && value.category !== 'unproductive') invalid();
+  return value;
+}
+
 function classificationPreview(payload) {
   const obj = plainObject(payload);
   assertKeys(obj, ['app', 'title', 'productive', 'unproductive', 'ignore', 'browserKeywords']);
@@ -316,13 +324,17 @@ function profileExport(payload) {
 
 function sessionStart(payload) {
   const obj = optionalObject(payload);
-  assertKeys(obj, ['mode', 'customMin']);
+  assertKeys(obj, ['mode', 'customMin', 'intention']);
   const out = {};
   if (Object.hasOwn(obj, 'mode')) {
     if (!SESSION_MODES.has(obj.mode)) invalid();
     out.mode = obj.mode;
   }
   if (Object.hasOwn(obj, 'customMin')) out.customMin = finiteInt(obj.customMin, 1, 1440);
+  if (Object.hasOwn(obj, 'intention')) {
+    if (typeof obj.intention !== 'string' || obj.intention.length > 80 || /[\x00-\x1f\x7f]/.test(obj.intention)) invalid();
+    out.intention = obj.intention.trim();
+  }
   return out;
 }
 
@@ -348,8 +360,10 @@ const VALIDATORS = {
   'state:get': noPayload,
   'apps:correctActivityToday': activityCorrection,
   'apps:correctToday': appCorrection,
+  'apps:correctOtherToday': otherAppCorrection,
   'history:summary': historyDays,
   'history:lifetime': noPayload,
+  'history:timelineDay': optionalDate,
   'rules:get': noPayload,
   'rules:set': rulesSet,
   'rules:reset': resetProfile,

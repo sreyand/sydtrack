@@ -8,6 +8,7 @@ const { purgeExpiredRaw, clearJournal } = require('./retention');
 const { migrateStorage } = require('./storage-schema');
 const { canonicalAppName } = require('./classifier');
 const { migrateGoalSettings } = require('../renderer/lib/goals');
+const { appendSegment, normalizeTimeline } = require('./timeline');
 
 function todayKey(at) {
   const d = at === undefined ? new Date() : new Date(at);
@@ -116,6 +117,7 @@ function emptyDay(date) {
     byApp: Object.create(null),
     byCategory: { productive: 0, unproductive: 0, other: 0 },
     byHour: emptyByHour(),
+    timeline: [],
     unproductiveStreak: 0,
     lastReminderAt: 0
   };
@@ -140,6 +142,7 @@ function migrateDay(raw) {
           return Object.assign(base, src, { byApp });
         })
       : emptyByHour(),
+    timeline: normalizeTimeline(raw.timeline, raw.date || todayKey()),
     unproductiveStreak: Number(raw.unproductiveStreak) || 0,
     activityCorrections: canonicalizeActivityCorrections(raw.activityCorrections),
     appCorrections: canonicalizeNamedMap(Object.fromEntries(Object.entries(raw.appCorrections || {}).filter(([name, category]) => name && ['productive', 'unproductive', 'ignored', 'other'].includes(category)))),
@@ -423,7 +426,7 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
 
   // A delayed sample may arrive after snapshot() has already rolled the day.
   // Load that archive before adding, so existing history is never replaced by a fragment.
-  function addInterval(app, category, startedAt, endedAt, activity) {
+  function addInterval(app, category, startedAt, endedAt, activity, profileId = null) {
     if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt <= startedAt) return;
     if (category === 'ignored') return;
     rollIfNeeded();
@@ -435,6 +438,7 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
         (date.getMinutes() * 60000 + date.getSeconds() * 1000 + date.getMilliseconds()));
       if (!days.has(key)) days.set(key, key === state.date ? state : loadHistoryDay(key) || emptyDay(key));
       addToDay(days.get(key), app, category, (next - at) / 1000, date.getHours(), activity);
+      appendSegment(days.get(key), at, next, category, profileId);
       at = next;
     }
     for (const [key, day] of days) {
@@ -883,6 +887,81 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
     return historyDir;
   }
 
+  function correctOtherAppToday(name, category) {
+    rollIfNeeded();
+    if (typeof name !== 'string' || !name.trim() || !['productive', 'unproductive'].includes(category)) {
+      throw new Error('Invalid Other correction');
+    }
+    const identity = name.toLowerCase();
+    const next = structuredClone(state);
+    let changed = 0;
+    for (const bucket of [next, ...next.byHour]) {
+      const totals = bucket === next ? next.byCategory : bucket;
+      for (const [key, info] of Object.entries(bucket.byApp || {})) {
+        if (info.category !== 'other' || appEntryName(key).toLowerCase() !== identity) continue;
+        const seconds = Number(info.seconds) || 0;
+        const parts = activityParts(key);
+        const id = activityId(key, info);
+        const destination = parts
+          ? activityKey(parts[0], category, { category: parts[1], reason: parts[2] })
+          : appCategoryKey(appEntryName(key), category);
+        delete bucket.byApp[key];
+        if (!bucket.byApp[destination]) bucket.byApp[destination] = { seconds: 0, category };
+        bucket.byApp[destination].seconds += seconds;
+        totals.other = Math.max(0, (totals.other || 0) - seconds);
+        totals[category] = (totals[category] || 0) + seconds;
+        if (bucket === next) {
+          next.activityCorrections[id] = category;
+          changed += seconds;
+        }
+      }
+    }
+    if (!changed) throw new Error('No unclassified time remains for this app');
+    next.unproductiveStreak = 0;
+    writeJson(filePath, next);
+    state = next;
+    return snapshot();
+  }
+
+  function timelineDay(dateKey) {
+    if (!validDateKey(dateKey)) return null;
+    rollIfNeeded();
+    const day = dateKey === state.date ? state : loadHistoryDay(dateKey);
+    if (!day) return null;
+    return {
+      date: dateKey,
+      timeline: normalizeTimeline(day.timeline, dateKey),
+      byCategory: {
+        productive: Number(day.byCategory && day.byCategory.productive) || 0,
+        unproductive: Number(day.byCategory && day.byCategory.unproductive) || 0,
+        other: Number(day.byCategory && day.byCategory.other) || 0
+      },
+      byHour: (day.byHour || emptyByHour()).map(hour => ({
+        productive: Number(hour && hour.productive) || 0,
+        unproductive: Number(hour && hour.unproductive) || 0,
+        other: Number(hour && hour.other) || 0
+      }))
+    };
+  }
+
+  function addTimelineGap(startedAt, endedAt) {
+    if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt <= startedAt) return;
+    rollIfNeeded();
+    const days = new Map();
+    for (let at = startedAt; at < endedAt;) {
+      const date = new Date(at);
+      const key = todayKey(at);
+      const next = Math.min(endedAt, new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime());
+      if (!days.has(key)) days.set(key, key === state.date ? state : loadHistoryDay(key) || emptyDay(key));
+      appendSegment(days.get(key), at, next, 'idle');
+      at = next;
+    }
+    for (const [key, day] of days) {
+      if (key === state.date) persistStats();
+      else archiveDay(day);
+    }
+  }
+
   // Raw days expire after 90 days, but their compact rollups do not. Prefer
   // one verified rollup per date so an archived raw day is never counted twice.
   function lifetimeSummary() {
@@ -925,10 +1004,13 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
   return {
     addSeconds,
     addInterval,
+    addTimelineGap,
+    timelineDay,
     removeSeconds,
     reclassifyStoredApps,
     correctAppToday,
     correctActivityToday,
+    correctOtherAppToday,
     getActivityCorrection: (name, activity) => { rollIfNeeded(); return (state.activityCorrections || {})[JSON.stringify([name, activity.category, activity.reason])]; },
     getAppCorrection: name => { rollIfNeeded(); const corrections = state.appCorrections || {}; const key = String(name).toLowerCase(); return Object.hasOwn(corrections, key) ? corrections[key] : undefined; },
     markReminder,

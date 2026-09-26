@@ -6,6 +6,7 @@ const { migrateDay, todayKey, emptyDay } = require('./store');
 const { LEGACY_BACKUP_FORMAT } = require('./legacy-data-dir');
 const { writeJson, validDateKey } = require('./json-file');
 const { validateProfiles } = require('./focus-profiles');
+const { normalizeTimeline, MAX_SEGMENTS } = require('./timeline');
 
 function appVersion() {
   try {
@@ -186,6 +187,9 @@ function validateBackup(obj) {
         totals(hour); appMap(hour.byApp);
       }
     }
+    if (day.timeline != null && (!Array.isArray(day.timeline) || day.timeline.length > MAX_SEGMENTS ||
+      day.timeline.some(segment => !record(segment) ||
+        normalizeTimeline([segment], key).length !== 1))) fail('invalid timeline');
   }
   if (obj.settings != null && !record(obj.settings)) fail('invalid settings');
   if (obj.rules != null) {
@@ -212,6 +216,7 @@ function validateBackup(obj) {
         if (!record(entry) || typeof entry.id !== 'string' || !entry.id || ids.has(entry.id) || entry.date !== date ||
           !['completed', 'stopped'].includes(entry.status) || !number(entry.startedAt) || !number(entry.endedAt) || entry.endedAt < entry.startedAt ||
           !number(entry.plannedSec) || !number(entry.elapsedSec) || !number(entry.distractionCount) || !Array.isArray(entry.topApps)) fail('invalid session');
+        if (entry.intention != null && (typeof entry.intention !== 'string' || entry.intention.length > 80 || /[\x00-\x1f\x7f]/.test(entry.intention))) fail('invalid session intention');
         ids.add(entry.id);
         for (const app of entry.topApps) if (!record(app) || typeof app.name !== 'string' || !number(app.seconds) || !['productive', 'unproductive', 'other', 'ignored'].includes(app.category)) fail('invalid session app');
       }
@@ -242,6 +247,12 @@ function mergeDays(a, b) {
     mergeAppMap(out.byHour[h].byApp, other.byHour[h].byApp);
   }
   mergeAppMap(out.byApp, other.byApp);
+  // Backups may contain the same observation twice. Preserve exact segments once;
+  // category totals retain the existing additive merge behavior.
+  out.timeline = normalizeTimeline([...(out.timeline || []), ...(other.timeline || [])], out.date)
+    .filter((segment, index, all) => index === 0 ||
+      segment.start !== all[index - 1].start || segment.end !== all[index - 1].end ||
+      segment.kind !== all[index - 1].kind || segment.profileId !== all[index - 1].profileId);
   out.unproductiveStreak = Math.max(out.unproductiveStreak || 0, other.unproductiveStreak || 0);
   out.lastReminderAt = Math.max(out.lastReminderAt || 0, other.lastReminderAt || 0);
   return out;

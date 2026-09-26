@@ -258,6 +258,116 @@ let analyticsSegment = 'day';
 let currentPlatform = null;
 let lifetimeRequest = 0;
 let latestGoalSettings = null;
+let timelineDayData = null;
+let timelineRequest = 0;
+let timelineLastRefresh = 0;
+let liveDayDate = null;
+let timelineFollowsToday = true;
+let timelineProfileNames = {};
+
+function localDateKey() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function timelineTime(ms) {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function renderTimeline() {
+  const visual = $('timeline-visual');
+  if (!visual) return;
+  const date = $('timeline-date').value;
+  const day = timelineDayData && timelineDayData.date === date ? timelineDayData : { date, timeline: [], byHour: [] };
+  const category = $('timeline-category').value;
+  const profile = $('timeline-profile').value;
+  const data = sydtrackDayTimeline.model(day, category, profile);
+  const precision = $('timeline-precision');
+  const longest = $('timeline-longest');
+  const showLongest = (category === 'all' || category === 'productive') &&
+    (data.precision === 'segments' || data.precision === 'partial') && data.longestProductive;
+  longest.classList.toggle('hidden', !showLongest);
+  if (showLongest) {
+    const block = data.longestProductive;
+    const duration = (block.end - block.start) / 1000;
+    longest.textContent = (data.precision === 'partial' ? 'Longest recorded productive block: ' : 'Longest productive block: ') +
+      (duration < 60 ? fmtFriendly(duration) : fmtDuration(duration)) + ' · ' + timelineTime(block.start) + '–' + timelineTime(block.end);
+  } else longest.textContent = '';
+  precision.textContent = data.precision === 'hourly'
+    ? 'Earlier activity is available as hourly totals below; its order and idle gaps were not recorded.'
+    : data.precision === 'daily'
+      ? 'Only daily totals were recorded. Hourly order and idle gaps are unavailable.'
+    : data.precision === 'partial'
+      ? 'Segments began after some activity was recorded. Earlier activity remains in hourly totals below.'
+      : data.precision === 'empty'
+        ? 'No activity recorded for this day.'
+        : 'Category changes and detected idle time. Blank means untracked.';
+  if (data.precision === 'hourly' || data.precision === 'daily' || data.precision === 'empty') {
+    visual.classList.add('hidden');
+    $('timeline-text').innerHTML = '<li>No precise segments for this day. See hourly totals below.</li>';
+    return;
+  }
+  visual.classList.remove('hidden');
+  const labels = { productive: 'Productive', unproductive: 'Unproductive', other: 'Other', idle: 'Idle' };
+  visual.innerHTML = data.rows.map((row, index) =>
+    '<div class="timeline-row"><span class="timeline-row-label">' + esc(row.label) + '</span>' +
+    '<div class="timeline-track">' + data.pieces[index].map(piece => {
+      const label = labels[piece.kind] + ' · ' + timelineTime(piece.start) + '–' + timelineTime(piece.end) +
+        (piece.profileId ? ' · ' + (timelineProfileNames[piece.profileId] || piece.profileId) : '');
+      return '<span class="timeline-block ' + piece.kind + '" style="left:' + piece.left + '%;width:' + piece.width + '%" title="' + esc(label) + '"></span>';
+    }).join('') + '</div></div>'
+  ).join('');
+  visual.setAttribute('aria-label', 'Timeline for ' + date + '. ' + precision.textContent +
+    ' ' + data.visible.length + ' matching segments. Text list follows.');
+  const entries = [];
+  if (category === 'all' && profile === 'all') {
+    data.rows.forEach((row, index) => {
+      let cursor = row.start;
+      for (const piece of data.pieces[index]) {
+        if (piece.start > cursor) entries.push(timelineTime(cursor) + '–' + timelineTime(piece.start) + ': Untracked');
+        entries.push(timelineTime(piece.start) + '–' + timelineTime(piece.end) + ': ' + labels[piece.kind] +
+          (piece.profileId ? ' · ' + (timelineProfileNames[piece.profileId] || piece.profileId) : ''));
+        cursor = Math.max(cursor, piece.end);
+      }
+      if (cursor < row.end) entries.push(timelineTime(cursor) + '–' + timelineTime(row.end) + ': Untracked');
+    });
+  } else {
+    for (const segment of data.visible) entries.push(timelineTime(segment.start) + '–' + timelineTime(segment.end) +
+      ': ' + labels[segment.kind] + (segment.profileId ? ' · ' + (timelineProfileNames[segment.profileId] || segment.profileId) : ''));
+  }
+  $('timeline-text').innerHTML = entries.length
+    ? entries.map(entry => '<li>' + esc(entry) + '</li>').join('')
+    : '<li>No segments match these filters.</li>';
+}
+
+async function loadTimelineDay() {
+  const dateInput = $('timeline-date');
+  if (!dateInput || !dateInput.value) return;
+  const date = dateInput.value;
+  const request = ++timelineRequest;
+  $('timeline-precision').textContent = 'Loading activity…';
+  $('timeline-longest').classList.add('hidden');
+  $('timeline-longest').textContent = '';
+  try {
+    const [day, profiles] = await Promise.all([api.getTimelineDay(date), api.getProfiles()]);
+    if (request !== timelineRequest || dateInput.value !== date) return;
+    timelineProfileNames = Object.fromEntries(((profiles && profiles.profiles) || []).map(p => [p.id, p.name]));
+    timelineDayData = day || { date, timeline: [], byHour: [] };
+    const ids = [...new Set((timelineDayData.timeline || []).map(s => s.profileId).filter(Boolean))];
+    const selector = $('timeline-profile');
+    const selected = selector.value;
+    selector.innerHTML = '<option value="all">All profiles</option>' + ids.map(id =>
+      '<option value="' + esc(id) + '">' + esc(timelineProfileNames[id] || id) + '</option>').join('');
+    selector.value = ids.includes(selected) ? selected : 'all';
+    selector.disabled = ids.length === 0;
+    selector.title = ids.length ? '' : 'Profile was not stored for this day';
+    renderTimeline();
+    if (analyticsSegment === 'day') renderDay(timelineDayData);
+    timelineLastRefresh = Date.now();
+  } catch (_) {
+    if (request === timelineRequest) $('timeline-precision').textContent = 'Could not load this day.';
+  }
+}
 
 function describeFocus(byCategory) {
   const includeOther = !!(latestGoalSettings && latestGoalSettings.focusShareIncludeOther);
@@ -423,6 +533,7 @@ function setAnalyticsSegment(segment) {
   historyRequest++;
   loadAnalyticsHistory();
   if (segment === 'lifetime') loadLifetime();
+  if (segment === 'day') loadTimelineDay();
 }
 
 function initSettingsPanels() {
@@ -437,7 +548,7 @@ function initSettingsPanels() {
   notificationCard.append(document.querySelector('.fb-schedule-block'), $('settings-reminder-timing'), $('settings-messages'));
   trackerCard.append($('settings-idle'));
   $('settings-appearance-card').append(document.querySelector('.font-credit'));
-  $('settings-data-card').append(document.querySelector('.settings-meta'));
+  $('settings-data-card').insertBefore(document.querySelector('.settings-meta'), $('settings-storage-details'));
   tracking.append($('settings-appearance-card'), trackerCard, $('settings-data-card'));
   wellbeing.append(wellbeingCard);
   notifications.append(notificationCard);
@@ -483,6 +594,19 @@ document.querySelectorAll('.segment-btn[data-segment]').forEach((btn) => {
     setAnalyticsSegment(btn.getAttribute('data-segment') || 'day');
   });
 });
+
+const timelineDateInput = $('timeline-date');
+if (timelineDateInput) {
+  timelineDateInput.max = localDateKey();
+  timelineDateInput.value = localDateKey();
+  timelineDateInput.addEventListener('change', () => {
+    if (timelineDateInput.value > timelineDateInput.max) timelineDateInput.value = timelineDateInput.max;
+    timelineFollowsToday = timelineDateInput.value === timelineDateInput.max;
+    loadTimelineDay();
+  });
+  $('timeline-category').addEventListener('change', renderTimeline);
+  $('timeline-profile').addEventListener('change', renderTimeline);
+}
 
 const navToggle = $('nav-toggle');
 if (navToggle) {
@@ -1659,7 +1783,7 @@ function renderDay(stats) {
     const sub = $('analytics-subtitle');
     if (sub) {
       sub.textContent =
-        stats && stats.date ? 'Today’s hours · ' + stats.date : ANALYTICS_SUBTITLES.day;
+        stats && stats.date ? (stats.date === liveDayDate ? 'Today’s activity · ' : 'Activity · ') + stats.date : ANALYTICS_SUBTITLES.day;
     }
   }
 
@@ -1711,10 +1835,13 @@ function renderDay(stats) {
   if (peakSub) {
     peakSub.textContent = peakProd > 0 ? hourLabel(peakHour) : 'No productive time yet';
   }
+  const coarse = stats && stats.byCategory || {};
+  const coarseTotal = (Number(coarse.productive) || 0) + (Number(coarse.unproductive) || 0) + (Number(coarse.other) || 0);
+  if (total === 0 && coarseTotal > 0) total = coarseTotal;
   const totalEl = $('day-total');
   if (totalEl) totalEl.textContent = fmtFriendly(total);
   const totalSub = $('day-total-sub');
-  if (totalSub) totalSub.textContent = 'All categories today';
+  if (totalSub) totalSub.textContent = 'All categories on this day';
 
   let focusShare = '—';
   let focusSub = 'Of productive + unproductive';
@@ -1725,6 +1852,11 @@ function renderDay(stats) {
     prodSum += hours[i].productive;
     unpSum += hours[i].unproductive;
     othSum += hours[i].other;
+  }
+  if (prodSum + unpSum + othSum === 0 && coarseTotal > 0) {
+    prodSum = Number(coarse.productive) || 0;
+    unpSum = Number(coarse.unproductive) || 0;
+    othSum = Number(coarse.other) || 0;
   }
   const dayFocus = describeFocus({ productive: prodSum, unproductive: unpSum, other: othSum });
   const focusDenom = dayFocus ? dayFocus.denominator : prodSum + unpSum;
@@ -1906,7 +2038,15 @@ function renderStats(stats) {
     historicalWeek = historicalWeek.map(day => day.date === stats.date ? { ...day, byCategory: stats.byCategory, topApps: stats.topApps } : day);
     renderWeek({ week: historicalWeek });
   }
-  renderDay(stats);
+  liveDayDate = stats.date;
+  if ($('timeline-date') && stats.date) {
+    $('timeline-date').max = stats.date;
+    if (timelineFollowsToday && $('timeline-date').value !== stats.date) $('timeline-date').value = stats.date;
+  }
+  if ($('timeline-date') && $('timeline-date').value === stats.date) {
+    renderDay(stats);
+    if (analyticsSegment === 'day' && Date.now() - timelineLastRefresh > 15000) loadTimelineDay();
+  }
   renderRoundup(stats);
   applyPageDate('home-date', new Date());
   $('streak').textContent = fmtDuration(stats.unproductiveStreak || 0);
@@ -1924,7 +2064,7 @@ function renderOtherInbox(stats) {
   const list = $('tags-other-list');
   if (!card || !list) return;
   const apps = (stats.otherApps || []).filter(app => app && app.name && app.seconds > 0).slice(0, 5);
-  card.hidden = apps.length === 0;
+  card.hidden = apps.length === 0 && $('tags-other-editor').hidden;
   list.replaceChildren();
   for (const app of apps) {
     const row = document.createElement('div');
@@ -1933,20 +2073,156 @@ function renderOtherInbox(stats) {
     name.textContent = app.name;
     name.title = app.name;
     const time = document.createElement('strong');
-    time.textContent = fmtGoalShort(app.seconds);
+    time.textContent = fmt(app.seconds);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'btn ghost';
-    button.textContent = 'Test title';
-    button.addEventListener('click', () => {
-      $('tags-preview-app').value = app.name;
-      $('tags-preview-title').focus();
-      $('tags-preview-title').scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
-    });
+    button.textContent = 'Review';
+    button.setAttribute('aria-label', 'Review unclassified time for ' + app.name);
+    button.addEventListener('click', () => openOtherInboxReview(app));
     row.append(name, time, button);
     list.append(row);
   }
 }
+
+let otherInboxSelection = null;
+let otherInboxRequest = 0;
+let otherInboxSaving = false;
+
+function otherInboxDraftsDirty() {
+  const normalized = values => JSON.stringify((values || []).map(value => value.trim().toLowerCase()).filter(Boolean).sort());
+  const draft = currentTagLists();
+  return normalized(draft.productive) !== normalized(cachedRules.productive) ||
+    normalized(draft.unproductive) !== normalized(cachedRules.unproductive) ||
+    normalized(draft.ignore) !== normalized(cachedIgnore);
+}
+
+function updateOtherInboxScope() {
+  if (!otherInboxSelection) return;
+  const scope = $('tags-other-scope').value;
+  const app = otherInboxSelection.name;
+  const profile = otherInboxSelection.profileName;
+  $('tags-other-category-field').hidden = scope === 'ignore';
+  $('tags-other-keyword-field').hidden = scope !== 'future';
+  $('tags-other-apply').textContent = scope === 'today' ? 'Classify today' : scope === 'future' ? 'Save rule' : 'Ignore app';
+  $('tags-other-apply').disabled = false;
+  $('tags-other-editor-note').textContent = scope === 'today'
+    ? 'Classifies all of today’s Other time for ' + app + '. Already-classified time and the recorded timeline stay as they are.'
+    : scope === 'future'
+      ? 'Add an app or title keyword to ' + profile + '. It affects future activity only; today’s time stays as it is.'
+      : 'Ignore all ' + app + ' activity in ' + profile + ' from now on. Today’s time stays as it is.';
+  $('tags-other-status').textContent = '';
+}
+
+async function openOtherInboxReview(app) {
+  if (otherInboxSaving || !api || !api.getProfiles) return;
+  const request = ++otherInboxRequest;
+  try {
+    const profiles = await api.getProfiles();
+    if (request !== otherInboxRequest) return;
+    const active = (profiles.profiles || []).find(profile => profile.id === profiles.activeId);
+    otherInboxSelection = { name: app.name, profileId: profiles.activeId,
+      profileName: active ? active.name : 'this profile' };
+    $('tags-other-editor-title').textContent = 'Review ' + app.name;
+    $('tags-other-scope').value = 'today';
+    $('tags-other-category').value = 'productive';
+    $('tags-other-keyword').value = '';
+    $('tags-other-editor').hidden = false;
+    $('tags-other-card').hidden = false;
+    updateOtherInboxScope();
+    $('tags-other-scope').focus();
+  } catch (_) {
+    $('tags-other-status').textContent = 'Could not open review.';
+  }
+}
+
+async function applyOtherInboxReview() {
+  if (!otherInboxSelection || otherInboxSaving || tagsQuickSaving || !api) return;
+  const selected = { ...otherInboxSelection };
+  const scope = $('tags-other-scope').value;
+  const category = $('tags-other-category').value;
+  const keyword = $('tags-other-keyword').value.trim();
+  const status = $('tags-other-status');
+  if (scope === 'future' && (!keyword || /^site:/i.test(keyword))) {
+    status.textContent = 'Enter an app or title word, not a website address.';
+    $('tags-other-keyword').focus();
+    return;
+  }
+  const browserName = selected.name.replace(/\.exe$/i, '').toLowerCase();
+  const knownBrowser = isBrowserApp(selected.name);
+  if (scope === 'future' && knownBrowser && keyword.replace(/\.exe$/i, '').toLowerCase() === browserName) {
+    status.textContent = 'Use a page-title word. The browser name would classify every tab.';
+    $('tags-other-keyword').focus();
+    return;
+  }
+  if (scope !== 'today' && otherInboxDraftsDirty()) {
+    status.textContent = 'Save or discard your unsaved Focus Tags edits first.';
+    return;
+  }
+  otherInboxSaving = true;
+  tagsQuickSaving = true;
+  $('tags-other-apply').disabled = true;
+  $('tags-other-cancel').disabled = true;
+  for (const id of ['tags-other-scope', 'tags-other-category', 'tags-other-keyword']) $(id).disabled = true;
+  status.textContent = 'Saving…';
+  let savedSuccessfully = false;
+  try {
+    if (scope === 'today') {
+      const stats = await api.correctOtherToday(selected.name, category);
+      historicalWeek = null;
+      historyRequest++;
+      setLiveStats(stats, lastFocusedCache);
+      renderStats(stats);
+      paintLivePie();
+      status.textContent = 'Today’s Other time for ' + selected.name + ' was changed. The recorded timeline is unchanged.';
+      savedSuccessfully = true;
+    } else {
+      const profiles = await api.getProfiles();
+      if (profiles.activeId !== selected.profileId) throw new Error('Profile changed');
+      if (scope === 'future') {
+        const rules = await api.getRules();
+        if (rules.profileId !== selected.profileId) throw new Error('Profile changed');
+        const productive = (rules.productive || []).filter(word => word.toLowerCase() !== keyword.toLowerCase());
+        const unproductive = (rules.unproductive || []).filter(word => word.toLowerCase() !== keyword.toLowerCase());
+        (category === 'productive' ? productive : unproductive).push(keyword);
+        const saved = await api.setRules({ productive, unproductive });
+        fillRulesEditors(saved || { productive, unproductive });
+        status.textContent = 'Future windows matching “' + keyword + '” use ' + category + ' in ' + selected.profileName + '. Today is unchanged.';
+        savedSuccessfully = true;
+      } else if (scope === 'ignore') {
+        const current = await api.getIgnore();
+        if (current.profileId !== selected.profileId) throw new Error('Profile changed');
+        const ignore = (current.ignore || []).filter(name => name.toLowerCase() !== selected.name.toLowerCase());
+        ignore.push(selected.name);
+        const saved = await api.setIgnore(ignore);
+        fillIgnoreEditor(saved || { ignore });
+        status.textContent = selected.name + ' will be ignored in ' + selected.profileName + ' from now on. Today is unchanged.';
+        savedSuccessfully = true;
+      }
+    }
+  } catch (error) {
+    status.textContent = error && error.message === 'Profile changed'
+      ? 'The active profile changed. Reopen this review.' : 'Could not save this change.';
+  } finally {
+    otherInboxSaving = false;
+    tagsQuickSaving = false;
+    $('tags-other-apply').disabled = savedSuccessfully;
+    $('tags-other-cancel').disabled = false;
+    for (const id of ['tags-other-scope', 'tags-other-category', 'tags-other-keyword']) $(id).disabled = false;
+  }
+}
+
+if ($('tags-other-scope')) $('tags-other-scope').addEventListener('change', updateOtherInboxScope);
+if ($('tags-other-category')) $('tags-other-category').addEventListener('change', () => { $('tags-other-apply').disabled = false; });
+if ($('tags-other-keyword')) $('tags-other-keyword').addEventListener('input', () => { $('tags-other-apply').disabled = false; });
+if ($('tags-other-apply')) $('tags-other-apply').addEventListener('click', applyOtherInboxReview);
+if ($('tags-other-cancel')) $('tags-other-cancel').addEventListener('click', () => {
+  if (otherInboxSaving) return;
+  otherInboxRequest++;
+  otherInboxSelection = null;
+  $('tags-other-editor').hidden = true;
+  if (!$('tags-other-list').children.length) $('tags-other-card').hidden = true;
+});
 
 function renderAppList(stats) {
   const list = $('app-list');
@@ -2788,18 +3064,23 @@ function syncSessionControlsRunning(running) {
   });
   const customEl = $('session-custom-min');
   if (customEl) customEl.disabled = !!running;
+  const intentionEl = $('session-intention');
+  if (intentionEl) intentionEl.disabled = !!running;
   // Live distractions count removed from timer card (still in session log).
 }
 
 function renderActiveSession(session) {
+  const wasRunning = !!activeSessionCache;
   activeSessionCache = session && session.status === 'running' ? session : null;
   if (!activeSessionCache) {
+    if (wasRunning && $('session-intention')) $('session-intention').value = '';
     syncSessionControlsRunning(false);
     updateIdleCountdownDisplay();
     stopSessionUiTicker();
     return;
   }
   syncSessionControlsRunning(true);
+  if ($('session-intention')) $('session-intention').value = session.intention || '';
   if (session.mode) setSelectedSessionMode(session.mode, { silent: true });
   const rem = remainingFromSession(session);
   const text = fmtCountdown(rem);
@@ -2844,11 +3125,15 @@ async function startFocusSession() {
   if (!api) return;
   const opts = { mode: selectedSessionMode };
   if (selectedSessionMode === 'custom') opts.customMin = currentCustomMin();
+  const intention = $('session-intention').value.trim();
+  if (intention) opts.intention = intention;
+  $('session-intention-status').textContent = '';
   try {
     const session = await api.startSession(opts);
     renderActiveSession(session);
     refreshSessionLog();
   } catch (err) {
+    $('session-intention-status').textContent = 'Could not start this session.';
     console.warn('startSession failed', err);
   }
 }
@@ -2916,6 +3201,7 @@ function renderSessionLogList(payload) {
         id: activeSessionCache.id,
         mode: activeSessionCache.mode,
         modeLabel: activeSessionCache.modeLabel,
+        intention: activeSessionCache.intention,
         plannedSec: activeSessionCache.plannedSec,
         startedAt: activeSessionCache.startedAt,
         endedAt: null,
@@ -2953,8 +3239,9 @@ function renderSessionLogList(payload) {
             '</span></span>'
         )
         .join('');
-      const title =
-        esc(s.modeLabel || s.mode || 'Session') + ' · ' + unit;
+      const modeAndTime = esc(s.modeLabel || s.mode || 'Session') + ' · ' + unit;
+      const title = s.intention ? esc(s.intention) : modeAndTime;
+      const subtitle = s.intention ? '<span class="session-log-subtitle">' + modeAndTime + '</span>' : '';
       const canDelete = s.status !== 'running' && s.id;
       const dateAttr = esc((payload && payload.date) || sessionLogDay || '');
       const delBtn = canDelete
@@ -2977,9 +3264,9 @@ function renderSessionLogList(payload) {
         '<button type="button" class="session-log-summary" aria-expanded="false">' +
         '<span class="session-log-summary-left">' +
         '<span class="session-log-caret" aria-hidden="true">▶</span>' +
-        '<span class="session-log-title">' +
+        '<span class="session-log-heading"><span class="session-log-title">' +
         title +
-        '</span>' +
+        '</span>' + subtitle + '</span>' +
         '</span>' +
         statusChip(s.status) +
         '</button>' +

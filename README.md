@@ -24,7 +24,7 @@ SydTrack watches the app in front of you, classifies the time, and turns the res
 | **Live daily view** | Productive, unproductive, and uncategorized time update as you work. The total advances smoothly every second. |
 | **Focus profiles** | Switch between General, Coding, Writing, Study, and Creative without rebuilding your tags every time your work changes. |
 | **Useful analytics** | Inspect today, the last week, the last 30 days, and lifetime tracked time. Older days keep compact local summaries after detailed history expires. |
-| **Focus sessions** | Run Pomodoro, Deep Work, or a custom timer with session history and distraction counts. |
+| **Focus sessions** | Run Pomodoro, Deep Work, or a custom timer with an optional intention, session history, and distraction counts. |
 | **FocusBoost** | Use a shorter reminder threshold when you want SydTrack to interrupt a distraction sooner. Optional schedules can arm it automatically. |
 | **Daily goals** | Set a productive-time share target and, if useful, a limit for total active screen time. |
 | **Optional break nudges** | A configurable notification after a long stretch of active tracking, off by default. Pausing or five idle minutes resets the stretch. |
@@ -51,7 +51,7 @@ There is no SydTrack account and no analytics server.
 - Tracking uses the foreground process and window title; no browser extension is required.
 - The production tracker does not read typed-but-unsubmitted browser addresses.
 - Backups are files you explicitly save. Nothing uploads automatically.
-- Local exports can contain app names and window titles, so treat them like a private diary.
+- Local exports can contain app names, matched title words, and session labels, so treat them like a private diary.
 
 ## A clearer loop
 

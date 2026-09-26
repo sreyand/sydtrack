@@ -93,6 +93,8 @@ Build a 60–90 second first-run path with recommended choices already selected.
 
 Pause, Export, Delete My Data, category definitions, tracking precision, and the generated demo can be shown as optional follow-up—not required setup. Do not tour every control or ask seven questions before the user sees value. The goal is informed trust and a useful starting configuration.
 
+The first-run path is implemented: new installs start paused, show the privacy boundary, offer the five starter profiles with General selected, and begin tracking only after **Start tracking**. Existing installs skip it. Ease and comprehension still need observation with new users; code checks alone do not validate that experience.
+
 ### 1a. Human language and progressive disclosure
 
 Prefer language that communicates an outcome without assuming technical vocabulary. Candidate presentation changes to validate with users:
@@ -118,6 +120,8 @@ Add one primary visualization showing category blocks across the day. It should 
 
 The timeline must aggregate adjacent compatible activity, handle missing/idle periods honestly, and provide accessible text equivalents. It should be filterable by category and profile where the stored data supports that distinction.
 
+Implemented in Analytics → Day. New raw days store coalesced local segments containing only category, timestamps, and profile ID; detected idle is separate. Pauses and unknown gaps are not recorded as activity. Older days retain their hourly (or daily-only) totals and are labeled as lower precision rather than assigned a fabricated sequence. Exact segments expire with the existing 90-day raw retention; compact long-term rollups do not keep them.
+
 ### 3. An actionable Other inbox
 
 Turn uncategorized time into a short queue ordered by impact:
@@ -126,7 +130,7 @@ Turn uncategorized time into a short queue ordered by impact:
 
 One correction should have an obvious scope: today only, future profile rule, or Ignore. Do not make users manage hundreds of tags before SydTrack becomes useful.
 
-The first impact-ranked Other list now appears in Focus Tags with a path to test a title rule. It does not yet offer a single-step correction with an explicit scope; test that workflow with new users before expanding it.
+Implemented in Focus Tags as an impact-ranked queue. Each app has a Review action with three explicit scopes: classify its Other time today, add an app/title keyword for future activity in the active profile, or Ignore the whole app in that profile. Future changes do not rewrite earlier activity; today-only corrections leave already-classified time and the recorded timeline intact. Browser rules remain title-only, with no address-bar or URL capture. Test the wording and workflow with new users before expanding it.
 
 ### 4. Privacy controls that reinforce the promise
 
@@ -140,6 +144,8 @@ Consider:
 - Optional retention choices and a visible local data location.
 
 Privacy controls are product features, not compliance decoration.
+
+Settings → Tracking → Data now has an expandable “What SydTrack stores” explanation and shows the local data folder. It states the title-only Windows boundary, what is saved locally, the 90-day detailed-history limit, and what remains in long-term rollups. This adds no collection or retention change.
 “Pause for 15 minutes” is implemented: it skips foreground probes, survives restarts, and resumes without backfilling paused time. The other controls above remain candidates.
 
 ### 5. Intention versus outcome
@@ -147,6 +153,8 @@ Privacy controls are product features, not compliance decoration.
 Sessions may optionally ask, “What are you working on?” Store a short local label, not a project hierarchy. A completion summary can compare planned duration, completed duration, profile-aligned time, and the largest interruption when the evidence exists.
 
 Do not turn this into task management, invoicing, or another scoring system.
+
+Sessions now accept a short, optional “Working on” label. It is stored only with the local active session and completed session log, survives restart and backup/restore, and appears in history. Older sessions without a label remain valid. Comparing intention with outcome is still a candidate for later user testing.
 
 ### 6. Advanced analytics, for insight and delight
 
@@ -163,6 +171,8 @@ Good candidates:
 Each visualization must answer a sentence-shaped question. Avoid dashboards whose only purpose is to look advanced. Prefer interpretable facts over a synthetic productivity score.
 
 Analytics now includes a restrained Lifetime view: total tracked time, category totals, active days, average active day, and most tracked day. It derives from existing long-term rollups; it is not a second score or a title-level archive.
+
+Day Analytics also shows the longest recorded productive block when exact timeline segments exist. Idle, category changes, and untracked gaps break a block. Profile filtering narrows the calculation. Older hourly-only days show no invented block length.
 
 ### 7. Custom desktop chrome
 

@@ -12,11 +12,17 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('fs'), os = require('os'), path = require('path');
 const { createFocusProfiles } = require('../src/focus-profiles');
 const { createStore } = require('../src/store');
+const { createSessionManager } = require('../src/sessions');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-profile-ui-'));
 app.setPath('userData', root); app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   const store = createStore(root);
+  store.addSeconds('Chrome', 'other', 60, { category: 'other', reason: 'No matching keyword' });
+  store.addSeconds('Chrome', 'productive', 30, { category: 'productive', reason: 'github' });
+  store.addSeconds('Code', 'other', 20);
+  store.addSeconds('Spotify', 'other', 15);
   const profiles = createFocusProfiles({ dataDir: root, rules: { productive: [], unproductive: [] }, ignore: [] });
+  const sessions = createSessionManager({ dataDir: root, getSettings: () => store.getSettings() });
   const handlers = {
     'state:get': () => ({ stats: store.snapshot(), now: null, session: null }),
     'profiles:get': () => profiles.snapshot(),
@@ -27,12 +33,18 @@ app.whenReady().then(async () => {
     'profiles:delete': (_e, id) => profiles.remove(id),
     'rules:get': () => ({ ...profiles.active(), profileId: profiles.snapshot().activeId }),
     'ignore:get': () => ({ ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId }),
-    'session:getActive': () => null, 'session:getForDay': () => ({ sessions: [], days: [] }),
+    'session:start': (_e, options) => sessions.startSession(options),
+    'session:stop': () => sessions.stopSession(),
+    'session:getActive': () => sessions.getActiveSession(),
+    'session:getForDay': (_e, date) => ({ date: date || require('../src/store').todayKey(),
+      sessions: sessions.getSessionsForDay(date), recentDays: sessions.getRecentSessionDays(14), historyEnabled: true }),
     'settings:update': (_e, partial) => store.updateSettings(partial),
     'keywords:get': () => ({ productive: [], unproductive: [] }),
     'keywords:set': (_e, keywords) => keywords,
     'keywords:reset': () => ({ productive: [], unproductive: [] }),
-    'history:summary': () => []
+    'history:summary': () => [],
+    'history:timelineDay': (_e, date) => store.timelineDay(date)
+    ,'apps:correctOtherToday': (_e, payload) => store.correctOtherAppToday(payload.name, payload.category)
   };
   for (const [channel, handler] of Object.entries(handlers)) ipcMain.handle(channel, handler);
   const win = new BrowserWindow({ show: false, width: 1040, height: 900,
@@ -113,6 +125,76 @@ app.whenReady().then(async () => {
   await new Promise(resolve => setTimeout(resolve, 300));
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-profiles-settings.png'), (await win.webContents.capturePage()).toPNG());
   console.log('Profile UI checks passed: create, activate, failed save, draft cancellation, five slots, keyboard dismissal.');
+  await win.webContents.executeJavaScript(`(async () => {
+    const check = (value, message) => { if (!value) throw new Error(message); };
+    const wait = async predicate => { for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('Other review timed out'); };
+    document.querySelector('.nav-btn[data-tab="tags"]').click();
+    renderStats((await window.sydtrack.getState()).stats);
+    const rows = document.querySelectorAll('#tags-other-list .tags-other-row');
+    check(rows.length === 3 && rows[0].textContent.includes('Chrome'), 'Other inbox is impact-ranked');
+    rows[0].querySelector('button').click();
+    await wait(() => !document.getElementById('tags-other-editor').hidden);
+    check(document.getElementById('tags-other-editor-note').textContent.includes('recorded timeline'), 'Today scope is explicit');
+    document.getElementById('tags-other-scope').value = 'future';
+    document.getElementById('tags-other-scope').dispatchEvent(new Event('change'));
+    document.getElementById('tags-other-keyword').value = 'Chrome';
+    document.getElementById('tags-other-apply').click();
+    check(document.getElementById('tags-other-status').textContent.includes('every tab'), 'Browser-wide title rule needs a safer keyword');
+    document.getElementById('tags-other-scope').value = 'today';
+    document.getElementById('tags-other-scope').dispatchEvent(new Event('change'));
+    document.getElementById('tags-other-category').value = 'unproductive';
+    document.getElementById('tags-other-apply').click();
+    await wait(() => document.getElementById('tags-other-status').textContent.includes('Today’s Other'));
+    let stats = (await window.sydtrack.getState()).stats;
+    check(stats.byCategory.productive === 30 && stats.byCategory.unproductive === 60, 'Today only keeps classified browser time');
+    document.querySelectorAll('#tags-other-list .tags-other-row')[0].querySelector('button').click();
+    await wait(() => document.getElementById('tags-other-editor-title').textContent.includes('Code'));
+    document.getElementById('tags-other-scope').value = 'future';
+    document.getElementById('tags-other-scope').dispatchEvent(new Event('change'));
+    document.getElementById('tags-other-keyword').value = 'coding';
+    document.getElementById('tags-other-apply').click();
+    await wait(() => document.getElementById('tags-other-status').textContent.includes('Future windows'));
+    check((await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default').productive.includes('coding'), 'Future rule saves in active profile');
+    stats = (await window.sydtrack.getState()).stats;
+    check(stats.byCategory.other === 35, 'Future rule does not rewrite today');
+    document.querySelectorAll('#tags-other-list .tags-other-row')[1].querySelector('button').click();
+    await wait(() => document.getElementById('tags-other-editor-title').textContent.includes('Spotify'));
+    document.getElementById('tags-other-scope').value = 'ignore';
+    document.getElementById('tags-other-scope').dispatchEvent(new Event('change'));
+    document.getElementById('rules-prod-edit').value = 'unsaved draft';
+    document.getElementById('tags-other-apply').click();
+    check(document.getElementById('tags-other-status').textContent.includes('Save or discard'), 'Unsaved edits cannot be overwritten');
+    fillRulesEditors(await window.sydtrack.getRules());
+    document.getElementById('tags-other-apply').click();
+    await wait(() => document.getElementById('tags-other-status').textContent.includes('will be ignored'));
+    check((await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default').ignore.some(name => name.toLowerCase() === 'spotify'), 'Ignore is scoped to active profile');
+    check((await window.sydtrack.getState()).stats.byCategory.other === 35, 'Ignore does not rewrite today');
+    applyTheme('graphite');
+    document.getElementById('tags-other-editor').scrollIntoView({ block: 'center' });
+  })()`);
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-other-inbox-graphite.png'), (await win.webContents.capturePage()).toPNG());
+  console.log('Other inbox UI checks passed: impact order, today-only browser correction, future profile rule, Ignore, unsaved draft guard.');
+  await win.webContents.executeJavaScript(`(async () => {
+    const check = (value, message) => { if (!value) throw new Error(message); };
+    const wait = async predicate => { for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('Session intention UI timed out'); };
+    document.querySelector('.nav-btn[data-tab="sessions"]').click();
+    const input = document.getElementById('session-intention');
+    input.value = 'Draft <milestone>';
+    await startFocusSession();
+    check(input.disabled && (await window.sydtrack.getActiveSession()).intention === 'Draft <milestone>', 'Starting stores the optional intention');
+    await wait(() => document.getElementById('session-log-list').textContent.includes('Draft <milestone>'));
+    check(!document.querySelector('#session-log-list milestone'), 'Session label is escaped');
+    await stopFocusSession();
+    await wait(() => !input.disabled && input.value === '');
+    await wait(() => !!document.querySelector('#session-log-list .session-log-item[data-status="stopped"]'));
+    check(document.getElementById('session-log-list').textContent.includes('Draft <milestone>'), 'Completed log keeps intention');
+    document.querySelector('#session-log-list .session-log-summary').click();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  })()`);
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-session-intention.png'), (await win.webContents.capturePage()).toPNG());
+  console.log('Session intention UI checks passed: start, active display, escaped history, completion.');
   await win.webContents.executeJavaScript(`document.getElementById('profile-rename-named').click(); document.getElementById('profile-name-form').scrollIntoView({ block: 'end' });`);
   await new Promise(resolve => setTimeout(resolve, 300));
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-profile-name-editor.png'), (await win.webContents.capturePage()).toPNG());
