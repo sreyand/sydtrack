@@ -235,8 +235,12 @@ function defaultSettings() {
     thresholdSec: defaultThresholdSec(),
     demoMode: false,
     launchAtStartup: true,
+    onboardingComplete: true,
     trackingPaused: false,
+    trackingPauseUntil: 0,
     reminderCooldownSec: 90,
+    breakReminderEnabled: false,
+    breakReminderMinutes: 60,
     idleTimeoutSec: 300,
     trackMusicWhileIdle: false,
     trackVideoWhileIdle: false,
@@ -277,8 +281,11 @@ function applyRuntimeEnvironment(settings) {
   return settings;
 }
 
-function createStore(dataDir, { onRecovery = () => {} } = {}) {
+function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall = false } = {}) {
   fs.mkdirSync(dataDir, { recursive: true });
+  const existingActivity = fs.existsSync(path.join(dataDir, 'stats.json')) ||
+    fs.existsSync(path.join(dataDir, 'focus-profiles.json')) ||
+    fs.existsSync(path.join(dataDir, 'history'));
   removeRetiredFeatureFiles(dataDir);
   const historyDir = path.join(dataDir, 'history');
   fs.mkdirSync(historyDir, { recursive: true });
@@ -303,17 +310,25 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     (value) => value !== null && typeof value === 'object' && !Array.isArray(value),
     (report) => { settingsRecovered = true; onRecovery(report); });
   let settings = applyRuntimeEnvironment(Object.assign(defaultSettings(), savedSettings || {}));
+  // An existing installation may predate onboarding. Only a genuinely new
+  // desktop install waits for consent; older users keep their current flow.
+  const firstRun = onboardingForNewInstall && !savedSettings && !settingsRecovered && !existingActivity;
+  if (firstRun) {
+    settings.onboardingComplete = false;
+    settings.trackingPaused = true;
+    settings.launchAtStartup = false;
+  } else if (!savedSettings || !Object.prototype.hasOwnProperty.call(savedSettings, 'onboardingComplete')) {
+    settings.onboardingComplete = true;
+  }
   const needsPollMigration = !!(savedSettings && Number(savedSettings.pollMs) === 750);
   if (needsPollMigration) settings.pollMs = 3000;
   const needsGoalMigration = needsGoalSettingsMigration(savedSettings);
   if (needsGoalMigration && savedSettings) backupSettingsFile(settingsPath);
   settings = applyGoalMigration(settings, savedSettings);
-  const dropOnboarding = !!(savedSettings && Object.prototype.hasOwnProperty.call(savedSettings, 'onboardingComplete'));
   const dropRetiredSettings = !!(savedSettings && ['decompressBreaksPerDay', 'decompressBreakMinutes', 'gamificationEnabled', 'duckEnabled']
     .some((key) => Object.prototype.hasOwnProperty.call(savedSettings, key)));
-  delete settings.onboardingComplete;
   if (settingsRecovered) settings.trackingPaused = true;
-  if (settingsRecovered || needsPollMigration || needsGoalMigration || dropOnboarding || dropRetiredSettings) persistSettings();
+  if (firstRun || settingsRecovered || needsPollMigration || needsGoalMigration || dropRetiredSettings) persistSettings();
 
   function archiveDay(day) {
     summaryCache.clear();
@@ -340,7 +355,6 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
 
   function persistSettings() {
     try {
-      delete settings.onboardingComplete;
       writeJson(settingsPath, settings);
     } catch (err) {
       console.error('[store] persist settings failed', err.message);
@@ -704,13 +718,32 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
       byCategory[cat] = Math.max(0, (byCategory[cat] || 0) - e.seconds);
     }
 
-    const topApps = visible.sort((a, b) => b.seconds - a.seconds).slice(0, 40);
+    const topAppList = visible.sort((a, b) => b.seconds - a.seconds).slice(0, 40);
+    const topAppIds = new Set(topAppList.map(app => app.name + '\0' + app.category));
+    const reasonsByApp = new Map();
+    const genericReasons = new Set(['No matching rule', 'No matching keyword', 'Browser default', 'App identity', 'Keyword not recorded']);
+    for (const [key, info] of Object.entries(state.byApp)) {
+      const parts = activityParts(key);
+      const reason = parts && parts[2];
+      if (!reason || genericReasons.has(reason)) continue;
+      const id = appEntryName(key) + '\0' + info.category;
+      if (!topAppIds.has(id)) continue;
+      if (!reasonsByApp.has(id)) reasonsByApp.set(id, new Map());
+      const reasons = reasonsByApp.get(id);
+      reasons.set(reason, (reasons.get(reason) || 0) + (Number(info.seconds) || 0));
+    }
+    const topApps = topAppList.map((app) => {
+      const reasons = reasonsByApp.get(app.name + '\0' + app.category);
+      const top = reasons && [...reasons].sort((a, b) => b[1] - a[1])[0];
+      return { ...app, topMatch: top ? { reason: top[0], seconds: top[1] } : null };
+    });
     const mood = moodFromCategories(byCategory);
 
     return {
       date: state.date,
       byCategory,
       topApps,
+      otherApps: visible.filter(app => app.category === 'other' && app.seconds > 0).slice(0, 5),
       analyticsApps: Object.values(Object.entries(state.byApp).reduce((apps, [key, info]) => {
         const name = appEntryName(key), id = name.toLowerCase();
         if (!Object.hasOwn(apps, id)) apps[id] = { name, seconds: 0, category: info.category };
@@ -850,6 +883,43 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
     return historyDir;
   }
 
+  // Raw days expire after 90 days, but their compact rollups do not. Prefer
+  // one verified rollup per date so an archived raw day is never counted twice.
+  function lifetimeSummary() {
+    rollIfNeeded();
+    const totals = { productive: 0, unproductive: 0, other: 0 };
+    const dates = new Set([...listHistoryDates(), ...listRollupDates(rollupDir), state.date]);
+    let activeDays = 0;
+    let firstDay = null;
+    let lastDay = null;
+    let longestDay = { date: null, seconds: 0 };
+    for (const date of [...dates].sort()) {
+      const day = date === state.date ? state : (readRollup(rollupDir, date) || readRawDay(date));
+      if (!day) continue;
+      const byCategory = day.byCategory || {};
+      const seconds = ['productive', 'unproductive', 'other'].reduce((sum, category) => {
+        const value = Number(byCategory[category]);
+        const safe = Number.isFinite(value) && value > 0 ? value : 0;
+        totals[category] += safe;
+        return sum + safe;
+      }, 0);
+      if (!seconds) continue;
+      activeDays++;
+      if (!firstDay) firstDay = date;
+      lastDay = date;
+      if (seconds > longestDay.seconds) longestDay = { date, seconds };
+    }
+    return {
+      byCategory: totals,
+      totalSeconds: totals.productive + totals.unproductive + totals.other,
+      activeDays,
+      firstDay,
+      lastDay,
+      averageSeconds: activeDays ? (totals.productive + totals.unproductive + totals.other) / activeDays : 0,
+      longestDay
+    };
+  }
+
   pruneOldHistory();
 
   return {
@@ -869,6 +939,7 @@ function createStore(dataDir, { onRecovery = () => {} } = {}) {
       rollIfNeeded();
       return weekSummary(Math.min(90, Math.max(1, Math.floor(Number(count) || 7))));
     },
+    lifetimeSummary,
     hourlyHistory: (count = 14) => {
       rollIfNeeded();
       return hourlyHistoryDays(count, {

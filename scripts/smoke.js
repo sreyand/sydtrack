@@ -14,7 +14,8 @@ const {
   appLabel,
   isBrowserProcess,
   loadAppIdentities,
-  appMatchesIdentity
+  appMatchesIdentity,
+  appMatchesIgnore
 } = require('../src/classifier');
 const {
   createStore,
@@ -73,16 +74,16 @@ assert(
   'github is productive'
 );
 assert(
-  classify({ title: 'New Tab', owner: { name: 'Google Chrome' }, url: 'chrome://newtab' }, rules) === 'productive',
-  'bare chrome is productive by default'
+  classify({ title: 'New Tab', owner: { name: 'Google Chrome' }, url: 'chrome://newtab' }, rules) === 'other',
+  'bare chrome remains unclassified by default'
 );
 assert(
-  classify({ title: 'New Tab', owner: { name: 'msedge' } }, rules) === 'productive',
-  'bare msedge is productive by default'
+  classify({ title: 'New Tab', owner: { name: 'msedge' } }, rules) === 'other',
+  'bare msedge remains unclassified by default'
 );
 assert(
-  classify({ title: 'Mozilla Firefox', owner: { name: 'firefox' } }, rules) === 'productive',
-  'bare firefox is productive by default'
+  classify({ title: 'Mozilla Firefox', owner: { name: 'firefox' } }, rules) === 'other',
+  'bare firefox remains unclassified by default'
 );
 assert(
   classify({ title: 'YouTube', owner: { name: 'brave' } }, rules) === 'unproductive',
@@ -125,6 +126,8 @@ assert(
   'SnippingTool.exe is ignored'
 );
 assert(isIgnored({ owner: { name: 'ScreenClippingHost.exe' } }, ignore) === true, 'ScreenClippingHost is ignored');
+assert(isIgnored({ owner: { name: 'CodeRunner.exe' } }, ['Code']) === false, 'ignore keyword does not hide an unrelated substring');
+assert(appMatchesIgnore('CodeRunner', ['Code']) === false, 'historical ignore filtering does not use substring collisions');
 assert(isIgnored({ owner: { name: 'RuntimeBroker.exe' } }, ignore) === true, 'RuntimeBroker is ignored');
 assert(
   isIgnored({ owner: { name: 'Code' }, title: 'app.js' }, ignore) === false,
@@ -583,7 +586,7 @@ async function regressionChecks() {
   assert(appMatchesIdentity({ title: 'code' }, identities) === null, '#11 missing owner never treats a title as process identity');
   assert(classify({ owner: { name: 'Code' }, title: 'youtube' }, { ...identityRules, unproductive: ['code'] }) === 'unproductive', '#11 explicit app tag can override productive identity');
   assert(classify({ owner: { name: 'chrome' }, title: 'YouTube' }, { ...identityRules, identities: { productiveApps: ['chrome'] } }) === 'unproductive', '#7 browser content wins even with productive browser identity');
-  assert(classify({ owner: { name: 'chrome', path: 'C:/youtube/chrome.exe' }, title: 'New Tab' }, identityRules) === 'productive', '#7 browser install directory does not classify content');
+  assert(classify({ owner: { name: 'chrome', path: 'C:/youtube/chrome.exe' }, title: 'New Tab' }, identityRules) === 'other', '#7 browser install directory does not classify content');
   assert(!isBrowserProcess({ owner: { name: 'knowledge-editor' } }), '#7 unrelated edge substring is not a browser');
   const { createSessionManager } = require('../src/sessions');
   const completionDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-completion-'));
@@ -629,7 +632,7 @@ async function regressionChecks() {
   let trayMenu;
   let trayPayload;
   const trayContext = vm.createContext({ module: { exports: {} }, __dirname: path.join(__dirname, '..', 'src'), console,
-    require: (name) => name === 'electron' ? {
+    require: (name) => name === './timed-pause' ? require('../src/timed-pause') : name === 'electron' ? {
       Tray: class { setToolTip() {} setContextMenu(menu) { trayMenu = menu; } on() {} },
       Menu: { buildFromTemplate: (menu) => menu },
       nativeImage: { createFromPath: () => ({ isEmpty: () => true }), createEmpty: () => ({}) }
@@ -640,6 +643,16 @@ async function regressionChecks() {
     sendTrackerUpdate: (payload) => { trayPayload = payload; } });
   trayMenu.find(item => item.label === 'Pause tracking').click();
   assert(trayPayload.sessionCompleted === null, 'tray settings refresh does not replay a session completion event');
+  trayMenu.find(item => item.label === 'Pause for 15 minutes').click();
+  assert(trayPayload.stats.settings.trackingPaused === true && trayPayload.stats.settings.trackingPauseUntil > Date.now(),
+    'tray timed pause stores a resume deadline and refreshes the window');
+  settingsStore.updateSettings({ focusBoost: false, thresholdSec: 600, focusBoostSec: 180 });
+  trayMenu.find(item => item.label === 'focusboost').click();
+  assert(trayPayload.stats.settings.focusBoost === true && trayMenu.find(item => item.label === 'focusboost').checked === true,
+    'tray focusboost toggle sends the enabled state to the window');
+  trayMenu.find(item => item.label === 'focusboost').click();
+  assert(trayPayload.stats.settings.focusBoost === false && trayMenu.find(item => item.label === 'focusboost').checked === false,
+    'tray focusboost toggle sends the disabled state to the window');
   const sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-session-regression-'));
   const manager = createSessionManager({ dataDir: sessionDir });
   manager.startSession({ mode: 'custom', customMin: 1 });
@@ -689,6 +702,13 @@ async function regressionChecks() {
   resolveProbe({ window: { owner: { name: 'Code' } } });
   await stoppedPoll;
   assert(ticks === ticksBeforeStop && raceStore.snapshot().byCategory.productive === 0, 'stopping invalidates an in-flight probe');
+  const privacyStore = createStore(fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-private-pause-')));
+  privacyStore.updateSettings({ trackingPaused: true });
+  let pausedProbes = 0;
+  const privacyTracker = createTracker({ store: privacyStore, rules: identityRules,
+    backend: { getActiveWindow: async () => { pausedProbes++; return { window: { owner: { name: 'Code' } } }; } } });
+  await privacyTracker.poll();
+  assert(pausedProbes === 0, 'a paused tracker does not probe the foreground window');
   const idleTracker = createTracker({ store: idleStore, rules: identityRules, now: () => clock,
     backend: { getActiveWindow: async () => ({ window: { owner: { name: 'Code' } }, idleSec }) } });
   for (let i = 0; i < 20; i++) { clock += 1000; idleSec += 1; await idleTracker.poll(); }
@@ -710,7 +730,7 @@ assert(classify(browserWindow('https://youtube.com/watch?v=1'), siteRules) === '
 assert(classify(browserWindow('https://www.youtube.com'), siteRules) === 'unproductive', '#7 site rule includes subdomains');
 assert(classify(browserWindow('https://learn.youtube.com', 'distraction'), siteRules) === 'productive', '#7 specific site overrides parent and title rules');
 for (const url of ['https://notyoutube.com', 'https://youtube.com.evil.test', 'https://example.com/youtube.com', '', 'about:blank', 'file:///youtube.com']) {
-  assert(classify(browserWindow(url), siteRules) === 'productive', '#7 domain boundary/fallback: ' + url);
+  assert(classify(browserWindow(url), siteRules) === 'other', '#7 domain boundary/fallback: ' + url);
 }
 assert(classify(browserWindow('', 'distraction'), siteRules) === 'unproductive', '#7 unavailable URL preserves title fallback');
 assert(classify({ owner: { name: 'Unknown' }, title: 'site:youtube.com', url: 'https://youtube.com' }, siteRules) === 'other', '#7 site tags never classify native apps');

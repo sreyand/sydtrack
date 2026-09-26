@@ -74,6 +74,7 @@ const fakeWindow = {
   once() {},
   loadURL() { return Promise.resolve(); },
   setAppDetails() {},
+  setTitleBarOverlay() {},
   flashFrame() {},
   removeListener() {}
 };
@@ -158,10 +159,10 @@ async function run() {
   await new Promise((resolve) => setImmediate(resolve));
 
   if (process.platform === 'win32') {
-    assert(loginItemSettings && loginItemSettings.openAtLogin === true, 'packaged Windows app enables startup by default');
+    assert(loginItemSettings && loginItemSettings.openAtLogin === false, 'fresh Windows install waits for onboarding before enabling startup');
     assert(loginItemSettings.args.includes('--hidden'), 'Windows startup registration launches hidden');
   } else if (process.platform === 'darwin') {
-    assert(loginItemSettings && loginItemSettings.openAsHidden === true, 'packaged macOS app enables hidden startup by default');
+    assert(loginItemSettings && loginItemSettings.openAtLogin === false, 'fresh macOS install waits for onboarding before enabling startup');
   } else {
     assert(loginItemSettings === null, 'unsupported platforms do not register a login item');
   }
@@ -180,8 +181,15 @@ async function run() {
   appListeners['second-instance']({}, ['sydtrack.exe']);
   assert(windowShowCount === showsAfterReady + 1, 'ordinary second launch surfaces the existing window');
 
-  const goodEvent = { sender: webContents, senderFrame: { url: APP_PAGE_URL } };
+  const goodEvent = { sender: webContents, senderFrame: webContents.mainFrame };
   const badEvent = { sender: { id: 'other' }, senderFrame: { url: APP_PAGE_URL } };
+
+  const timedPause = await handlers.get('tracking:pause15')(goodEvent);
+  assert(timedPause.trackingPaused === true && timedPause.trackingPauseUntil > Date.now(),
+    'timed pause IPC persists an active deadline');
+  const manuallyResumed = await handlers.get('settings:update')(goodEvent, { trackingPaused: false });
+  assert(manuallyResumed.trackingPaused === false && manuallyResumed.trackingPauseUntil === 0,
+    'manual resume cancels the timed deadline');
 
   for (const channel of channels) {
     const handler = handlers.get(channel);

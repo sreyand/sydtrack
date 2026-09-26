@@ -23,10 +23,11 @@ SydTrack watches the app in front of you, classifies the time, and turns the res
 | --- | --- |
 | **Live daily view** | Productive, unproductive, and uncategorized time update as you work. The total advances smoothly every second. |
 | **Focus profiles** | Switch between General, Coding, Writing, Study, and Creative without rebuilding your tags every time your work changes. |
-| **Useful analytics** | Inspect today, the last week, the last 30 days, focus share, peak hours, top apps, and matched classification reasons. |
+| **Useful analytics** | Inspect today, the last week, the last 30 days, and lifetime tracked time. Older days keep compact local summaries after detailed history expires. |
 | **Focus sessions** | Run Pomodoro, Deep Work, or a custom timer with session history and distraction counts. |
 | **FocusBoost** | Use a shorter reminder threshold when you want SydTrack to interrupt a distraction sooner. Optional schedules can arm it automatically. |
 | **Daily goals** | Set a productive-time share target and, if useful, a limit for total active screen time. |
+| **Optional break nudges** | A configurable notification after a long stretch of active tracking, off by default. Pausing or five idle minutes resets the stretch. |
 
 ## Built to work on day one
 
@@ -138,7 +139,7 @@ The idle timeout stops counting after a period without keyboard or mouse input. 
 <details>
 <summary><strong>Local data and recovery</strong></summary>
 
-Packaged builds use Electron’s SydTrack user-data directory. Raw daily activity stays available for 90 days; older days are compacted into verified rollups so long-term category, hourly, and app totals remain available. The v2 storage migration creates a recovery copy before changing schema. Malformed settings, statistics, or session files are preserved beside the original rather than silently discarded.
+Packaged builds use Electron’s SydTrack user-data directory. Raw daily activity stays available for 90 days; older days are compacted into verified rollups so long-term category, hourly, and app totals remain available. Analytics → Lifetime combines one summary per tracked day; clearing history resets it. The v2 storage migration creates a recovery copy before changing schema. Malformed settings, statistics, or session files are preserved beside the original rather than silently discarded.
 
 `.sydtrack` backups can include activity, sessions, settings, profiles, browser keywords, and app identities. Import is additive for activity. Re-importing the same backup adds its activity again, while session IDs are deduplicated.
 

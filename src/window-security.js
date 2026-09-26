@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { canvasForTheme, DEFAULT_THEME } = require('./theme');
+const { canvasForTheme, DEFAULT_THEME, titleBarOverlayForTheme } = require('./theme');
 
 const APP_SCHEME = 'sydtrack';
 const APP_PAGE_URL = 'sydtrack://app/renderer/index.html';
@@ -67,7 +67,7 @@ function hardenedWebPreferences(preloadPath) {
   };
 }
 
-function buildBrowserWindowOptions({ preloadPath, iconPath, platform, backgroundColor }) {
+function buildBrowserWindowOptions({ preloadPath, iconPath, platform, backgroundColor, theme }) {
   const options = {
     width: 1040,
     height: 760,
@@ -79,6 +79,13 @@ function buildBrowserWindowOptions({ preloadPath, iconPath, platform, background
     show: false,
     webPreferences: hardenedWebPreferences(preloadPath)
   };
+  if (platform === 'win32') {
+    // Keep Windows' native window controls (including Snap Layouts), but let the
+    // renderer own the rest of the title bar. This removes Electron's app title
+    // strip without reimplementing minimize/maximize/close in the renderer.
+    options.titleBarStyle = 'hidden';
+    options.titleBarOverlay = titleBarOverlayForTheme(theme);
+  }
   if ((platform === 'win32' || platform === 'linux') && iconPath) {
     options.icon = iconPath;
   }
@@ -208,6 +215,7 @@ module.exports = {
   WINDOW_BACKGROUND_DARK,
   WINDOW_BACKGROUND_LIGHT,
   windowBackgroundColor,
+  titleBarOverlayForTheme,
   CONTENT_SECURITY_POLICY,
   registerAppScheme,
   hardenedWebPreferences,

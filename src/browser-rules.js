@@ -59,9 +59,9 @@
     for (const type of ['unproductive', 'productive']) {
       const match = (rules[type] || []).find((tag) => {
         const key = String(tag || '').trim().toLowerCase();
-        return key && !key.startsWith('site:') && text.includes(key);
+        return key && !key.startsWith('site:') && exactKeyword(text, key);
       });
-      if (match) return { category: type, reason: String(match).trim().toLowerCase() };
+      if (match) return { category: type, reason: String(match).trim().toLowerCase(), source: 'profile keyword' };
     }
     return null;
   }
@@ -78,18 +78,18 @@
         const key = String(tag || '').trim().toLowerCase();
         return key && !key.startsWith('site:') && exactKeyword(text, key);
       });
-      if (match) return { category: type, reason: String(match).trim().toLowerCase() };
+      if (match) return { category: type, reason: String(match).trim().toLowerCase(), source: 'browser keyword' };
     }
     return null;
   }
 
-  // Focus profile tags win (substring). The browser list is exact-token only.
+  // Profile tags win over browser-list tags; both use bounded terms/phrases.
   function browserMatch(entry, rules) {
     const site = siteMatch(entry && entry.url, rules);
-    if (site) return site;
+    if (site) return { ...site, source: 'site rule' };
     const text = `${(entry && entry.title) || ''} ${(entry && entry.url) || ''}`.toLowerCase();
     return keywordMatch(text, rules) || exactKeywordMatch(text, rules && rules.browserKeywords) ||
-      { category: 'productive', reason: 'Browser default' };
+      { category: 'other', reason: 'No matching rule', source: 'none' };
   }
   function classifyBrowser(entry, rules) { return browserMatch(entry, rules).category; }
 

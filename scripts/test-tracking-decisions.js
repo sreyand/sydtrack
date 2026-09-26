@@ -167,10 +167,16 @@ async function run() {
   assert(classify({ owner: { name: 'Notepad' }, title: 'youtube notes' }, emptyProfile) === 'other', 'browser keywords ignore non-browser windows');
   assert(classify({ owner: { name: 'chrome' }, title: 'myyoutube clone' }, {
     productive: [], unproductive: [], browserKeywords: { productive: [], unproductive: ['youtube'] }
-  }) === 'productive', 'browser keywords require an exact token, not a substring');
+  }) === 'other', 'browser keywords require an exact token, not a substring');
   assert(classify({ owner: { name: 'chrome' }, title: 'Watch YouTube now' }, {
     productive: [], unproductive: [], browserKeywords: { productive: [], unproductive: ['youtube'] }
   }) === 'unproductive', 'an exact youtube token still matches');
+  assert(classify({ owner: { name: 'chrome' }, title: 'Minecraft' }, {
+    productive: ['craft'], unproductive: [], browserKeywords: { productive: [], unproductive: [] }
+  }) === 'other', 'profile keywords do not match inside unrelated browser words');
+  assert(classify({ owner: { name: 'Notepad' }, title: 'Minecraft notes' }, {
+    productive: ['craft'], unproductive: []
+  }) === 'other', 'profile keywords do not match inside unrelated native-app words');
   const historyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-kw-history-'));
   const historyStore = createStore(historyRoot);
   historyStore.addSeconds('chrome', 'unproductive', 40, { category: 'unproductive', reason: 'youtube' });

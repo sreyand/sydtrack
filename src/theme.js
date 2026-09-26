@@ -114,6 +114,15 @@ function canvasForTheme(value) {
   return THEMES[normalizeTheme(value)].canvas;
 }
 
+function titleBarOverlayForTheme(value) {
+  const theme = THEMES[normalizeTheme(value)];
+  return {
+    color: theme.canvas,
+    symbolColor: theme.ink,
+    height: 32
+  };
+}
+
 function isDarkTheme(value) {
   const id = normalizeTheme(value);
   return id === 'midnight' || id === 'dusk';
@@ -125,5 +134,6 @@ module.exports = {
   THEMES,
   normalizeTheme,
   canvasForTheme,
+  titleBarOverlayForTheme,
   isDarkTheme
 };

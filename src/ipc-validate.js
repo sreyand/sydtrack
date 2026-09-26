@@ -5,6 +5,7 @@ const CHANNELS = [
   'apps:correctActivityToday',
   'apps:correctToday',
   'history:summary',
+  'history:lifetime',
   'rules:get',
   'rules:set',
   'rules:reset',
@@ -17,6 +18,8 @@ const CHANNELS = [
   'profiles:delete',
   'profiles:import',
   'settings:update',
+  'tracking:pause15',
+  'classification:preview',
   'data:export',
   'data:exportCsv',
   'data:import',
@@ -220,10 +223,13 @@ const SETTINGS = {
   idleTimeoutSec: (value) => finiteInt(value, 0, 7 * 86400),
   trackMusicWhileIdle: bool,
   trackVideoWhileIdle: bool,
+  breakReminderEnabled: bool,
+  breakReminderMinutes: (value) => finiteInt(value, 10, 240),
   reminderMessage: message,
   focusBoostReminderMessage: message,
   dailyGoalSec: (value) => finiteInt(value, 900, 57600),
   launchAtStartup: bool,
+  onboardingComplete: bool,
   pollMs: (value) => {
     const ms = finiteInt(value, 1000, 5000);
     if (ms !== 1000 && ms !== 3000 && ms !== 5000) invalid();
@@ -252,6 +258,25 @@ function settingsUpdate(payload) {
   const out = {};
   for (const key of Object.keys(obj)) out[key] = SETTINGS[key](obj[key]);
   return out;
+}
+
+function classificationPreview(payload) {
+  const obj = plainObject(payload);
+  assertKeys(obj, ['app', 'title', 'productive', 'unproductive', 'ignore', 'browserKeywords']);
+  const browserKeywords = plainObject(obj.browserKeywords);
+  assertKeys(browserKeywords, ['productive', 'unproductive']);
+  if (typeof obj.title !== 'string' || obj.title.length > 500 || obj.title.includes('\0')) invalid();
+  return {
+    app: appName(obj.app),
+    title: obj.title,
+    productive: stringList(obj.productive),
+    unproductive: stringList(obj.unproductive),
+    ignore: stringList(obj.ignore),
+    browserKeywords: {
+      productive: stringList(browserKeywords.productive),
+      unproductive: stringList(browserKeywords.unproductive)
+    }
+  };
 }
 
 function optionalObject(payload) {
@@ -324,6 +349,7 @@ const VALIDATORS = {
   'apps:correctActivityToday': activityCorrection,
   'apps:correctToday': appCorrection,
   'history:summary': historyDays,
+  'history:lifetime': noPayload,
   'rules:get': noPayload,
   'rules:set': rulesSet,
   'rules:reset': resetProfile,
@@ -336,6 +362,8 @@ const VALIDATORS = {
   'profiles:delete': requiredProfileId,
   'profiles:import': noPayload,
   'settings:update': settingsUpdate,
+  'tracking:pause15': noPayload,
+  'classification:preview': classificationPreview,
   'data:export': dataExport,
   'data:exportCsv': noPayload,
   'data:import': dataImport,

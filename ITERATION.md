@@ -126,6 +126,8 @@ Turn uncategorized time into a short queue ordered by impact:
 
 One correction should have an obvious scope: today only, future profile rule, or Ignore. Do not make users manage hundreds of tags before SydTrack becomes useful.
 
+The first impact-ranked Other list now appears in Focus Tags with a path to test a title rule. It does not yet offer a single-step correction with an explicit scope; test that workflow with new users before expanding it.
+
 ### 4. Privacy controls that reinforce the promise
 
 Consider:
@@ -138,6 +140,7 @@ Consider:
 - Optional retention choices and a visible local data location.
 
 Privacy controls are product features, not compliance decoration.
+“Pause for 15 minutes” is implemented: it skips foreground probes, survives restarts, and resumes without backfilling paused time. The other controls above remain candidates.
 
 ### 5. Intention versus outcome
 
@@ -158,6 +161,8 @@ Good candidates:
 - A compact calendar view.
 
 Each visualization must answer a sentence-shaped question. Avoid dashboards whose only purpose is to look advanced. Prefer interpretable facts over a synthetic productivity score.
+
+Analytics now includes a restrained Lifetime view: total tracked time, category totals, active days, average active day, and most tracked day. It derives from existing long-term rollups; it is not a second score or a title-level archive.
 
 ### 7. Custom desktop chrome
 

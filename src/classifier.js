@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { writeJson } = require('./json-file');
-const { classifyBrowser, browserNames, isBrowserName } = require('./browser-rules');
+const { classifyBrowser, browserNames, isBrowserName, exactKeyword } = require('./browser-rules');
 
 const DEFAULT_RULES_PATH = path.join(__dirname, 'rules.json');
 const DEFAULT_IGNORE_PATH = path.join(__dirname, 'ignore.json');
@@ -105,17 +105,17 @@ function saveIgnore(filePath, ignoreList) {
 }
 
 /**
- * Build lowercase haystack from process name + window title + url + path.
- * Browsers (Chrome/Edge/Firefox) use title/URL keywords when available
- * (e.g. title containing "YouTube" → unproductive), with bare browsers productive.
+ * Build lowercase haystack from app name + window title + url. The install
+ * path is not activity and must not accidentally classify a window.
+ * Browsers (Chrome/Edge/Firefox) use available title keywords and remain
+ * Other when no rule matches.
  */
 function haystack(win) {
   if (!win) return '';
-  const owner = (win.owner && win.owner.name) || '';
+  const owner = appLabel(win);
   const title = win.title || '';
   const url = win.url || '';
-  const proc = (win.owner && win.owner.path) || '';
-  return `${owner} ${title} ${url} ${proc}`.toLowerCase();
+  return `${owner} ${title} ${url}`.toLowerCase();
 }
 
 function processNameParts(win) {
@@ -175,7 +175,7 @@ function isIgnored(win, ignoreList, identities) {
   for (const keyword of ignoreList) {
     if (!keyword) continue;
     const k = String(keyword).toLowerCase();
-    if (owner.includes(k) || base.includes(k) || baseNoExt.includes(k) || label.includes(k)) {
+    if (exactKeyword(owner, k) || exactKeyword(base, k) || exactKeyword(baseNoExt, k) || exactKeyword(label, k)) {
       return true;
     }
   }
@@ -183,9 +183,8 @@ function isIgnored(win, ignoreList, identities) {
 }
 
 /**
- * Unproductive wins on overlap (e.g. Chrome title "YouTube" or youtube.com URL).
- * Match is case-insensitive substring on process name + window title + url + path.
- * Known browsers without keyword hits → productive; explicit unproductive keywords win above.
+ * Unproductive wins on overlap (e.g. Chrome title "YouTube"). Profile
+ * keywords use whole-term matching. Browsers without a match remain Other.
  */
 function classify(win, rules) {
   rules = rules || { productive: [], unproductive: [] };
@@ -198,12 +197,12 @@ function classify(win, rules) {
   if (!hay.trim()) return 'other';
 
   for (const keyword of normalizeKeywords(rules.unproductive)) {
-    if (!keyword.startsWith('site:') && hay.includes(keyword)) {
+    if (!keyword.startsWith('site:') && exactKeyword(hay, keyword)) {
       return 'unproductive';
     }
   }
   for (const keyword of normalizeKeywords(rules.productive)) {
-    if (!keyword.startsWith('site:') && hay.includes(keyword)) {
+    if (!keyword.startsWith('site:') && exactKeyword(hay, keyword)) {
       return 'productive';
     }
   }
@@ -214,10 +213,10 @@ function classifyWithReason(win, rules = {}) {
   if (isBrowserProcess(win, rules.identities)) return require('./browser-rules').browserMatch(win, rules);
   const category = classify(win, rules);
   const processTag = normalizeKeywords(rules.unproductive).find(tag => matchesProcess(win, [tag]));
-  if (processTag) return { category, reason: processTag };
-  if (appMatchesIdentity(win, rules.identities) === 'productive') return { category, reason: 'App identity' };
-  const reason = normalizeKeywords(rules[category]).find(tag => !tag.startsWith('site:') && haystack(win).includes(tag));
-  return { category, reason: reason || 'No matching keyword' };
+  if (processTag) return { category, reason: processTag, source: 'app identity' };
+  if (appMatchesIdentity(win, rules.identities) === 'productive') return { category, reason: 'App identity', source: 'app identity' };
+  const reason = normalizeKeywords(rules[category]).find(tag => !tag.startsWith('site:') && exactKeyword(haystack(win), tag));
+  return { category, reason: reason || 'No matching rule', source: reason ? 'profile keyword' : 'none' };
 }
 
 const APP_NAME_ALIASES = {
@@ -257,7 +256,7 @@ function appMatchesIgnore(appName, ignoreList) {
   if (!appName || !ignoreList || !ignoreList.length) return false;
   const name = String(appName).toLowerCase();
   for (const keyword of ignoreList) {
-    if (keyword && name.includes(String(keyword).toLowerCase())) return true;
+    if (keyword && exactKeyword(name, String(keyword).toLowerCase())) return true;
   }
   if (/\b(sydtrack|focusflow)\b/i.test(name)) return true;
   return false;

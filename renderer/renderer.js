@@ -126,7 +126,6 @@ let cachedRules = { productive: [], unproductive: [] };
 let cachedBrowserApps = [];
 let cachedIgnore = [];
 let tagsQuickSaving = false;
-const settingsOverrides = Object.create(null);
 /** Last focused window for Home quick-classify (P/U). */
 let lastFocusedCache = null;
 /** Session overrides so Last focused chip/buttons don't snap back before tracker reclassifies. */
@@ -254,8 +253,10 @@ async function applyFocusBoostSchedule(settings, opts) {
 const reduceMotion =
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** Session-only Analytics segment (day | week | month | apps). */
+/** Session-only Analytics segment. */
 let analyticsSegment = 'day';
+let currentPlatform = null;
+let lifetimeRequest = 0;
 let latestGoalSettings = null;
 
 function describeFocus(byCategory) {
@@ -360,13 +361,51 @@ const ANALYTICS_SUBTITLES = {
   day: 'Today’s hours',
   week: 'Last 7 days',
   month: 'Last 30 days',
-  apps: 'Top 10 today · Corrections update today only.'
+  apps: 'Top 10 today · Corrections update today only.',
+  lifetime: 'All the time you have tracked'
 };
+
+function lifetimeDate(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return '—';
+  return new Date(date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function renderLifetime(summary) {
+  const total = Math.max(0, Number(summary && summary.totalSeconds) || 0);
+  const totals = summary && summary.byCategory || {};
+  $('lifetime-total').textContent = fmtGoalShort(total) + ' tracked';
+  $('lifetime-range').textContent = summary && summary.firstDay
+    ? 'Since ' + lifetimeDate(summary.firstDay)
+    : 'Your first tracked day will appear here.';
+  $('lifetime-days').textContent = String(summary && summary.activeDays || 0);
+  $('lifetime-average').textContent = fmtGoalShort(summary && summary.averageSeconds || 0);
+  $('lifetime-best').textContent = summary && summary.longestDay && summary.longestDay.date
+    ? fmtGoalShort(summary.longestDay.seconds) + ' · ' + lifetimeDate(summary.longestDay.date)
+    : '—';
+  const pieces = [['productive', 'Productive'], ['unproductive', 'Unproductive'], ['other', 'Other']];
+  $('lifetime-breakdown').innerHTML = pieces.map(([key, label]) => {
+    const seconds = Math.max(0, Number(totals[key]) || 0);
+    const percentage = total ? Math.round(seconds / total * 100) : 0;
+    return '<div class="lifetime-category"><div class="lifetime-category-label"><span><i class="month-dot ' + key + '"></i>' + label + '</span><strong>' + fmtGoalShort(seconds) + '</strong></div>' +
+      '<div class="lifetime-track"><span class="' + key + '" style="width:' + percentage + '%"></span></div></div>';
+  }).join('');
+}
+
+async function loadLifetime() {
+  if (!api || !api.getLifetimeSummary) return;
+  const request = ++lifetimeRequest;
+  try {
+    const summary = await api.getLifetimeSummary();
+    if (request === lifetimeRequest && analyticsSegment === 'lifetime') renderLifetime(summary);
+  } catch (_) {
+    if (request === lifetimeRequest) $('lifetime-range').textContent = 'Could not load lifetime totals.';
+  }
+}
 
 function setAnalyticsSegment(segment) {
   hideChartTip('day-tip');
   hideChartTip('week-tip');
-  if (segment !== 'day' && segment !== 'week' && segment !== 'month' && segment !== 'apps') {
+  if (segment !== 'day' && segment !== 'week' && segment !== 'month' && segment !== 'apps' && segment !== 'lifetime') {
     segment = 'day';
   }
   analyticsSegment = segment;
@@ -383,7 +422,38 @@ function setAnalyticsSegment(segment) {
   if (sub) sub.textContent = ANALYTICS_SUBTITLES[segment] || ANALYTICS_SUBTITLES.day;
   historyRequest++;
   loadAnalyticsHistory();
+  if (segment === 'lifetime') loadLifetime();
 }
+
+function initSettingsPanels() {
+  const tracking = $('settings-panel-tracking');
+  const wellbeing = $('settings-panel-wellbeing');
+  const notifications = $('settings-panel-notifications');
+  const trackerCard = $('settings-tracker-card');
+  const wellbeingCard = $('settings-wellbeing-card');
+  const notificationCard = $('settings-notifications-card');
+  if (!tracking || !wellbeing || !notifications || !trackerCard || !wellbeingCard || !notificationCard) return;
+  wellbeingCard.append($('goals-settings'), $('settings-breaks'));
+  notificationCard.append(document.querySelector('.fb-schedule-block'), $('settings-reminder-timing'), $('settings-messages'));
+  trackerCard.append($('settings-idle'));
+  $('settings-appearance-card').append(document.querySelector('.font-credit'));
+  $('settings-data-card').append(document.querySelector('.settings-meta'));
+  tracking.append($('settings-appearance-card'), trackerCard, $('settings-data-card'));
+  wellbeing.append(wellbeingCard);
+  notifications.append(notificationCard);
+  document.querySelectorAll('[data-settings-tab]').forEach(button => button.addEventListener('click', () => {
+    const tab = button.dataset.settingsTab;
+    document.querySelectorAll('[data-settings-tab]').forEach(candidate => {
+      const selected = candidate === button;
+      candidate.classList.toggle('active', selected);
+      candidate.setAttribute('aria-selected', String(selected));
+    });
+    for (const name of ['tracking', 'wellbeing', 'notifications']) {
+      $('settings-panel-' + name).classList.toggle('hidden', name !== tab);
+    }
+  }));
+}
+initSettingsPanels();
 
 document.querySelectorAll('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -598,7 +668,7 @@ function listHasKey(arr, key) {
 /**
  * Client-side default category from remaining rules (mimic classifier):
  * ignore by process name → ignored; unproductive keyword wins, then productive;
- * bare browser → productive; no match → other.
+ * unrecognized browser titles and native apps → Other.
  */
 function defaultCategoryFromRules(entry, rules, ignore) {
   if (!entry) return 'other';
@@ -624,7 +694,6 @@ function defaultCategoryFromRules(entry, rules, ignore) {
       return 'productive';
     }
   }
-  if (isBrowserApp(entry.app)) return 'productive';
   return 'other';
 }
 
@@ -1199,7 +1268,7 @@ function renderWeek(stats) {
 }
 
 function applySettingsInputs(settings) {
-  settings = Object.assign({}, settings || {}, settingsOverrides);
+  settings = settings || {};
   latestGoalSettings = settings;
   if (typeof syncWellbeingSettings === 'function') syncWellbeingSettings(settings);
   if (applying) return;
@@ -1222,6 +1291,13 @@ function applySettingsInputs(settings) {
   if ($('track-video-idle') && document.activeElement !== $('track-video-idle')) {
     $('track-video-idle').checked = settings.trackVideoWhileIdle === true;
   }
+  if ($('break-reminder-toggle') && document.activeElement !== $('break-reminder-toggle')) {
+    $('break-reminder-toggle').checked = settings.breakReminderEnabled === true;
+  }
+  if ($('break-reminder-minutes') && document.activeElement !== $('break-reminder-minutes')) {
+    $('break-reminder-minutes').value = String(Number(settings.breakReminderMinutes) || 60);
+  }
+  if ($('break-reminder-field')) $('break-reminder-field').classList.toggle('hidden', settings.breakReminderEnabled !== true);
   if ($('launch-startup-toggle') && document.activeElement !== $('launch-startup-toggle')) {
     $('launch-startup-toggle').checked = settings.launchAtStartup !== false;
   }
@@ -1260,6 +1336,9 @@ function syncNotifUi(settings) {
   const btn = $('notif-btn');
   if (!btn) return;
   const on = settings && settings.notificationsEnabled !== false;
+  if ($('settings-notifications-toggle') && document.activeElement !== $('settings-notifications-toggle')) {
+    $('settings-notifications-toggle').checked = on;
+  }
   btn.setAttribute('data-muted', on ? 'off' : 'on');
   btn.setAttribute('aria-pressed', on ? 'false' : 'true');
   btn.title = on ? 'Alerts on' : 'Muted';
@@ -1269,6 +1348,8 @@ function syncNotifUi(settings) {
 
 function syncPauseUi(settings) {
   const paused = !!(settings && settings.trackingPaused);
+  const pauseUntil = paused ? Number(settings.trackingPauseUntil) || 0 : 0;
+  const untilLabel = pauseUntil > 0 ? new Date(pauseUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
   const applyPauseBtn = (btn) => {
     if (!btn) return;
     btn.setAttribute('data-paused', paused ? 'on' : 'off');
@@ -1278,6 +1359,11 @@ function syncPauseUi(settings) {
   };
   applyPauseBtn($('pause-btn'));
   applyPauseBtn($('pause-settings-btn'));
+  const pauseStatus = $('pause-until-status');
+  if (pauseStatus) {
+    pauseStatus.textContent = untilLabel ? 'Resumes at ' + untilLabel : '';
+    pauseStatus.classList.toggle('hidden', !untilLabel);
+  }
   document.body.setAttribute('data-paused', paused ? 'on' : 'off');
   const pill = $('source-pill');
   if (pill && paused) {
@@ -1740,16 +1826,20 @@ function renderRoundup(stats) {
   const apps = (stats && stats.topApps) || [];
   const topP = apps.find((a) => a.category === 'productive');
   const topU = apps.find((a) => a.category === 'unproductive');
+  const browserMatch = app => app && isBrowserApp(app.name) && app.topMatch && app.topMatch.reason
+    ? app.topMatch : null;
+  const focusMatch = browserMatch(topP);
+  const distractionMatch = browserMatch(topU);
   setAppTrunc($('ru-top-focus'), topP ? topP.name : '—', 'App');
   setAppTrunc(
     $('ru-top-focus-sub'),
-    topP ? fmtFriendly(topP.seconds) + ' productive' : 'No productive apps yet',
+    topP ? fmtFriendly(topP.seconds) + ' productive' + (focusMatch ? ' · “' + focusMatch.reason + '” ' + fmtFriendly(focusMatch.seconds) : '') : 'No productive apps yet',
     'Detail'
   );
   setAppTrunc($('ru-distract'), topU ? topU.name : '—', 'App');
   setAppTrunc(
     $('ru-distract-sub'),
-    topU ? fmtFriendly(topU.seconds) + ' unproductive' : 'No unproductive apps yet',
+    topU ? fmtFriendly(topU.seconds) + ' unproductive' + (distractionMatch ? ' · “' + distractionMatch.reason + '” ' + fmtFriendly(distractionMatch.seconds) : '') : 'No unproductive apps yet',
     'Detail'
   );
   const hours = normalizeByHour(stats && stats.byHour);
@@ -1781,7 +1871,8 @@ function renderRoundup(stats) {
             esc(topP.name) +
             '">' +
             esc(topP.name) +
-            '</span> was your top focus app.'
+            '</span> led productive time.' +
+            (focusMatch ? ' “' + esc(focusMatch.reason) + '” accounted for ' + esc(fmtFriendly(focusMatch.seconds)) + '.' : '')
         );
       }
       if (topU) {
@@ -1790,7 +1881,8 @@ function renderRoundup(stats) {
             esc(topU.name) +
             '">' +
             esc(topU.name) +
-            '</span> was your biggest distraction.'
+            '</span> led unproductive time.' +
+            (distractionMatch ? ' “' + esc(distractionMatch.reason) + '” accounted for ' + esc(fmtFriendly(distractionMatch.seconds)) + '.' : '')
         );
       }
       if (!lines.length) {
@@ -1824,6 +1916,36 @@ function renderStats(stats) {
     if (stats.dataDir && $('data-path')) $('data-path').textContent = stats.dataDir;
   }
   renderAppList(stats);
+  renderOtherInbox(stats);
+}
+
+function renderOtherInbox(stats) {
+  const card = $('tags-other-card');
+  const list = $('tags-other-list');
+  if (!card || !list) return;
+  const apps = (stats.otherApps || []).filter(app => app && app.name && app.seconds > 0).slice(0, 5);
+  card.hidden = apps.length === 0;
+  list.replaceChildren();
+  for (const app of apps) {
+    const row = document.createElement('div');
+    row.className = 'tags-other-row';
+    const name = document.createElement('span');
+    name.textContent = app.name;
+    name.title = app.name;
+    const time = document.createElement('strong');
+    time.textContent = fmtGoalShort(app.seconds);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn ghost';
+    button.textContent = 'Test title';
+    button.addEventListener('click', () => {
+      $('tags-preview-app').value = app.name;
+      $('tags-preview-title').focus();
+      $('tags-preview-title').scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+    });
+    row.append(name, time, button);
+    list.append(row);
+  }
 }
 
 function renderAppList(stats) {
@@ -1875,19 +1997,9 @@ $('app-list').addEventListener('click', async ev => {
 
 async function pushSettings(partial) {
   if (!api) return;
-  Object.assign(settingsOverrides, partial || {});
-  applying = true;
-  try {
-    const next = await api.updateSettings(partial);
-    Object.assign(settingsOverrides, next || {});
-    applySettingsInputs(next);
-    return next;
-  } catch (err) {
-    for (const key of Object.keys(partial || {})) delete settingsOverrides[key];
-    throw err;
-  } finally {
-    applying = false;
-  }
+  const next = await api.updateSettings(partial);
+  applySettingsInputs(next);
+  return next;
 }
 
 if ($('threshold-min')) {
@@ -1927,6 +2039,22 @@ if ($('track-music-idle')) {
 if ($('track-video-idle')) {
   $('track-video-idle').addEventListener('change', () => {
     pushSettings({ trackVideoWhileIdle: $('track-video-idle').checked === true });
+  });
+}
+if ($('break-reminder-toggle')) {
+  $('break-reminder-toggle').addEventListener('change', () => {
+    pushSettings({ breakReminderEnabled: $('break-reminder-toggle').checked === true });
+  });
+}
+if ($('break-reminder-minutes')) {
+  $('break-reminder-minutes').addEventListener('change', () => {
+    const minutes = Math.round(Number($('break-reminder-minutes').value));
+    if (Number.isInteger(minutes) && minutes >= 10 && minutes <= 240) pushSettings({ breakReminderMinutes: minutes });
+  });
+}
+if ($('settings-notifications-toggle')) {
+  $('settings-notifications-toggle').addEventListener('change', () => {
+    pushSettings({ notificationsEnabled: $('settings-notifications-toggle').checked === true });
   });
 }
 if ($('launch-startup-toggle')) {
@@ -2302,6 +2430,10 @@ async function tagsQuickAdd(target) {
   const kw = String(input.value || '').trim();
   if (!kw) {
     if (status) status.textContent = 'Enter a keyword first.';
+    return;
+  }
+  if (typeof currentPlatform !== 'undefined' && currentPlatform === 'win32' && /^site:/i.test(kw)) {
+    if (status) status.textContent = 'Windows uses window titles, not browser addresses. Add a title word instead.';
     return;
   }
   if (/^site:/i.test(kw) && (target === 'ignore' || !window.sydtrackBrowserRules.siteDomain(kw))) {
@@ -2960,8 +3092,17 @@ async function boot() {
   try {
     const state = await api.getState();
     if (state) {
+      currentPlatform = state.platform || null;
       if ($('launch-startup-row')) {
         $('launch-startup-row').classList.toggle('hidden', state.platform !== 'win32' && state.platform !== 'darwin');
+      }
+      if ($('onboarding-startup')) {
+        $('onboarding-startup').closest('label').classList.toggle('hidden', state.platform !== 'win32' && state.platform !== 'darwin');
+      }
+      if (state.stats && state.stats.settings && state.stats.settings.onboardingComplete === false) {
+        $('onboarding-screen').classList.remove('hidden');
+        document.querySelector('.shell').inert = true;
+        $('onboarding-start').focus();
       }
       updateSourcePill(state.now);
       renderLastFocused(state.lastFocused, state.now);
@@ -2998,6 +3139,99 @@ async function boot() {
 }
 
 boot();
+if ($('onboarding-start')) {
+  $('onboarding-start').addEventListener('click', async () => {
+    if (!api) return;
+    const button = $('onboarding-start');
+    const error = $('onboarding-error');
+    const choice = document.querySelector('input[name="onboarding-profile"]:checked');
+    button.disabled = true;
+    error.classList.add('hidden');
+    try {
+      await api.activateProfile(choice ? choice.value : 'default');
+      const next = await api.updateSettings({
+        onboardingComplete: true,
+        trackingPaused: false,
+        launchAtStartup: $('onboarding-startup').checked,
+        pollMs: 3000
+      });
+      applySettingsInputs(next);
+      await loadRulesAndIgnore();
+      if (window.sydtrackProfilesUI) await window.sydtrackProfilesUI.reload();
+      $('onboarding-screen').classList.add('hidden');
+      document.querySelector('.shell').inert = false;
+      document.querySelector('.nav-btn[data-tab="home"]').focus();
+    } catch (err) {
+      error.textContent = 'Could not start tracking. ' + (err && err.message ? err.message : 'Please try again.');
+      error.classList.remove('hidden');
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+async function previewDraftClassification() {
+  const output = $('tags-preview-result');
+  const app = String($('tags-preview-app').value || '').trim();
+  const title = String($('tags-preview-title').value || '');
+  if (!app) {
+    output.textContent = 'Enter an app name first.';
+    return;
+  }
+  if (!api || !api.previewClassification) {
+    output.textContent = 'Preview is unavailable.';
+    return;
+  }
+  const lists = currentTagLists();
+  const button = $('tags-preview-run');
+  button.disabled = true;
+  try {
+    const result = await api.previewClassification({
+      app, title,
+      productive: lists.productive,
+      unproductive: lists.unproductive,
+      ignore: lists.ignore,
+      browserKeywords: {
+        productive: linesToList($('kw-prod-edit').value),
+        unproductive: linesToList($('kw-unprod-edit').value)
+      }
+    });
+    if (result.category === 'other') {
+      output.textContent = result.browser
+        ? 'Other · no title rule matched. This page will stay unclassified.'
+        : 'Other · no rule matched.';
+    } else if (result.category === 'ignored') {
+      output.textContent = 'Ignored · this app will not be logged.';
+    } else {
+      const label = result.category === 'productive' ? 'Productive' : 'Unproductive';
+      output.textContent = label + ' · ' + (result.source || 'rule') + ': ' + (result.reason || 'match');
+    }
+  } catch (err) {
+    output.textContent = 'Could not preview this title.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+if ($('tags-preview-run')) $('tags-preview-run').addEventListener('click', previewDraftClassification);
+for (const id of ['tags-preview-app', 'tags-preview-title']) {
+  if ($(id)) $(id).addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); previewDraftClassification(); }
+  });
+}
+if ($('pause-15-btn')) {
+  $('pause-15-btn').addEventListener('click', async () => {
+    if (!api || !api.pauseFor15Minutes) return;
+    const button = $('pause-15-btn');
+    button.disabled = true;
+    try {
+      const next = await api.pauseFor15Minutes();
+      applySettingsInputs(next);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
 const liveTotalsTicker = createLiveTicker({
   interval: 1000,
   now: () => Date.now(),

@@ -176,7 +176,6 @@
     delete next.decompressBreakMinutes;
     delete next.gamificationEnabled;
     delete next.duckEnabled;
-    delete next.onboardingComplete;
     next.goalsSchema = GOALS_SCHEMA;
     const legacyGoal = Number(next.dailyGoalSec);
     if (!Number.isFinite(legacyGoal) || legacyGoal <= 0) next.dailyGoalSec = DEFAULT_DAILY_GOAL_SEC;

@@ -17,7 +17,7 @@ const {
   windowBackgroundColor
 } = require('../src/window-security');
 const { electronLaunchArgs } = require('./launch-args');
-const { DEFAULT_THEME, normalizeTheme } = require('../src/theme');
+const { DEFAULT_THEME, normalizeTheme, titleBarOverlayForTheme } = require('../src/theme');
 const { defaultSettings } = require('../src/store');
 
 let failed = 0;
@@ -72,6 +72,15 @@ assert(buildBrowserWindowOptions({
   preloadPath: preload,
   backgroundColor: windowBackgroundColor('graphite')
 }).backgroundColor === '#F4F5F7', 'BrowserWindow options accept the active theme canvas');
+const winChrome = buildBrowserWindowOptions({
+  preloadPath: preload,
+  platform: 'win32',
+  theme: 'coral',
+  backgroundColor: windowBackgroundColor('coral')
+});
+assert(winChrome.titleBarStyle === 'hidden', 'Windows removes the stock Electron title strip');
+assert(winChrome.titleBarOverlay.color === '#FBF6F3' && winChrome.titleBarOverlay.symbolColor === '#2B2320', 'Windows controls follow the active theme');
+assert(titleBarOverlayForTheme('midnight').height === 32, 'custom title chrome uses the compact 32px control height');
 
 assert(CONTENT_SECURITY_POLICY.includes("default-src 'self'"), 'CSP default-src is self');
 assert(!/https?:/.test(CONTENT_SECURITY_POLICY), 'CSP has no remote origins');
@@ -90,6 +99,7 @@ assert(/data-theme="midnight"/.test(html), 'renderer first paint uses Midnight')
 assert(!/Graphite is the default/i.test(html), 'Appearance copy does not call Graphite the default');
 assert(/data-theme-id="midnight"[^>]+aria-pressed="true"/.test(html), 'Appearance picker marks Midnight as selected by default');
 assert(html.includes('appearance-card'), 'Appearance picker is scoped for the theme chips');
+assert(html.includes('class="window-drag-region"'), 'renderer exposes a native drag surface for custom Windows chrome');
 const homeCss = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
 assert(/\.home-layout \{[\s\S]{0,80}grid-template-columns:\s*64% 36%/.test(homeCss), 'Home uses the pre-#25 64/36 layout');
 assert(!/#view-home \.home-layout[\s\S]{0,200}padding-left:\s*clamp/.test(homeCss), 'Home is not the post-#25 center-right cluster');
@@ -226,13 +236,20 @@ throws(() => validateIpcPayload('profiles:activate', ''), 'profiles:activate rej
 assert(validateIpcPayload('profiles:activate', 'default') === 'default', 'profiles:activate accepts default');
 
 assert(validateIpcPayload('settings:update', { trackingPaused: true, thresholdSec: 600 }).thresholdSec === 600, 'settings:update accepts known keys');
+assert(validateIpcPayload('tracking:pause15') === undefined, 'timed pause accepts no payload');
+const validPreview = { app: 'chrome', title: 'GitHub - Chrome', productive: ['github'], unproductive: [], ignore: [], browserKeywords: { productive: [], unproductive: [] } };
+assert(validateIpcPayload('classification:preview', validPreview).title === validPreview.title, 'classification preview accepts a title-only draft');
+throws(() => validateIpcPayload('classification:preview', { ...validPreview, url: 'https://example.com' }), 'classification preview rejects browser addresses');
+throws(() => validateIpcPayload('classification:preview', { ...validPreview, productive: ['x'.repeat(201)] }), 'classification preview rejects oversized rules');
+throws(() => validateIpcPayload('tracking:pause15', { minutes: 60 }), 'timed pause rejects caller-defined durations');
+throws(() => validateIpcPayload('settings:update', { trackingPauseUntil: Date.now() + 900000 }), 'settings:update cannot set an arbitrary pause deadline');
 assert(validateIpcPayload('settings:update', { launchAtStartup: false }).launchAtStartup === false, 'settings:update accepts the startup preference');
 assert(validateIpcPayload('settings:update', { pollMs: 3000 }).pollMs === 3000, 'settings:update accepts a polling preset');
 throws(() => validateIpcPayload('settings:update', { pollMs: 2000 }), 'settings:update rejects arbitrary polling intervals');
 assert(validateIpcPayload('settings:update', { trackMusicWhileIdle: false, trackVideoWhileIdle: true }).trackVideoWhileIdle === true, 'settings:update accepts media-while-idle keys');
 assert(!channels.includes('wellbeing'), 'retired wellbeing IPC channel is absent');
 assert(validateIpcPayload('settings:update', { focusShareGoalPct: 80, focusShareIncludeOther: false }).focusShareGoalPct === 80, 'settings:update accepts active goal keys');
-throws(() => validateIpcPayload('settings:update', { onboardingComplete: true }), 'settings:update rejects orphan onboardingComplete');
+assert(validateIpcPayload('settings:update', { onboardingComplete: true }).onboardingComplete === true, 'settings:update accepts first-run completion');
 throws(() => validateIpcPayload('settings:update', { demoMode: true }), 'settings:update rejects unknown keys');
 throws(() => validateIpcPayload('settings:update', { thresholdSec: 0 }), 'settings:update rejects a 0 threshold');
 throws(() => validateIpcPayload('settings:update', { reminderMessage: 'x'.repeat(2001) }), 'settings:update rejects oversized text');

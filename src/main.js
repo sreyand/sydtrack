@@ -27,12 +27,16 @@ const {
   saveAppIdentities,
   DEFAULT_RULES_PATH,
   DEFAULT_IGNORE_PATH,
-  DEFAULT_APP_IDENTITIES_PATH
+  DEFAULT_APP_IDENTITIES_PATH,
+  classifyWithReason,
+  isIgnored,
+  isBrowserProcess
 } = require('./classifier');
 const { createStore } = require('./store');
 const { createTracker } = require('./tracker');
 const { createSessionManager } = require('./sessions');
 const { updateAppSettings } = require('./settings-service');
+const { pauseFor15Minutes, createTimedPause } = require('./timed-pause');
 const {
   buildExport,
   importBackup,
@@ -57,6 +61,7 @@ const {
   buildBrowserWindowOptions,
   denyPermissionRequests,
   installNavigationGuards,
+  titleBarOverlayForTheme,
   windowBackgroundColor,
   registerAppScheme,
   resolveAppFile
@@ -90,6 +95,7 @@ let ignoreIsCustom = false;
 let lastPayload = { now: null, stats: null, lastFocused: null };
 let servicesStarted = false;
 let appTray = null;
+let timedPause = null;
 let isQuitting = false;
 const startHidden = shouldStartHidden({ argv: process.argv, platform: process.platform, appApi: app });
 
@@ -214,11 +220,13 @@ function guardIpc(event, channel, payload) {
 }
 
 function createWindow() {
+  const activeTheme = store && store.getSettings ? store.getSettings().theme : 'midnight';
   const winOpts = buildBrowserWindowOptions({
     preloadPath: path.join(__dirname, 'preload.js'),
     iconPath: path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico'),
     platform: process.platform,
-    backgroundColor: windowBackgroundColor(store && store.getSettings ? store.getSettings().theme : 'midnight')
+    backgroundColor: windowBackgroundColor(activeTheme),
+    theme: activeTheme
   });
   mainWindow = new BrowserWindow(winOpts);
   installNavigationGuards(mainWindow.webContents);
@@ -258,8 +266,8 @@ function createWindow() {
   });
   if (!startHidden) mainWindow.show();
   mainWindow.once('ready-to-show', () => {
-    // Start tracker after window is visible
-    ensureTrackerStarted();
+    // The first-run setup explains collection before tracking begins.
+    if (store.getSettings().onboardingComplete !== false) ensureTrackerStarted();
   });
   mainWindow.on('close', (e) => {
     if (isQuitting) return;
@@ -292,6 +300,17 @@ function fireReminder(payload) {
   const settings = (store && store.getSettings && store.getSettings()) || {};
   // DND / notifications toggle — skip OS toast + in-app banner
   if (settings.notificationsEnabled === false) {
+    return;
+  }
+  if (payload && payload.kind === 'break') {
+    const minutes = Math.max(10, Math.min(240, Number(payload.minutes) || 60));
+    const body = `You've been active for ${minutes} minutes. Take a break when you can.`;
+    if (Notification.isSupported()) {
+      try {
+        new Notification({ title: 'Time for a break', body, silent: false }).show();
+      } catch (err) { console.error('[break] native notification failed', err && err.message); }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('reminder:fired', { kind: 'break', body });
     return;
   }
   const boostOn = !!settings.focusBoost;
@@ -371,7 +390,7 @@ function startServices() {
   loadBrowserKeywordFile();
   loadAppRules();
   loadAppIgnore();
-  store = createStore(dataDir(), { onRecovery: reportRecovery });
+  store = createStore(dataDir(), { onRecovery: reportRecovery, onboardingForNewInstall: true });
   sessionManager = createSessionManager({
     dataDir: dataDir(),
     getSettings: () => store.getSettings(),
@@ -382,6 +401,14 @@ function startServices() {
     defaults: require('./default-focus-profiles.json'),
     onChange: applyFocusProfile, onRecovery: reportRecovery });
   applyFocusProfile(focusProfiles.active());
+  timedPause = createTimedPause({
+    getSettings: () => store.getSettings(),
+    onExpire: () => {
+      applySettings({ trackingPaused: false, trackingPauseUntil: 0 });
+      sendCurrentSettingsToRenderer();
+    }
+  });
+  timedPause.sync();
 
   // Force real tracking on Windows/macOS unless user opted into demo
   if ((process.platform === 'win32' || process.platform === 'darwin') && process.env.SYDTRACK_DEMO == null) {
@@ -454,11 +481,22 @@ function sendTrackerUpdateToRenderer(payload) {
   }
 }
 
+function sendCurrentSettingsToRenderer() {
+  if (!store) return;
+  lastPayload = Object.assign({}, lastPayload, {
+    stats: store.snapshot([], { includeWeek: false }),
+    session: sessionManager ? sessionManager.getActiveSession() : null,
+    sessionCompleted: null
+  });
+  sendTrackerUpdateToRenderer(lastPayload);
+}
+
 function createTray() {
   if (appTray) return appTray;
   appTray = createAppTray({
     getMainWindow: () => mainWindow,
     getStore: () => store,
+    updateSettings: applySettings,
     getSessionManager: () => sessionManager,
     getLastPayload: () => lastPayload,
     sendTrackerUpdate: (payload) => {
@@ -521,6 +559,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (timedPause) timedPause.dispose();
 });
 
 ipcMain.handle('state:get', async (event, payload) => {
@@ -553,6 +592,11 @@ ipcMain.handle('apps:correctToday', async (event, payload) => {
 ipcMain.handle('history:summary', async (event, payload) => {
   const days = guardIpc(event, 'history:summary', payload);
   return store ? store.historySummary(days) : [];
+});
+
+ipcMain.handle('history:lifetime', async (event, payload) => {
+  guardIpc(event, 'history:lifetime', payload);
+  return store ? store.lifetimeSummary() : null;
 });
 
 ipcMain.handle('rules:get', async (event, payload) => {
@@ -643,19 +687,55 @@ ipcMain.handle('settings:update', async (event, payload) => {
   return applySettings(partial);
 });
 
+ipcMain.handle('tracking:pause15', async (event, payload) => {
+  guardIpc(event, 'tracking:pause15', payload);
+  if (!store) return {};
+  return applySettings(pauseFor15Minutes());
+});
+
+ipcMain.handle('classification:preview', async (event, payload) => {
+  const draft = guardIpc(event, 'classification:preview', payload);
+  const win = { owner: { name: draft.app }, title: draft.title };
+  const rules = {
+    productive: draft.productive,
+    unproductive: draft.unproductive,
+    browserKeywords: draft.browserKeywords,
+    identities: rulesHolder.rules && rulesHolder.rules.identities
+  };
+  if (isIgnored(win, draft.ignore, rules.identities)) {
+    return { category: 'ignored', reason: 'Ignored app', source: 'ignore list', browser: isBrowserProcess(win, rules.identities) };
+  }
+  return { ...classifyWithReason(win, rules), browser: isBrowserProcess(win, rules.identities) };
+});
+
 function applySettings(partial) {
-  const next = updateAppSettings(store, sessionManager, partial, () => {
+  const wasPaused = !!store.getSettings().trackingPaused;
+  const changes = partial && Object.prototype.hasOwnProperty.call(partial, 'trackingPaused') &&
+    !Object.prototype.hasOwnProperty.call(partial, 'trackingPauseUntil')
+    ? { ...partial, trackingPauseUntil: 0 }
+    : partial;
+  const next = updateAppSettings(store, sessionManager, changes, () => {
     if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
     if (partial && partial.theme && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setBackgroundColor(windowBackgroundColor(partial.theme));
+      if (process.platform === 'win32' && typeof mainWindow.setTitleBarOverlay === 'function') {
+        mainWindow.setTitleBarOverlay(titleBarOverlayForTheme(partial.theme));
+      }
     }
   });
+  if (tracker && wasPaused !== !!next.trackingPaused && typeof tracker.markPauseBoundary === 'function') {
+    tracker.markPauseBoundary();
+  }
   if (partial && Object.prototype.hasOwnProperty.call(partial, 'launchAtStartup')) {
     syncStartupPreference(next);
   }
   if (partial && Object.prototype.hasOwnProperty.call(partial, 'pollMs') && tracker && typeof tracker.refreshCadence === 'function') {
     tracker.refreshCadence();
   }
+  if (partial && partial.onboardingComplete === true && !next.trackingPaused) {
+    ensureTrackerStarted();
+  }
+  if (timedPause) timedPause.sync();
   return next;
 }
 

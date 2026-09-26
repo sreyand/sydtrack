@@ -89,6 +89,7 @@ function createRealBackend(options = {}) {
  * Also accepts legacy `rules` / `ignore` plain values for smoke/tests.
  */
 function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessionManager, onTick, onReminder, backend, now: clock = Date.now, readIdleTime }) {
+  const breakReminder = require('./break-reminder').createBreakReminder();
   const rHolder = rulesHolder || { rules: rules };
   const iHolder = ignoreHolder || { ignore: ignore || [] };
   const real = backend || createRealBackend({
@@ -132,6 +133,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     });
     lastHeartbeat = at;
     if (result.discontinuity) {
+      breakReminder.reset();
       pendingDiscontinuity = true;
       generation += 1;
       lastTick = at;
@@ -157,7 +159,8 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     let trackingError = null;
     let idleSec = 0;
     let sample = null;
-    const skipProbe = sleeping || locked;
+    // A pause is a privacy boundary: do not even read the foreground title.
+    const skipProbe = sleeping || locked || startedPaused;
 
     if (!skipProbe && settings.demoMode) {
       win = demo.getActiveWindow();
@@ -259,6 +262,15 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       else store.addSeconds(app, category, decision.elapsedSec, activity);
     } else if (store.resetStreak) {
       store.resetStreak();
+    }
+
+    if (breakReminder.update({
+      enabled: settings.breakReminderEnabled === true && settings.notificationsEnabled !== false,
+      minutes: settings.breakReminderMinutes,
+      counted: decision.count && idleSec < 300,
+      elapsedSec: decision.elapsedSec
+    }) && onReminder) {
+      onReminder({ kind: 'break', minutes: settings.breakReminderMinutes });
     }
 
     // Focus session: accumulate byApp + distraction edges while active
@@ -369,6 +381,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
 
   function stop() {
     stopped = true;
+    breakReminder.reset();
     generation += 1;
     if (timer) {
       clearInterval(timer);
@@ -385,6 +398,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     const nextLocked = !!nextLock;
     if (sleeping === nextSleeping && locked === nextLocked) return;
     sleeping = nextSleeping;
+    breakReminder.reset();
     locked = nextLocked;
     generation += 1;
     lastTick = clock();
@@ -407,7 +421,16 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     resetStreakSafely();
   }
 
-  return { start, stop, poll, refreshCadence, getLastFocused, setSystemInactive, setSystemPresence, invalidateClassification };
+  function markPauseBoundary() {
+    breakReminder.reset();
+    generation++;
+    lastTick = clock();
+    lastHeartbeat = lastTick;
+    current.since = lastTick;
+    resetStreakSafely();
+  }
+
+  return { start, stop, poll, refreshCadence, getLastFocused, setSystemInactive, setSystemPresence, invalidateClassification, markPauseBoundary };
 }
 
 module.exports = { createTracker, createRealBackend };

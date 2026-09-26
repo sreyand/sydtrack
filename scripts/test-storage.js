@@ -53,6 +53,34 @@ function daysAgo(n) {
   return todayKey(d.getTime());
 }
 
+(function firstRunOnboarding() {
+  const dir = tmp('onboarding');
+  const fresh = createStore(dir, { onboardingForNewInstall: true });
+  assert(fresh.getSettings().onboardingComplete === false && fresh.getSettings().trackingPaused === true,
+    'fresh desktop install pauses tracking until onboarding');
+  assert(fresh.getSettings().launchAtStartup === false, 'fresh desktop install does not register startup before consent');
+  const restarted = createStore(dir, { onboardingForNewInstall: true });
+  assert(restarted.getSettings().onboardingComplete === false, 'unfinished onboarding survives restart');
+  restarted.updateSettings({ onboardingComplete: true, trackingPaused: false, launchAtStartup: true });
+  assert(createStore(dir, { onboardingForNewInstall: true }).getSettings().onboardingComplete === true,
+    'completed onboarding survives restart');
+  const pauseUntil = Date.now() + 15 * 60 * 1000;
+  restarted.updateSettings({ trackingPaused: true, trackingPauseUntil: pauseUntil });
+  assert(createStore(dir, { onboardingForNewInstall: true }).getSettings().trackingPauseUntil === pauseUntil,
+    'timed pause deadline survives restart');
+  restarted.updateSettings({ breakReminderEnabled: true, breakReminderMinutes: 45 });
+  const breakPrefs = createStore(dir).getSettings();
+  assert(breakPrefs.breakReminderEnabled === true && breakPrefs.breakReminderMinutes === 45,
+    'optional break reminder preferences survive restart');
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  const legacyDir = tmp('legacy-onboarding');
+  fs.writeFileSync(path.join(legacyDir, 'settings.json'), JSON.stringify({ theme: 'coral' }));
+  const legacy = createStore(legacyDir, { onboardingForNewInstall: true });
+  assert(legacy.getSettings().onboardingComplete === true, 'existing installs skip onboarding');
+  fs.rmSync(legacyDir, { recursive: true, force: true });
+})();
+
 (function rollupTests() {
   const day = emptyDay('2026-01-15');
   day.byApp['Code::productive'] = { seconds: 120, category: 'productive' };
@@ -66,6 +94,25 @@ function daysAgo(n) {
   assert(rollup.apps.some((a) => a.name === 'Code' && a.seconds === 120), 'rollup keeps app totals');
   assert(rollup.apps.some((a) => a.name === 'Chrome' && a.category === 'unproductive'), 'rollup keeps browser category');
   assert(totalsMatch(day, rollup), 'rollup totals match the raw day');
+})();
+
+(function classificationEvidenceAndOtherInbox() {
+  const dir = tmp('classification-evidence');
+  const store = createStore(dir);
+  store.addSeconds('chrome', 'productive', 120, { category: 'productive', reason: 'github' });
+  store.addSeconds('chrome', 'productive', 30, { category: 'productive', reason: 'docs' });
+  store.addSeconds('chrome', 'unproductive', 90, { category: 'unproductive', reason: 'youtube' });
+  store.addSeconds('Unmatched App', 'other', 60);
+  const stats = store.snapshot();
+  const productive = stats.topApps.find(app => app.name === 'chrome' && app.category === 'productive');
+  const unproductive = stats.topApps.find(app => app.name === 'chrome' && app.category === 'unproductive');
+  assert(productive.topMatch.reason === 'github' && productive.topMatch.seconds === 120,
+    'Roundup can identify the dominant productive browser title match');
+  assert(unproductive.topMatch.reason === 'youtube' && unproductive.topMatch.seconds === 90,
+    'Roundup keeps unproductive browser matches separate');
+  assert(stats.otherApps[0].name === 'Unmatched App' && stats.otherApps[0].seconds === 60,
+    'Focus Tags ranks unclassified apps by time');
+  fs.rmSync(dir, { recursive: true, force: true });
 })();
 
 (function purgeAndJournal() {
@@ -82,6 +129,15 @@ function daysAgo(n) {
   const loaded = store.loadHistoryDay(old);
   assert(loaded && loaded.byCategory.productive === 500, 'purged day is readable from its rollup');
   assert(store.allDaysMap()[old].byCategory.productive === 500, 'export map includes rollup-only days');
+  const lifetime = store.lifetimeSummary();
+  assert(lifetime.totalSeconds === 580 && lifetime.activeDays === 2 && lifetime.firstDay === old,
+    'lifetime totals include old rollups and recent raw days once each');
+  store.addSeconds('Code', 'productive', 20);
+  assert(store.lifetimeSummary().totalSeconds === 600 && store.lifetimeSummary().activeDays === 3,
+    'lifetime includes live tracking');
+  assert(createStore(dir).lifetimeSummary().totalSeconds === 600, 'lifetime totals survive restart');
+  store.clearAllHistory();
+  assert(store.lifetimeSummary().totalSeconds === 0, 'clear history resets lifetime totals');
   fs.rmSync(dir, { recursive: true, force: true });
 })();
 

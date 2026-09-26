@@ -2,6 +2,7 @@
 
 const path = require('path');
 const { Tray, Menu, nativeImage } = require('electron');
+const { pauseFor15Minutes } = require('./timed-pause');
 
 const LOGO_PATH = path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico');
 
@@ -23,6 +24,7 @@ function formatRemaining(sec) {
  * @param {object} deps
  * @param {() => import('electron').BrowserWindow|null} deps.getMainWindow
  * @param {() => object|null} deps.getStore
+ * @param {(partial: object) => object} [deps.updateSettings]
  * @param {() => object|null} deps.getSessionManager
  * @param {() => object|null} [deps.getLastPayload]
  * @param {(payload: object) => void} [deps.sendTrackerUpdate]
@@ -66,6 +68,7 @@ function createAppTray(deps) {
   }
 
   function pushSettings(partial) {
+    if (typeof deps.updateSettings === 'function') return deps.updateSettings(partial || {});
     const store = getStore();
     if (!store || typeof store.updateSettings !== 'function') return null;
     return store.updateSettings(partial || {});
@@ -99,6 +102,12 @@ function createAppTray(deps) {
   function togglePause() {
     const s = settings();
     pushSettings({ trackingPaused: !s.trackingPaused });
+    refresh();
+    pushFreshSnapshot();
+  }
+
+  function startTimedPause() {
+    pushSettings(pauseFor15Minutes());
     refresh();
     pushFreshSnapshot();
   }
@@ -173,6 +182,10 @@ function createAppTray(deps) {
         type: 'checkbox',
         checked: !!s.trackingPaused,
         click: () => togglePause()
+      },
+      {
+        label: 'Pause for 15 minutes',
+        click: () => startTimedPause()
       },
       {
         label: 'focusboost',
