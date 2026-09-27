@@ -747,6 +747,30 @@ assert(parseProfilePack(buildProfilePack({ other: ['lecture'] })).other[0] === '
 
 async function browserProbeChecks() {
   const { createWindowsBackend } = require('../src/windows-backend');
+  const { createRecoveringWindowsBackend } = require('../src/tracker');
+  let primaryCalls = 0, fallbackCalls = 0;
+  const recovering = createRecoveringWindowsBackend(
+    { getActiveWindow: async () => ++primaryCalls === 1
+      ? { window: null, error: 'malformed foreground JSON' }
+      : { window: { title: 'Recovered' }, error: null } },
+    () => ({ getActiveWindow: async () => { fallbackCalls++; return { window: null, error: 'fallback unavailable' }; } })
+  );
+  assert((await recovering.getActiveWindow()).error.includes('malformed foreground JSON') &&
+    (await recovering.getActiveWindow()).window.title === 'Recovered' &&
+    primaryCalls === 2 && fallbackCalls === 1,
+    'A transient Windows probe error never permanently switches tracking to the fallback');
+  let primaryRecovered = false;
+  const bounded = createRecoveringWindowsBackend(
+    { getActiveWindow: async () => primaryRecovered
+      ? { window: { title: 'Recovered' }, error: null }
+      : { window: null, error: 'foreground probe failed' } },
+    () => ({ getActiveWindow: () => new Promise(() => {}) }), 20
+  );
+  assert((await bounded.getActiveWindow()).error.includes('active-win timed out'),
+    'A hung fallback cannot hold the polling loop indefinitely');
+  primaryRecovered = true;
+  assert((await bounded.getActiveWindow()).window.title === 'Recovered',
+    'The primary Windows probe recovers after a fallback timeout');
   let captureCalls = 0;
   const titleBackend = createWindowsBackend({ run(exe, args, options, callback) {
     captureCalls++;

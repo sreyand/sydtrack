@@ -73,7 +73,7 @@ The trust model is stronger when the product has no incentive to collect more be
 
 ## Current stopping point
 
-Version 2.2.0 has been published. It adds first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. The `r/` classification fix described below is local follow-up work, not part of the published 2.2.0 build.
+Version 2.2.0 has been published. It adds first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 is a local hotfix candidate that includes the `r/` classification fix described below and recovery from transient Windows foreground-probe failures; it has not been published.
 
 Windows x64 is the supported release target. macOS and Linux packaging are best-effort CI targets. Builds are unsigned. The app is ready for observation and user testing; it does not need another feature wave before people try it.
 
@@ -270,7 +270,7 @@ Inspect the packaged version and hashes. Use the manual lifecycle and Focus prof
 Supporting references:
 
 - [README](README.md)
-- [Current release notes](docs/release-notes-2.2.0.md)
+- [Current release notes](docs/release-notes-2.2.1.md)
 - [Lifecycle validation](docs/manual-lifecycle-validation.md)
 - [Focus profile validation](docs/manual-focus-profiles-validation.md)
 - [Focus profile generation guide](docs/focus-profile-generation-guide.md)

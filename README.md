@@ -5,12 +5,12 @@
     <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
-    <a href="docs/release-notes-2.2.0.md">What’s new in v2.2.0</a>
+    <a href="docs/release-notes-2.2.1.md">What’s new in v2.2.1</a>
   </p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
-    <img alt="Version 2.2.0" src="https://img.shields.io/badge/version-2.2.0-8B7CF6?style=flat-square">
+    <img alt="Version 2.2.1" src="https://img.shields.io/badge/version-2.2.1-8B7CF6?style=flat-square">
     <img alt="GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-EF6A6A?style=flat-square">
   </p>
 </div>
@@ -68,8 +68,8 @@ Changing profiles affects future tracking; it does not rewrite history. Analytic
 
 sydtrack currently targets **Windows 10/11 x64**.
 
-- `sydtrack-2.2.0-setup.exe` — standard installer
-- `sydtrack-2.2.0-portable.exe` — run without installation
+- `sydtrack-2.2.1-setup.exe` — standard installer
+- `sydtrack-2.2.1-portable.exe` — run without installation
 
 Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
 
@@ -84,7 +84,15 @@ Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/r
 
 On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memory** and an estimated **~1% total CPU** with the 3-second tracking cadence. The short Windows foreground probe accounts for most of that CPU time; results will vary with the machine and other activity.
 
-## What’s new in v2.2.0
+## What’s new in v2.2.1
+
+- Tracking retries the Windows foreground probe after a transient failure instead of remaining on the fallback until restart.
+- A stalled fallback has a time limit, allowing subsequent tracking samples to continue.
+- Browser titles with an `r/<subreddit>` marker now match the `r/` unproductive rule even when the title also contains a productive topic keyword.
+
+Read the [v2.2.1 release notes](docs/release-notes-2.2.1.md) for upgrade details.
+
+## What changed in v2.2.0
 
 - A short privacy-first onboarding flow for fresh installs; existing installs skip it.
 - App-by-app Day, Week, and Month analytics that keep mixed-use browsers as one app while showing their category breakdown.

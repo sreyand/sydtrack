@@ -43,6 +43,48 @@ function createActiveWinBackend() {
   return { getActiveWindow };
 }
 
+function createRecoveringWindowsBackend(windows, createFallback = createActiveWinBackend, fallbackTimeoutMs = 4000) {
+  let activeWin = null;
+  let fallbackPending = null;
+
+  async function getFallbackWindow() {
+    if (!activeWin) activeWin = createFallback();
+    if (!fallbackPending) {
+      const pending = Promise.resolve().then(() => activeWin.getActiveWindow())
+        .catch((err) => ({ window: null, error: err.message || String(err) }));
+      fallbackPending = pending;
+      pending.finally(() => { if (fallbackPending === pending) fallbackPending = null; });
+    }
+    let timeout;
+    try {
+      return await Promise.race([
+        fallbackPending,
+        new Promise((resolve) => {
+          timeout = setTimeout(() => resolve({ window: null, error: 'active-win timed out' }), fallbackTimeoutMs);
+        })
+      ]);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return {
+    async getActiveWindow() {
+      let result;
+      try {
+        result = await windows.getActiveWindow();
+      } catch (err) {
+        result = { window: null, error: err.message || String(err) };
+      }
+      if (result && (result.window || !result.error)) return result;
+      if (!result) result = { window: null, error: 'windows-backend returned no result' };
+      console.warn('[tracker] windows-backend error, trying active-win for this sample:', result.error);
+      const fallback = await getFallbackWindow();
+      return fallback.window ? fallback : { window: null, error: `${result.error}; ${fallback.error || 'active-win found no foreground window'}` };
+    }
+  };
+}
+
 /**
  * win32: PowerShell/user32 windows-backend is PRIMARY.
  * active-win only on non-Windows, or if windows-backend fails to load / errors at runtime.
@@ -51,8 +93,6 @@ function createActiveWinBackend() {
 function createRealBackend(options = {}) {
   if (process.platform === 'win32') {
     let windows = null;
-    let activeWin = null;
-    let useActiveWin = false;
 
     try {
       windows = require('./windows-backend').createWindowsBackend({ includeMedia: options.includeMedia });
@@ -64,20 +104,7 @@ function createRealBackend(options = {}) {
       return createActiveWinBackend();
     }
 
-    async function getActiveWindow() {
-      if (!useActiveWin) {
-        const result = await windows.getActiveWindow();
-        if (result.window || !result.error) {
-          return result;
-        }
-        console.warn('[tracker] windows-backend error, falling back to active-win:', result.error);
-        useActiveWin = true;
-      }
-      if (!activeWin) activeWin = createActiveWinBackend();
-      return activeWin.getActiveWindow();
-    }
-
-    return { getActiveWindow };
+    return createRecoveringWindowsBackend(windows);
   }
 
   return createActiveWinBackend();
@@ -452,4 +479,4 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
   return { start, stop, poll, refreshCadence, getLastFocused, setSystemInactive, setSystemPresence, invalidateClassification, markPauseBoundary };
 }
 
-module.exports = { createTracker, createRealBackend };
+module.exports = { createTracker, createRealBackend, createRecoveringWindowsBackend };
