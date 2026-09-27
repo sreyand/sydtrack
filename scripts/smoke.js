@@ -1211,6 +1211,15 @@ async function activityReasonChecks() {
   }
   assert(classifyGeneral('GitHub - sydtrack') === 'productive' &&
     classifyGeneral('YouTube - Home') === 'unproductive', 'Specific browser titles remain classifiable');
+  const subredditRules = { productive: ['jhu'], unproductive: ['r/'], other: [] };
+  const subredditTitle = 'Losing Hope in dreams of attending JHU - r/jhu';
+  const subredditMatch = classifyWithReason({ owner: { name: 'Google Chrome' }, title: subredditTitle }, subredditRules);
+  assert(subredditMatch.category === 'unproductive' && subredditMatch.reason === 'r/',
+    'Subreddit title marker beats a productive topic keyword without reading a URL');
+  assert(classifyWithReason({ owner: { name: 'Google Chrome' }, title: 'JHU admissions' }, subredditRules).category === 'productive' &&
+    classifyWithReason({ owner: { name: 'Google Chrome' }, title: 'Library r/ reference' }, subredditRules).category === 'other' &&
+    classifyWithReason({ owner: { name: 'Google Chrome' }, title: 'JHU war/jhu archive' }, subredditRules).category === 'productive',
+    'Subreddit prefix requires a real r/name marker and does not overmatch');
   assert(classifyWithReason({ owner: { name: 'Steam', path: 'C:\\Games\\steam.exe' }, title: 'Library' },
     general).category === 'unproductive' &&
     classifyWithReason({ owner: { name: 'Unity', path: 'C:\\Unity\\Unity.exe' }, title: 'Project' },

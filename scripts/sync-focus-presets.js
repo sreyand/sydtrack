@@ -22,7 +22,7 @@ const windowsIgnore = unique([
 
 const distractions = unique([
   'youtube', 'youtube.com', 'youtube shorts', 'youtube — mozilla firefox', 'reddit', 'reddit.com',
-  'reddit - dive into anything', 'instagram', 'instagram.com', 'instagram • photos and videos', 'tiktok',
+  'reddit - dive into anything', 'r/', 'instagram', 'instagram.com', 'instagram • photos and videos', 'tiktok',
   'tiktok.com', 'for you - tiktok', 'facebook', 'facebook.com', 'fb.com', 'facebook – log in or sign up',
   'twitter', 'x.com', 'home / x', 'home x', 'notifications / x', 'explore / x', 'threads.net', 'snapchat',
   'pinterest', 'tumblr', '9gag', 'imgur', 'buzzfeed', 'quora', 'discord', 'telegram', 'whatsapp', 'messenger',

@@ -73,7 +73,7 @@ The trust model is stronger when the product has no incentive to collect more be
 
 ## Current stopping point
 
-Version 2.2 is the next release candidate. It adds first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. The Windows artifacts can be prepared locally; these changes are not a published release until explicitly uploaded.
+Version 2.2.0 has been published. It adds first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. The `r/` classification fix described below is local follow-up work, not part of the published 2.2.0 build.
 
 Windows x64 is the supported release target. macOS and Linux packaging are best-effort CI targets. Builds are unsigned. The app is ready for observation and user testing; it does not need another feature wave before people try it.
 
@@ -275,3 +275,18 @@ Supporting references:
 - [Focus profile validation](docs/manual-focus-profiles-validation.md)
 - [Focus profile generation guide](docs/focus-profile-generation-guide.md)
 - [Packaging and signing](build/README.md)
+
+## Next classification refinement: useful Other, without a review queue
+
+Other means the available foreground app and window title do not justify a productive or unproductive judgment. Keep it in totals and app slices; do not turn every unmatched title into a prompt, a separate inbox, or a long list on Home. Analytics → Apps should remain grouped by app, with more detail only when a person expands a row.
+
+The `r/jhu` case exposed two distinct issues. A literal `r/` keyword previously failed to match `r/jhu` because the whole-term matcher required a boundary after the slash; the matcher and bundled presets now recognize `r/<subreddit>` as an unproductive title marker. More generally, a recognizable page/source marker is stronger evidence about context than a topical word such as `jhu`. This does not imply that every Reddit visit is wasted, nor that an ambiguous title can be classified reliably. Keep the Windows tracker title-only; do not inspect addresses or add an extension to solve this.
+
+Future work should make corrections precise without storing a title-by-title browsing diary:
+
+1. Use a small, tested set of high-confidence title signatures. Allow an explicit, more-specific user rule (for example `r/learnpython`) to override a broad source marker (`r/`); broad topical words alone must not override a clear source marker. Fall back to Other when no reliable signature exists.
+2. Store only the minimal local source identifier needed to distinguish a recognizable group (for example `r/jhu`), under the existing 90-day detailed-data retention. Do not persist full unmatched titles, URLs, searches, or source identifiers in lifetime rollups just to make the UI more granular.
+3. In expanded Analytics → Apps, show concise recognizable groups and one aggregate “Unrecognized pages” row. Do not offer a P/U/I action on a generic no-match group if it would silently reclassify unrelated browser pages. A future rule based on the currently focused title is different from a same-day correction to a known group; label that scope plainly.
+4. Preserve existing records. Older activity without a source identifier stays aggregated and cannot be split or retroactively assigned to invented pages. Test mixed-use browsers, marker/topic conflicts, specific exceptions, false-positive lookalikes, and the no-marker fallback across themes and keyboard access.
+
+Judge this work by whether someone can understand and correct a real mistake in one place, without being asked to review their entire browsing day. Do not broaden the UI merely to make the Other percentage look smaller.

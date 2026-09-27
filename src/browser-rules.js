@@ -59,7 +59,7 @@
     for (const type of ['other', 'unproductive', 'productive']) {
       const match = (rules[type] || []).find((tag) => {
         const key = String(tag || '').trim().toLowerCase();
-        return key && !key.startsWith('site:') && exactKeyword(text, key);
+        return key && !key.startsWith('site:') && browserKeyword(text, key);
       });
       if (match) return { category: type, reason: String(match).trim().toLowerCase(), source: 'profile keyword' };
     }
@@ -71,12 +71,19 @@
     return new RegExp('(^|[^a-z0-9])' + escaped + '([^a-z0-9]|$)', 'i').test(text);
   }
 
+  function browserKeyword(text, key) {
+    // Reddit titles can end in "r/community" without saying "Reddit". A user
+    // rule for "r/" is a prefix, not a complete word followed by a boundary.
+    if (key === 'r/') return /(^|[^a-z0-9])r\/[a-z0-9_]+/i.test(text);
+    return exactKeyword(text, key);
+  }
+
   function exactKeywordMatch(text, rules) {
     if (!rules) return null;
     for (const type of ['unproductive', 'productive']) {
       const match = (rules[type] || []).find((tag) => {
         const key = String(tag || '').trim().toLowerCase();
-        return key && !key.startsWith('site:') && exactKeyword(text, key);
+        return key && !key.startsWith('site:') && browserKeyword(text, key);
       });
       if (match) return { category: type, reason: String(match).trim().toLowerCase(), source: 'browser keyword' };
     }
