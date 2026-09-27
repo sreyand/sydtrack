@@ -40,7 +40,8 @@ function buildExport(store, opts) {
   if (includeRules && options.rules) {
     payload.rules = {
       productive: (options.rules.productive || []).slice(),
-      unproductive: (options.rules.unproductive || []).slice()
+      unproductive: (options.rules.unproductive || []).slice(),
+      other: (options.rules.other || []).slice()
     };
   }
   if (includeIgnore && options.ignore) {
@@ -195,6 +196,7 @@ function validateBackup(obj) {
   if (obj.rules != null) {
     if (!record(obj.rules)) fail('invalid rules');
     tags(obj.rules.productive); tags(obj.rules.unproductive);
+    if (obj.rules.other != null) tags(obj.rules.other);
   }
   if (obj.ignore != null) tags(Array.isArray(obj.ignore) ? obj.ignore : obj.ignore.ignore);
   if (obj.identities != null) {

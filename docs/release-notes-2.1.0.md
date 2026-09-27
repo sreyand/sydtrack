@@ -1,6 +1,6 @@
 # sydtrack v2.1.0
 
-SydTrack now starts with Windows by default and lets you choose how quickly it notices app switches.
+sydtrack now starts with Windows by default and lets you choose how quickly it notices app switches.
 
 ## New
 
@@ -10,7 +10,7 @@ SydTrack now starts with Windows by default and lets you choose how quickly it n
   - **Low** — checks every 5 seconds for lower processor use.
   - **Med** — checks every 3 seconds and is the new default.
   - **Max** — checks every second for the fastest app-switch detection.
-- Polling changes apply immediately without restarting SydTrack. Live tracked-time and session timers still advance once per second in every mode.
+- Polling changes apply immediately without restarting sydtrack. Live tracked-time and session timers still advance once per second in every mode.
 
 ## Performance
 
@@ -20,7 +20,7 @@ SydTrack now starts with Windows by default and lets you choose how quickly it n
 
 ## Reliability
 
-- A duplicate hidden startup launch no longer surfaces an already-running SydTrack window.
+- A duplicate hidden startup launch no longer surfaces an already-running sydtrack window.
 - Startup registration supports installed and portable Windows builds and macOS login items; unsupported Linux builds hide the setting.
 - Corrected cross-platform security checks so macOS and Ubuntu CI validate platform-appropriate application identity behavior.
 - Resetting the bundled Focus profiles now keeps General active instead of unexpectedly switching to Coding.
@@ -28,6 +28,6 @@ SydTrack now starts with Windows by default and lets you choose how quickly it n
 
 ## Upgrade note
 
-Quit SydTrack from the tray before installing v2.1.0. Existing activity, profiles, sessions, and settings are preserved.
+Quit sydtrack from the tray before installing v2.1.0. Existing activity, profiles, sessions, and settings are preserved.
 
 **Full changelog:** `v2.0.1...v2.1.0`

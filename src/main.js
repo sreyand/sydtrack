@@ -3,11 +3,12 @@
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme, globalShortcut } = require('electron');
 const { bindTrackingLifecycle } = require('./tracking-lifecycle');
 const { createErrorLog, installErrorLogging } = require('./error-log');
 let errorLog;
 const { createFocusProfiles } = require('./focus-profiles');
+const { createProfileShortcut } = require('./profile-shortcut');
 let focusProfiles;
 let appliedProfile = '';
 const { createAppTray } = require('./tray');
@@ -97,6 +98,9 @@ let servicesStarted = false;
 let appTray = null;
 let timedPause = null;
 let isQuitting = false;
+const profileShortcut = createProfileShortcut(globalShortcut, () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('profiles:cycle-requested');
+});
 const startHidden = shouldStartHidden({ argv: process.argv, platform: process.platform, appApi: app });
 
 function dataDir() {
@@ -188,8 +192,10 @@ function rulesPayload() {
   return {
     profileId: focusProfiles && focusProfiles.snapshot().activeId,
     browserApps: (identitiesHolder.identities && identitiesHolder.identities.browserApps) || [],
+    ignoredApps: (identitiesHolder.identities && identitiesHolder.identities.ignoredApps) || [],
     productive: (rulesHolder.rules && rulesHolder.rules.productive) || [],
     unproductive: (rulesHolder.rules && rulesHolder.rules.unproductive) || [],
+    other: (rulesHolder.rules && rulesHolder.rules.other) || [],
     path: rulesFilePath,
     isCustom: rulesIsCustom
   };
@@ -328,7 +334,7 @@ function fireReminder(payload) {
 
   const iconPath = path.join(__dirname, '..', 'renderer', 'assets', 'logo-mark.png');
 
-  // OS toast — the real light nudge (works even when SydTrack is in the background).
+  // OS toast — the real light nudge (works even when sydtrack is in the background).
   if (Notification.isSupported()) {
     try {
       const n = new Notification({
@@ -375,8 +381,8 @@ function reportRecovery({ filePath, recoveryPath }) {
   if (profilesReset && store) store.updateSettings({ trackingPaused: true });
   dialog.showMessageBox({
     type: 'warning',
-    title: 'SydTrack data recovery',
-    message: `SydTrack could not read ${path.basename(filePath)}.`,
+    title: 'sydtrack data recovery',
+    message: `sydtrack could not read ${path.basename(filePath)}.`,
     detail: `${settingsReset ? 'Settings were reset and tracking is paused. Review Settings before resuming.' : profilesReset ? 'Focus profiles were recovered from legacy tags into Default. Tracking is paused; review the profiles in Settings before resuming.' : 'This session file was set aside. Its contents have not been restored.'}\n\nThe original contents are preserved at:\n${recoveryPath}`,
     buttons: ['OK']
   }).catch((err) => console.error('[recovery] notice failed', err.message));
@@ -437,7 +443,7 @@ function applyFocusProfile(profile) {
   const signature = JSON.stringify(profile);
   if (signature === appliedProfile) return;
   appliedProfile = signature;
-  rulesHolder.rules = attachAppIdentities({ productive: profile.productive, unproductive: profile.unproductive });
+  rulesHolder.rules = attachAppIdentities({ productive: profile.productive, unproductive: profile.unproductive, other: profile.other || [] });
   rulesHolder.rules.profileId = profile.id;
   ignoreHolder.ignore = profile.ignore;
   rulesFilePath = ignoreFilePath = focusProfiles.filePath;
@@ -497,6 +503,7 @@ function createTray() {
   appTray = createAppTray({
     getMainWindow: () => mainWindow,
     getStore: () => store,
+    getActiveProfile: () => focusProfiles && focusProfiles.active(),
     updateSettings: applySettings,
     getSessionManager: () => sessionManager,
     getLastPayload: () => lastPayload,
@@ -537,6 +544,10 @@ app.whenReady().then(() => {
   syncStartupPreference(store.getSettings());
   createWindow();
   createTray();
+  const savedShortcut = store.getSettings().profileShortcut || '';
+  try {
+    if (!profileShortcut.set(savedShortcut).ok) console.warn('[shortcut] profile shortcut is unavailable:', savedShortcut);
+  } catch (err) { console.warn('[shortcut] saved profile shortcut is invalid:', err.message); }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else if (mainWindow && !mainWindow.isDestroyed()) {
@@ -546,7 +557,7 @@ app.whenReady().then(() => {
   });
 }).catch((err) => {
   console.error('[startup] failed', err);
-  dialog.showErrorBox('SydTrack could not start', `Local data could not be loaded safely. Check file access and available disk space before restarting.\n\n${err.message}`);
+  dialog.showErrorBox('sydtrack could not start', `Local data could not be loaded safely. Check file access and available disk space before restarting.\n\n${err.message}`);
   app.quit();
 });
 
@@ -560,6 +571,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  profileShortcut.dispose();
   if (timedPause) timedPause.dispose();
 });
 
@@ -570,7 +582,9 @@ ipcMain.handle('state:get', async (event, payload) => {
     lastFocused: lastPayload.lastFocused || (tracker && tracker.getLastFocused && tracker.getLastFocused()) || null,
     stats: store ? store.snapshot([], { includeWeek: false }) : lastPayload.stats,
     session: sessionManager ? sessionManager.getActiveSession() : lastPayload.session || null,
-    platform: process.platform
+    platform: process.platform,
+    profileShortcutRegistered: !store || !store.getSettings().profileShortcut ||
+      profileShortcut.active() === store.getSettings().profileShortcut
   };
 });
 
@@ -622,7 +636,8 @@ ipcMain.handle('rules:set', async (event, payload) => {
   const next = guardIpc(event, 'rules:set', payload);
   assertActiveProfile(next.profileId);
   validateSiteTags(next);
-  focusProfiles.save(focusProfiles.snapshot().activeId, { productive: next.productive, unproductive: next.unproductive });
+  focusProfiles.save(focusProfiles.snapshot().activeId, { productive: next.productive, unproductive: next.unproductive,
+    other: next.other === undefined ? focusProfiles.active().other : next.other });
   return rulesPayload();
 });
 
@@ -630,7 +645,7 @@ ipcMain.handle('rules:reset', async (event, payload) => {
   const profileId = guardIpc(event, 'rules:reset', payload);
   assertActiveProfile(profileId);
   const defaults = loadRulesFrom(DEFAULT_RULES_PATH);
-  focusProfiles.save(focusProfiles.snapshot().activeId, { productive: defaults.productive, unproductive: defaults.unproductive });
+  focusProfiles.save(focusProfiles.snapshot().activeId, { productive: defaults.productive, unproductive: defaults.unproductive, other: [] });
   return rulesPayload();
 });
 
@@ -688,7 +703,23 @@ ipcMain.handle('profiles:save', async (event, payload) => {
 });
 ipcMain.handle('profiles:activate', async (event, payload) => {
   const id = guardIpc(event, 'profiles:activate', payload);
-  return focusProfiles.activate(id);
+  const result = focusProfiles.activate(id);
+  if (appTray) appTray.refresh();
+  return result;
+});
+ipcMain.handle('profiles:cycle', async (event, payload) => {
+  guardIpc(event, 'profiles:cycle', payload);
+  const current = focusProfiles.snapshot();
+  if (current.profiles.length < 2) return current;
+  const index = current.profiles.findIndex(profile => profile.id === current.activeId);
+  const next = current.profiles[(index + 1) % current.profiles.length];
+  const result = focusProfiles.activate(next.id);
+  if (appTray) appTray.refresh();
+  if (store.getSettings().notificationsEnabled !== false && Notification.isSupported()) {
+    try { new Notification({ title: 'Focus profile', body: next.name, silent: true }).show(); }
+    catch (err) { console.warn('[shortcut] profile notification failed:', err.message); }
+  }
+  return result;
 });
 ipcMain.handle('profiles:delete', async (event, payload) => {
   const id = guardIpc(event, 'profiles:delete', payload);
@@ -713,6 +744,7 @@ ipcMain.handle('classification:preview', async (event, payload) => {
   const rules = {
     productive: draft.productive,
     unproductive: draft.unproductive,
+    other: (rulesHolder.rules && rulesHolder.rules.other) || [],
     browserKeywords: draft.browserKeywords,
     identities: rulesHolder.rules && rulesHolder.rules.identities
   };
@@ -728,15 +760,25 @@ function applySettings(partial) {
     !Object.prototype.hasOwnProperty.call(partial, 'trackingPauseUntil')
     ? { ...partial, trackingPauseUntil: 0 }
     : partial;
-  const next = updateAppSettings(store, sessionManager, changes, () => {
-    if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
-    if (partial && partial.theme && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setBackgroundColor(windowBackgroundColor(partial.theme));
-      if (process.platform === 'win32' && typeof mainWindow.setTitleBarOverlay === 'function') {
-        mainWindow.setTitleBarOverlay(titleBarOverlayForTheme(partial.theme));
+  const previousShortcut = profileShortcut.active();
+  if (changes && Object.prototype.hasOwnProperty.call(changes, 'profileShortcut') && !profileShortcut.set(changes.profileShortcut).ok) {
+    throw new Error('That shortcut is already in use. Choose another one.');
+  }
+  let next;
+  try {
+    next = updateAppSettings(store, sessionManager, changes, () => {
+      if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
+      if (partial && partial.theme && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setBackgroundColor(windowBackgroundColor(partial.theme));
+        if (process.platform === 'win32' && typeof mainWindow.setTitleBarOverlay === 'function') {
+          mainWindow.setTitleBarOverlay(titleBarOverlayForTheme(partial.theme));
+        }
       }
-    }
-  });
+    });
+  } catch (err) {
+    profileShortcut.set(previousShortcut);
+    throw err;
+  }
   if (tracker && wasPaused !== !!next.trackingPaused && typeof tracker.markPauseBoundary === 'function') {
     tracker.markPauseBoundary();
   }
@@ -757,10 +799,10 @@ ipcMain.handle('data:export', async (event, payload) => {
   const options = guardIpc(event, 'data:export', payload);
   if (!store || !mainWindow) return { ok: false, error: 'not ready' };
   const result = await dialog.showSaveDialog(mainWindow, {
-    title: 'Export SydTrack backup',
+    title: 'Export sydtrack backup',
     defaultPath: `sydtrack-backup-${new Date().toISOString().slice(0, 10)}.sydtrack`,
     filters: [
-      { name: 'SydTrack backup', extensions: ['sydtrack', 'json'] },
+      { name: 'sydtrack backup', extensions: ['sydtrack', 'json'] },
       { name: 'All files', extensions: ['*'] }
     ]
   });
@@ -785,7 +827,7 @@ ipcMain.handle('data:exportCsv', async (event, payload) => {
   guardIpc(event, 'data:exportCsv', payload);
   if (!store || !mainWindow) return { ok: false, error: 'not ready' };
   const result = await dialog.showSaveDialog(mainWindow, {
-    title: 'Export SydTrack CSV',
+    title: 'Export sydtrack CSV',
     defaultPath: `sydtrack-export-${new Date().toISOString().slice(0, 10)}.csv`,
     filters: [
       { name: 'CSV', extensions: ['csv'] },
@@ -809,10 +851,10 @@ ipcMain.handle('data:import', async (event, payload) => {
   const options = guardIpc(event, 'data:import', payload);
   if (!store || !mainWindow) return { ok: false, error: 'not ready' };
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Import SydTrack backup',
+    title: 'Import sydtrack backup',
     properties: ['openFile'],
     filters: [
-      { name: 'SydTrack backup', extensions: ['sydtrack', 'json'] },
+      { name: 'sydtrack backup', extensions: ['sydtrack', 'json'] },
       { name: 'CSV', extensions: ['csv'] },
       { name: 'All files', extensions: ['*'] }
     ]
@@ -832,7 +874,7 @@ ipcMain.handle('data:import', async (event, payload) => {
         focusProfiles,
         onSettings: applySettings,
         onRules: (rules) => {
-          focusProfiles.save('default', { productive: rules.productive, unproductive: rules.unproductive });
+          focusProfiles.save('default', { productive: rules.productive, unproductive: rules.unproductive, other: rules.other || [] });
         },
         onIgnore: (list) => {
           focusProfiles.save('default', { ignore: list });
@@ -870,10 +912,13 @@ ipcMain.handle('data:import', async (event, payload) => {
     mode: options.mode === 'replace' ? 'replace' : 'merge',
     onSettings: (next) => {
       if (sessionManager && next) sessionManager.applyHistorySetting(next.sessionHistoryEnabled !== false);
+      try {
+        if (!profileShortcut.set(next.profileShortcut || '').ok) console.warn('[shortcut] imported profile shortcut is unavailable');
+      } catch (err) { console.warn('[shortcut] imported profile shortcut is invalid:', err.message); }
       if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
     },
     onRules: (rules) => {
-      if (!obj.profiles) focusProfiles.save('default', { productive: rules.productive, unproductive: rules.unproductive });
+      if (!obj.profiles) focusProfiles.save('default', { productive: rules.productive, unproductive: rules.unproductive, other: rules.other || [] });
     },
     onIgnore: (list) => {
       if (!obj.profiles) focusProfiles.save('default', { ignore: list });
@@ -895,7 +940,7 @@ ipcMain.handle('profile:export', async (event, payload) => {
     title: 'Export Focus profile pack',
     defaultPath: `${baseName}-profile.sydtrack-profile`,
     filters: [
-      { name: 'SydTrack profile', extensions: ['sydtrack-profile', 'json'] },
+      { name: 'sydtrack profile', extensions: ['sydtrack-profile', 'json'] },
       { name: 'All files', extensions: ['*'] }
     ]
   });
@@ -905,6 +950,7 @@ ipcMain.handle('profile:export', async (event, payload) => {
     name: typeof options.name === 'string' ? options.name : undefined,
     productive: selected.productive,
     unproductive: selected.unproductive,
+    other: selected.other,
     ignore: selected.ignore
   });
   writeProfilePackFile(result.filePath, pack);
@@ -918,7 +964,7 @@ ipcMain.handle('profile:import', async (event, payload) => {
     title: 'Import Focus profile pack',
     properties: ['openFile'],
     filters: [
-      { name: 'SydTrack profile', extensions: ['sydtrack-profile', 'json'] },
+      { name: 'sydtrack profile', extensions: ['sydtrack-profile', 'json'] },
       { name: 'All files', extensions: ['*'] }
     ]
   });
@@ -936,7 +982,8 @@ ipcMain.handle('profile:import', async (event, payload) => {
   const confirmation = await dialog.showMessageBox(mainWindow, { type: 'question', buttons: ['Cancel', 'Replace tags'], defaultId: 0, cancelId: 0,
     message: `Replace tags in ${focusProfiles.active().name}?`, detail: 'Historical totals will not change.' });
   if (confirmation.response !== 1) return { ok: false, canceled: true };
-  focusProfiles.save(focusProfiles.snapshot().activeId, { productive: pack.productive, unproductive: pack.unproductive, ignore: pack.ignore });
+  focusProfiles.save(focusProfiles.snapshot().activeId, { productive: pack.productive, unproductive: pack.unproductive,
+    other: pack.other, ignore: pack.ignore });
 
   return {
     ok: true,
@@ -957,7 +1004,7 @@ ipcMain.handle('profiles:import', async (event, payload) => {
   if (result.canceled || !result.filePaths[0]) return null;
   const pack = readProfilePackFile(result.filePaths[0]);
   return focusProfiles.save(null, { name: pack.name || path.basename(result.filePaths[0], path.extname(result.filePaths[0])).slice(0, 40),
-    productive: pack.productive, unproductive: pack.unproductive, ignore: pack.ignore });
+    productive: pack.productive, unproductive: pack.unproductive, other: pack.other, ignore: pack.ignore });
 });
 
 ipcMain.handle('data:clearToday', async (event, payload) => {

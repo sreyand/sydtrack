@@ -1,26 +1,26 @@
-# SydTrack — next iteration
+# sydtrack — next iteration
 
-This is the single product and engineering handoff for future work. It describes what SydTrack is, what makes it worth using, and what should happen next. Release history belongs in `docs/release-notes-*.md`; validation procedures belong in the existing manual guides.
+This is the single product and engineering handoff for future work. It describes what sydtrack is, what makes it worth using, and what should happen next. Release history belongs in `docs/release-notes-*.md`; validation procedures belong in the existing manual guides.
 
 ## The product thesis
 
-**SydTrack helps people see patterns in their digital work without creating a replay of their life.**
+**sydtrack helps people see patterns in their digital work without creating a replay of their life.**
 
 It is for people who want a meaningful answer to “where did my computer time go?” but do not want screenshots, keystrokes, exhaustive browser history, workplace monitoring, an account, or a cloud service holding their activity.
 
 The intended loop is:
 
 1. Start with a useful profile.
-2. Work normally while SydTrack stays out of the way.
+2. Work normally while sydtrack stays out of the way.
 3. Review a concise, understandable picture of the day.
 4. Correct uncertain classifications when necessary.
 5. Use the result to make one better decision.
 
-SydTrack is a reflection tool, not an employee monitor, project-management suite, life logger, or AI productivity coach.
+sydtrack is a reflection tool, not an employee monitor, project-management suite, life logger, or AI productivity coach.
 
 ## Why it can stand out
 
-Clean visuals are not a moat by themselves. SydTrack is differentiated when its restraint is consistent across the whole product:
+Clean visuals are not a moat by themselves. sydtrack is differentiated when its restraint is consistent across the whole product:
 
 - Local data, no account, and no automatic upload.
 - Active-window tracking without screenshots or keystrokes.
@@ -36,11 +36,11 @@ The competitive space helps define this position:
 - [ActivityWatch](https://activitywatch.net/) is local-first and extensible, with a philosophy of retaining granular raw data for future analysis.
 - [Rize](https://rize.io/) emphasizes AI categorization, coaching, teams, projects, and business reporting.
 
-SydTrack should not chase their breadth. Its opportunity is to be the calm, opinionated option between a cloud productivity suite and a configurable life-logging platform.
+sydtrack should not chase their breadth. Its opportunity is to be the calm, opinionated option between a cloud productivity suite and a configurable life-logging platform.
 
 ## Who must find it easy
 
-SydTrack is not only for quantified-self enthusiasts or people who already understand productivity analytics. A basic user should be able to install it, accept the recommended defaults, leave it alone, and later understand where the day went.
+sydtrack is not only for quantified-self enthusiasts or people who already understand productivity analytics. A basic user should be able to install it, accept the recommended defaults, leave it alone, and later understand where the day went.
 
 Design for this usage distribution:
 
@@ -56,13 +56,13 @@ Each page has one job:
 - **Roundup:** What stood out today?
 - **Analytics:** What patterns exist over time?
 - **Focus Tags:** Why was something classified this way, and how do I change future classification?
-- **Settings:** How does SydTrack behave, and where is my data?
+- **Settings:** How does sydtrack behave, and where is my data?
 
 If a screen cannot state its purpose this simply, it is becoming too dense.
 
 ## Free by design
 
-SydTrack is free. Donations and recommendations are welcome, but they do not change functionality.
+sydtrack is free. Donations and recommendations are welcome, but they do not change functionality.
 
 - Do not lock features behind payment.
 - Do not add donation popups, countdowns, guilt, or repeated prompts.
@@ -73,11 +73,11 @@ The trust model is stronger when the product has no incentive to collect more be
 
 ## Current stopping point
 
-Version 2.1 is a coherent product boundary. It includes Home, Sessions, Roundup, Analytics, Focus Tags, five starter profiles, goals, FocusBoost, themes, backups, recovery, local retention, startup behavior, and selectable foreground polling.
+Version 2.2 is the next release candidate. It adds first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. The Windows artifacts can be prepared locally; these changes are not a published release until explicitly uploaded.
 
 Windows x64 is the supported release target. macOS and Linux packaging are best-effort CI targets. Builds are unsigned. The app is ready for observation and user testing; it does not need another feature wave before people try it.
 
-The next milestone is not “v3.” It is watching several new users install SydTrack, understand what it records, correct a classification, and return to review another day.
+Early informal feedback is positive: people described the app as simple and said its terms and corrections make sense. This is useful evidence, but it does not yet establish first-run comprehension, multi-day retention, or whether the shortcut works well across operating systems. Keep observing actual use rather than broadening the feature set by default.
 
 ## Next iteration, in order
 
@@ -85,15 +85,15 @@ The next milestone is not “v3.” It is watching several new users install Syd
 
 Build a 60–90 second first-run path with recommended choices already selected. The primary path should:
 
-1. Say: “See where your computer time goes.”
-2. Explain that SydTrack observes the active app and uses its title for local classification.
+1. Open with “See the pattern, not every move.”
+2. Keep the detailed active-app/title explanation in the README and Settings rather than making first run read like a manual.
 3. State that it never records keystrokes, screenshots, background windows, or automatic uploads.
 4. Ask what the computer is mainly used for: General, Coding, Writing, Study, or Creative.
 5. Finish with General or the chosen profile, Balanced tracking, startup enabled, and a clear **Start tracking** action.
 
 Pause, Export, Delete My Data, category definitions, tracking precision, and the generated demo can be shown as optional follow-up—not required setup. Do not tour every control or ask seven questions before the user sees value. The goal is informed trust and a useful starting configuration.
 
-The first-run path is implemented: new installs start paused, show the privacy boundary, offer the five starter profiles with General selected, and begin tracking only after **Start tracking**. Existing installs skip it. Ease and comprehension still need observation with new users; code checks alone do not validate that experience.
+The first-run path is implemented: new installs start paused, state the privacy boundary in one short line, offer the five starter profiles with General selected, and begin tracking only after **Start tracking**. Existing installs skip it. The setup avoids explaining polling cadence or every correction control up front. Early feedback says the app's terms and corrections are understandable; observe first-run use and a later return visit before treating onboarding as fully validated.
 
 ### 1a. Human language and progressive disclosure
 
@@ -110,7 +110,7 @@ Prefer language that communicates an outcome without assuming technical vocabula
 | Productive / Unproductive | On track / Distracting |
 | Local-first | Your data stays on this computer |
 
-Do not rename persisted fields or export formats merely to change visible copy. Test “On track / Distracting” before replacing Productive / Unproductive everywhere; the new wording should feel less judgmental without becoming vague.
+Do not rename persisted fields or export formats merely to change visible copy. Early users said the current terms and correction controls make sense, so do not rename Productive / Unproductive on speculation. Test any alternative such as “On track / Distracting” before changing visible copy broadly.
 
 Advanced controls should sit lower on the page, inside an optional section, or appear when relevant. A user who never opens Activity rules must still receive a useful result.
 
@@ -118,9 +118,11 @@ Advanced controls should sit lower on the page, inside an optional section, or a
 
 Add one primary visualization showing category blocks across the day. It should make long focus periods, interruptions, idle gaps, and context switching visible without exposing a raw title-by-title surveillance log.
 
-The timeline must aggregate adjacent compatible activity, handle missing/idle periods honestly, and provide accessible text equivalents. It should be filterable by category and profile where the stored data supports that distinction.
+The timeline must aggregate adjacent compatible activity, handle missing/idle periods honestly, and provide accessible text equivalents. Keep controls to those users actually need; category/profile filters and a text-range disclosure were removed after they made Day Analytics feel cluttered.
 
 Implemented in Analytics → Day. New raw days store coalesced local segments containing only category, timestamps, and profile ID; detected idle is separate. Pauses and unknown gaps are not recorded as activity. Older days retain their hourly (or daily-only) totals and are labeled as lower precision rather than assigned a fabricated sequence. Exact segments expire with the existing 90-day raw retention; compact long-term rollups do not keep them.
+
+The timeline fits the recorded activity by default instead of shrinking a few evening minutes onto a full-day rail. At overview scale it summarizes dominant category in clock-aligned intervals and marks genuinely mixed intervals, keeping high-frequency switching readable; zooming in reveals exact changes and preserves the text equivalent. Trackpad pinch zooms around the pointer; +/− zoom, 0 reset, and a bottom-right Recenter button are available. Hourly totals remain for older or partially recorded days, but are hidden when the exact timeline already tells the story.
 
 ### 3. An actionable Other inbox
 
@@ -128,9 +130,9 @@ Turn uncategorized time into a short queue ordered by impact:
 
 > Classify these three apps to explain 90% of today's Other time.
 
-One correction should have an obvious scope: today only, future profile rule, or Ignore. Do not make users manage hundreds of tags before SydTrack becomes useful.
+One correction should have an obvious scope: today only, future profile rule, or Ignore. Do not make users manage hundreds of tags before sydtrack becomes useful.
 
-Implemented in Focus Tags as an impact-ranked queue. Each app has a Review action with three explicit scopes: classify its Other time today, add an app/title keyword for future activity in the active profile, or Ignore the whole app in that profile. Future changes do not rewrite earlier activity; today-only corrections leave already-classified time and the recorded timeline intact. Browser rules remain title-only, with no address-bar or URL capture. Test the wording and workflow with new users before expanding it.
+The Focus Tags “Unclassified today” queue was removed because it duplicated Analytics and cluttered the page. Day Analytics → Apps now shows app slices and grouped activity reasons with compact P/U/O/I buttons for same-day corrections. Home offers quick P/U/O/I actions for future classification of the last focused item, and Focus Tags retains the editable profile rules. These scopes must stay distinct: an Analytics correction changes today's activity, while a Home or Focus Tags rule affects future tracking. Browser classification remains title-only, with no address-bar or URL capture. Do not restore a second review queue without user evidence that it solves a different problem.
 
 ### 4. Privacy controls that reinforce the promise
 
@@ -140,12 +142,12 @@ Consider:
 - An always-private app list.
 - “Pause for 15 minutes.”
 - A persistent, unmistakable paused state.
-- A plain-language “What SydTrack stores” view.
+- A plain-language “What sydtrack stores” view.
 - Optional retention choices and a visible local data location.
 
 Privacy controls are product features, not compliance decoration.
 
-Settings → Tracking → Data now has an expandable “What SydTrack stores” explanation and shows the local data folder. It states the title-only Windows boundary, what is saved locally, the 90-day detailed-history limit, and what remains in long-term rollups. This adds no collection or retention change.
+Settings → Tracking → Data now has an expandable “What sydtrack stores” explanation and shows the local data folder. It states the title-only Windows boundary, what is saved locally, the 90-day detailed-history limit, and what remains in long-term rollups. This adds no collection or retention change.
 “Pause for 15 minutes” is implemented: it skips foreground probes, survives restarts, and resumes without backfilling paused time. The other controls above remain candidates.
 
 ### 5. Intention versus outcome
@@ -154,7 +156,7 @@ Sessions may optionally ask, “What are you working on?” Store a short local 
 
 Do not turn this into task management, invoicing, or another scoring system.
 
-Sessions now accept a short, optional “Working on” label. It is stored only with the local active session and completed session log, survives restart and backup/restore, and appears in history. Older sessions without a label remain valid. Comparing intention with outcome is still a candidate for later user testing.
+The optional “Working on” input was removed from the current Sessions UI to recover the original centered, simple timer layout. Existing intention labels remain readable in session history and compatible with backups. Intention-versus-outcome is a future candidate, not a reason to put that input back without user demand.
 
 ### 6. Advanced analytics, for insight and delight
 
@@ -172,11 +174,13 @@ Each visualization must answer a sentence-shaped question. Avoid dashboards whos
 
 Analytics now includes a restrained Lifetime view: total tracked time, category totals, active days, average active day, and most tracked day. It derives from existing long-term rollups; it is not a second score or a title-level archive.
 
-Day Analytics also shows the longest recorded productive block when exact timeline segments exist. Idle, category changes, and untracked gaps break a block. Profile filtering narrows the calculation. Older hourly-only days show no invented block length.
+Day Analytics also shows the longest recorded productive block when exact timeline segments exist. Idle, category changes, and untracked gaps break a block. Older hourly-only days show no invented block length.
+
+Analytics → Apps now separates “where time went” by app from the Day/Week/Month category summaries. Its app donut keeps mixed-use browsers as one app slice; the expanded Day detail retains per-reason categories and same-day corrections. The compact layout and consistent row spacing are intentional. Avoid adding a second, more verbose classification table.
 
 ### 7. Custom desktop chrome
 
-Replace the generic Electron/Windows frame with a calm, integrated title bar after onboarding and the core analytics direction are validated.
+The generic Electron/Windows frame has been replaced with an integrated title bar. Continue to check its behavior at different display scales and on macOS/Linux rather than redesigning it again for appearance alone.
 
 Aim for the finish associated with a good macOS application without copying macOS traffic lights. Preserve Windows resizing, snap layouts, minimize/maximize/close behavior, keyboard access, contrast, drag regions, and the system menu. Windows 11 material effects can be progressive enhancement, not a requirement.
 
@@ -214,7 +218,7 @@ Test with at least five people who did not build the app, including people who d
 
 Useful questions:
 
-- Can they describe what SydTrack records and does not record?
+- Can they describe what sydtrack records and does not record?
 - Can they finish onboarding without understanding “polling,” “local-first,” or classification rules?
 - Can they choose an appropriate profile without help?
 - Can they explain why an app received its category?
@@ -222,7 +226,7 @@ Useful questions:
 - Do they understand Other and Ignore?
 - Can they identify one useful pattern after a day?
 - Do they voluntarily reopen it after three days?
-- What did SydTrack help them notice that they would not otherwise have noticed?
+- What did sydtrack help them notice that they would not otherwise have noticed?
 
 The strongest evidence is repeated voluntary use, not time spent exploring settings during a demo.
 
@@ -243,8 +247,11 @@ The strongest evidence is repeated voluntary use, not time spent exploring setti
 - External publication, tags, releases, and uploads require explicit user authorization.
 
 
-## A new idea
-Hotkey to quickswitch profiles that the user sets. So for example, pressing Alt+B to cycle. Ex. just now, i was watching youtube for my course, so if im in default productivity mode, i can do a quick Alt + B to cycle to Education? is this even feasible?
+## Profile-switch shortcut
+
+An optional global shortcut now cycles through configured Focus profiles, skipping empty slots. It defaults to Off. Settings → Tracking offers Alt+B, Ctrl/⌘+Alt+B, and Ctrl/⌘+Shift+B; a conflicting shortcut is rejected without replacing the previous working choice. The new profile is confirmed in the app and, when notifications are enabled and supported, with a quiet desktop notification. The tray tooltip also names the active profile. Unsaved Focus Tags edits must not be silently discarded. Profile changes affect future classification, not past totals.
+
+Validate the shortcut on packaged Windows and best-effort macOS/Linux builds; operating systems may reserve combinations or decline global registration. Do not present the shortcut as necessary for basic use.
 
 ## Verification
 
@@ -263,7 +270,7 @@ Inspect the packaged version and hashes. Use the manual lifecycle and Focus prof
 Supporting references:
 
 - [README](README.md)
-- [Current release notes](docs/release-notes-2.1.0.md)
+- [Current release notes](docs/release-notes-2.2.0.md)
 - [Lifecycle validation](docs/manual-lifecycle-validation.md)
 - [Focus profile validation](docs/manual-focus-profiles-validation.md)
 - [Focus profile generation guide](docs/focus-profile-generation-guide.md)

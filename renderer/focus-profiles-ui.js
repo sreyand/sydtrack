@@ -10,7 +10,8 @@
   const tagsDirty = () => {
     const current = currentTagLists();
     return canonical(current.productive) !== canonical(cachedRules.productive) ||
-      canonical(current.unproductive) !== canonical(cachedRules.unproductive) || canonical(current.ignore) !== canonical(cachedIgnore);
+      canonical(current.unproductive) !== canonical(cachedRules.unproductive) ||
+      canonical(current.other) !== canonical(cachedRules.other) || canonical(current.ignore) !== canonical(cachedIgnore);
   };
   function mayDiscard(includeEditor = true) {
     if (busy || tagsQuickSaving) return false;
@@ -132,6 +133,15 @@
     if (!$('view-tags').classList.contains('hidden')) $('profile-editor-select').focus();
     else $('focus-profile-btn').focus();
   }
+  async function cycleProfile() {
+    if (busy || tagsQuickSaving) return;
+    await reload(false);
+    if (!mayDiscard()) return;
+    if (state.profiles.length < 2) { status('Add another Focus profile to use the shortcut.'); return; }
+    const index = state.profiles.findIndex(profile => profile.id === state.activeId);
+    const next = state.profiles[(index + 1) % state.profiles.length];
+    await run(() => api.cycleProfile(), 'Profile switched to ' + displayName(next) + '.');
+  }
   $('focus-profile-btn').addEventListener('click', async () => {
     if (busy) return;
     if (!$('focus-profile-menu').classList.contains('hidden')) { closeMenu(); return; }
@@ -171,6 +181,7 @@
       if (draft) {
         $('rules-prod-edit').value = draft.productive.join('\n');
         $('rules-unprod-edit').value = draft.unproductive.join('\n');
+        $('rules-other-edit').value = draft.other.join('\n');
         $('ignore-edit').value = draft.ignore.join('\n');
       }
     });
@@ -194,6 +205,7 @@
     catch (err) { status(err.message); }
   });
   document.querySelector('.nav-btn[data-tab="tags"]').addEventListener('click', () => { if (!busy && !editorDirty()) reload().catch(err => status(err.message)); });
-  window.sydtrackProfilesUI = { reload, mayDiscard };
+  window.sydtrackProfilesUI = { reload, mayDiscard, cycleProfile };
+  if (api && api.onProfileShortcut) api.onProfileShortcut(() => cycleProfile().catch(err => status(err.message)));
   reload().catch(err => status(err.message));
 })();

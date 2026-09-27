@@ -108,6 +108,7 @@ function tagRows(rules, ignore) {
   const rows = [];
   for (const tag of (rules && rules.productive) || []) rows.push(['rule', '', '', 'productive', '', '', '', '', '', '', '', '', '', 'productive', tag]);
   for (const tag of (rules && rules.unproductive) || []) rows.push(['rule', '', '', 'unproductive', '', '', '', '', '', '', '', '', '', 'unproductive', tag]);
+  for (const tag of (rules && rules.other) || []) rows.push(['rule', '', '', 'other', '', '', '', '', '', '', '', '', '', 'other', tag]);
   const list = Array.isArray(ignore) ? ignore : (ignore && ignore.ignore) || [];
   for (const tag of list) rows.push(['ignore', '', tag]);
   return rows;
@@ -117,7 +118,7 @@ function profileRows(snapshot) {
   if (!snapshot || !Array.isArray(snapshot.profiles)) return [];
   const rows = [];
   for (const profile of snapshot.profiles) {
-    for (const field of ['productive', 'unproductive', 'ignore']) {
+    for (const field of ['productive', 'unproductive', 'other', 'ignore']) {
       const tags = profile[field] || [];
       if (!tags.length) {
         rows.push(['profile', '', profile.name, '', '', profile.id, '', '', '', '', '', '', '', field, '', profile.id === snapshot.activeId ? '1' : '0']);
@@ -176,7 +177,7 @@ function importCsv(store, text, opts) {
   const days = new Map();
   const sessions = {};
   const settings = {};
-  const rules = { productive: [], unproductive: [] };
+  const rules = { productive: [], unproductive: [], other: [] };
   const ignore = [];
   const profiles = new Map();
   let activeId = null;
@@ -235,7 +236,7 @@ function importCsv(store, text, opts) {
     } else if (record === 'rule') {
       const field = cell(row, columns, 'field');
       const tag = cell(row, columns, 'tag');
-      if (!['productive', 'unproductive'].includes(field) || !tag) {
+      if (!['productive', 'unproductive', 'other'].includes(field) || !tag) {
         result.error = 'Invalid CSV rule';
         return result;
       }
@@ -252,11 +253,11 @@ function importCsv(store, text, opts) {
       const name = cell(row, columns, 'name');
       const field = cell(row, columns, 'field');
       const tag = cell(row, columns, 'tag');
-      if (!id || !name || !['productive', 'unproductive', 'ignore'].includes(field)) {
+      if (!id || !name || !['productive', 'unproductive', 'other', 'ignore'].includes(field)) {
         result.error = 'Invalid CSV profile row';
         return result;
       }
-      if (!profiles.has(id)) profiles.set(id, { id, name, productive: [], unproductive: [], ignore: [] });
+      if (!profiles.has(id)) profiles.set(id, { id, name, productive: [], unproductive: [], other: [], ignore: [] });
       if (tag) profiles.get(id)[field].push(tag);
       if (cell(row, columns, 'active') === '1') activeId = id;
     } else if (record) {
@@ -307,7 +308,7 @@ function importCsv(store, text, opts) {
     if (options.onSettings) options.onSettings(settings);
     else store.updateSettings(settings);
   }
-  if ((rules.productive.length || rules.unproductive.length) && options.onRules) options.onRules(rules);
+  if ((rules.productive.length || rules.unproductive.length || rules.other.length) && options.onRules) options.onRules(rules);
   if (ignore.length && options.onIgnore) options.onIgnore(ignore);
   if (profileSnapshot && options.focusProfiles) options.focusProfiles.restore(profileSnapshot);
   store.pruneOldHistory();

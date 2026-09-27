@@ -31,6 +31,9 @@ const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-main-sec-'));
 if (!process.resourcesPath) process.resourcesPath = path.join(__dirname, '..');
 const handlers = new Map();
 const switches = [];
+const registeredShortcuts = new Map();
+let blockedShortcut = null;
+const sentMessages = [];
 let appliedAppId = null;
 let loginItemSettings = null;
 let windowShowCount = 0;
@@ -56,7 +59,7 @@ const webContents = {
   on(event, fn) { this.listeners[event] = fn; },
   once() {},
   setWindowOpenHandler(fn) { this.openHandler = fn; },
-  send() {},
+  send(channel, payload) { sentMessages.push({ channel, payload }); },
   loadURL() { return Promise.resolve(); }
 };
 
@@ -83,6 +86,14 @@ function Notification() {}
 Notification.isSupported = () => false;
 
 const electron = {
+  globalShortcut: {
+    register(key, callback) {
+      if (key === blockedShortcut) return false;
+      registeredShortcuts.set(key, callback);
+      return true;
+    },
+    unregister(key) { registeredShortcuts.delete(key); }
+  },
   app: {
     commandLine: { appendSwitch: (name) => switches.push(name) },
     requestSingleInstanceLock: () => true,
@@ -183,6 +194,22 @@ async function run() {
 
   const goodEvent = { sender: webContents, senderFrame: webContents.mainFrame };
   const badEvent = { sender: { id: 'other' }, senderFrame: { url: APP_PAGE_URL } };
+
+  await handlers.get('settings:update')(goodEvent, { profileShortcut: 'Alt+B' });
+  assert(registeredShortcuts.has('Alt+B'), 'enabling the profile shortcut registers it');
+  registeredShortcuts.get('Alt+B')();
+  assert(sentMessages.some(message => message.channel === 'profiles:cycle-requested'), 'shortcut requests a renderer-guarded profile change');
+  blockedShortcut = 'CommandOrControl+Alt+B';
+  await throws(() => handlers.get('settings:update')(goodEvent, { profileShortcut: blockedShortcut }), 'colliding shortcut is rejected');
+  assert(registeredShortcuts.has('Alt+B') &&
+    (await handlers.get('state:get')(goodEvent)).stats.settings.profileShortcut === 'Alt+B',
+  'collision preserves both the registered shortcut and saved preference');
+  blockedShortcut = null;
+  const beforeCycle = await handlers.get('profiles:get')(goodEvent);
+  const afterCycle = await handlers.get('profiles:cycle')(goodEvent);
+  assert(beforeCycle.profiles.length < 2 || afterCycle.activeId !== beforeCycle.activeId, 'profile cycle advances to an available profile');
+  await handlers.get('settings:update')(goodEvent, { profileShortcut: '' });
+  assert(!registeredShortcuts.has('Alt+B'), 'turning the shortcut off unregisters it');
 
   const timedPause = await handlers.get('tracking:pause15')(goodEvent);
   assert(timedPause.trackingPaused === true && timedPause.trackingPauseUntil > Date.now(),

@@ -1,6 +1,6 @@
-# Give this guide to a model generating SydTrack Focus profiles
+# Give this guide to a model generating sydtrack Focus profiles
 
-You are generating small, declarative Focus profile files for SydTrack, a private, local Windows productivity tracker. Produce useful, conservative keyword lists for the user's stated activities. Do not invent app features or output executable code.
+You are generating small, declarative Focus profile files for sydtrack, a private, local Windows productivity tracker. Produce useful, conservative keyword lists for the user's stated activities. Do not invent app features or output executable code.
 
 ## Ask the user first
 
@@ -23,7 +23,7 @@ Return one UTF-8 JSON file per profile with the extension `.sydtrack-profile`. N
 }
 ```
 
-The empty arrays above illustrate the schema, not a recommended preset. Do not add `id`, `activeId`, `profiles`, `productiveApps`, settings, timers, or scores. SydTrack generates local IDs. `exportedAt` and `appVersion` are optional metadata; omit them rather than inventing values.
+The empty arrays above illustrate the schema, not a recommended preset. Do not add `id`, `activeId`, `profiles`, `productiveApps`, settings, timers, or scores. sydtrack generates local IDs. `exportedAt` and `appVersion` are optional metadata; omit them rather than inventing values.
 
 - Name: 1–40 trimmed characters, unique among installed profiles, ignoring case.
 - Each tag list: an array of strings, at most 1,000 entries; each entry at most 200 characters. Prefer a short curated list, not hundreds of speculative matches.
@@ -32,7 +32,7 @@ The empty arrays above illustrate the schema, not a recommended preset. Do not a
 
 ## What classification actually does
 
-1. **Ignore wins.** Ignore tags match whole application/process names by substring. They do not target one browser tab. Never put `youtube`, a URL, or a `site:` tag in Ignore expecting to exclude just a website. Ignoring `chrome` excludes every Chrome tab. SydTrack and globally ignored system processes remain excluded independently of the profile.
+1. **Ignore wins.** Ignore tags match whole application/process names by substring. They do not target one browser tab. Never put `youtube`, a URL, or a `site:` tag in Ignore expecting to exclude just a website. Ignoring `chrome` excludes every Chrome tab. sydtrack and globally ignored system processes remain excluded independently of the profile.
 2. **Native app identities remain global.** Known productive tools such as VS Code/Cursor stay productive despite distracting words in a project title. An explicit Unproductive process-name match overrides their productive identity. Process matching here is exact against executable/app names, with optional `.exe` differences, not a wildcard.
 3. **Browser content is title-based in normal Windows tracking.** Recognized browsers default to Productive when no content keyword matches. Unproductive title keywords override that default. A useful site name visible in the foreground page title can be a keyword; a website is not reliably recognized when its title lacks that keyword.
 4. **Ordinary keywords use case-insensitive substring matches.** Unproductive matches precede Productive matches. Regex, glob syntax, negative rules, semantic topic recognition, and numeric priority weights are not supported. Very broad words can create false positives. An app-name keyword may also match a browser title; there is no separate `process:` namespace.

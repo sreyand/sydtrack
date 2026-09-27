@@ -83,7 +83,7 @@
         <div class="home-layout">
           <article class="card chart-card home-focus">
             <div class="pie-wrap">
-              <div id="pie-chart" class="pie-chart" role="img" aria-label="Time breakdown pie"></div>
+              <div id="pie-chart" class="pie-chart" role="img" aria-label="No time tracked yet"></div>
               <div class="pie-center">
                 <div id="pie-total" class="pie-total">0m</div>
                 <div class="pie-total-label">tracked</div>
@@ -124,9 +124,10 @@
                 <div class="lf-actions">
                   <span id="lf-cat" class="chip other">—</span>
                   <span class="lf-reclass">
-                    <button type="button" id="lf-prod" class="btn-mini prod" title="Mark productive">P</button>
-                    <button type="button" id="lf-unprod" class="btn-mini unprod" title="Mark unproductive">U</button>
-                    <button type="button" id="lf-ignore" class="btn-mini ignore" title="Ignore (stop tracking)">I</button>
+                    <button type="button" id="lf-prod" class="btn-mini prod" title="Mark productive" aria-label="Mark productive">P</button>
+                    <button type="button" id="lf-unprod" class="btn-mini unprod" title="Mark unproductive" aria-label="Mark unproductive">U</button>
+                    <button type="button" id="lf-other" class="btn-mini other" title="Keep as Other (neutral)" aria-label="Keep as Other (neutral)">O</button>
+                    <button type="button" id="lf-ignore" class="btn-mini ignore" title="Ignore (stop tracking)" aria-label="Ignore this app">I</button>
                   </span>
                 </div>
               </div>
@@ -226,32 +227,39 @@
             <button type="button" class="segment-btn active" data-segment="day" role="tab" aria-selected="true">Day</button>
             <button type="button" class="segment-btn" data-segment="week" role="tab" aria-selected="false">Week</button>
             <button type="button" class="segment-btn" data-segment="month" role="tab" aria-selected="false">Month</button>
-            <button type="button" class="segment-btn" data-segment="apps" role="tab" aria-selected="false">Apps</button>
             <button type="button" class="segment-btn" data-segment="lifetime" role="tab" aria-selected="false">Lifetime</button>
+          </div>
+          <div class="analytics-apps-control">
+            <button type="button" class="segment-btn analytics-apps-tab" data-segment="apps" role="tab" aria-selected="false">Apps</button>
+            <div id="apps-range" class="apps-range hidden" role="group" aria-label="App time range">
+              <button type="button" class="segment-btn active" data-apps-range="day" aria-pressed="true">Day</button>
+              <button type="button" class="segment-btn" data-apps-range="week" aria-pressed="false">Week</button>
+              <button type="button" class="segment-btn" data-apps-range="month" aria-pressed="false">Month</button>
+            </div>
           </div>
         </div>
 
         <div id="panel-day" class="analytics-panel" data-panel="day">
           <article class="card timeline-card" aria-labelledby="timeline-heading">
             <div class="timeline-head">
-              <div><h2 id="timeline-heading">Day timeline</h2><p id="timeline-precision" class="muted" aria-live="polite">Loading activity…</p></div>
-              <label class="timeline-date-label">Day <input id="timeline-date" type="date" aria-label="Timeline date" /></label>
+              <div><h2 id="timeline-heading">Activity timeline</h2><p id="timeline-precision" class="muted" aria-live="polite">Loading activity…</p></div>
+              <label class="timeline-date-label">Date <input id="timeline-date" type="date" aria-label="Timeline date" /></label>
             </div>
-            <div class="timeline-filters">
-              <label>Show <select id="timeline-category" aria-label="Timeline category"><option value="all">All activity</option><option value="productive">Productive</option><option value="unproductive">Unproductive</option><option value="other">Other</option><option value="idle">Idle</option></select></label>
-              <label>Profile <select id="timeline-profile" aria-label="Timeline profile"><option value="all">All profiles</option></select></label>
-            </div>
-            <div class="day-legend" aria-hidden="true">
+            <div id="timeline-visual" class="timeline-visual" role="img" tabindex="0" aria-label="No timeline yet" aria-describedby="timeline-text"></div>
+            <div id="timeline-legend" class="day-legend" aria-hidden="true">
               <span><span class="swatch prod"></span> Productive</span>
               <span><span class="swatch unprod"></span> Unproductive</span>
               <span><span class="swatch other"></span> Other</span>
               <span><span class="timeline-idle-key"></span> Idle</span>
+              <span id="timeline-mixed-key" class="hidden"><span class="timeline-mixed-swatch"></span> Mixed</span>
             </div>
-            <div id="timeline-visual" class="timeline-visual" role="img" aria-label="No timeline yet"></div>
-            <p id="timeline-longest" class="timeline-insight hidden" aria-live="polite"></p>
-            <details class="timeline-details"><summary>Timeline in text</summary><p>Categories reflect tracking at the time. Later corrections may change the totals below.</p><ol id="timeline-text"></ol></details>
+            <div id="timeline-footer" class="timeline-footer hidden">
+              <p id="timeline-longest" class="timeline-insight hidden" aria-live="polite"></p>
+              <button type="button" id="timeline-recenter" class="btn ghost hidden" aria-label="Recenter timeline on recorded activity">Recenter</button>
+            </div>
+            <ol id="timeline-text" class="screen-reader-only"></ol>
           </article>
-          <article class="card day-chart-card">
+          <article id="day-hourly-card" class="card day-chart-card">
             <h2 class="timeline-hourly-heading">Hourly totals</h2>
             <div class="chart-tip-wrap">
               <div class="chart-frame">
@@ -337,12 +345,26 @@
         </div>
 
         <div id="panel-apps" class="analytics-panel hidden" data-panel="apps">
-          <article class="card">
-            <h3>Today’s activity</h3>
-            <p class="hint">These are recorded categories, not the active profile’s current rules. P/U/ign corrects today’s row only; switching profiles changes future tracking.</p>
-                        <ul id="app-list" class="app-list">
-              <li class="empty">No time logged yet</li>
-            </ul>
+          <p id="apps-range-status" class="muted apps-range-status" role="status" aria-live="polite"></p>
+          <article class="card apps-overview" aria-labelledby="apps-overview-title">
+            <div class="apps-overview-head">
+              <div><h2 id="apps-overview-title">Where your time went</h2><p id="apps-period-label">Today · active app time</p></div>
+            </div>
+            <div class="apps-overview-body">
+              <div id="apps-donut" class="pie-chart apps-donut" role="img" aria-label="No app time tracked yet">
+                <div class="pie-center apps-donut-center" aria-hidden="true"><strong id="apps-total" class="pie-total">0m</strong><span class="pie-total-label">tracked</span></div>
+              </div>
+              <ol id="apps-legend" class="apps-legend"><li class="empty">No apps tracked yet</li></ol>
+            </div>
+            <p id="apps-overview-note" class="apps-overview-note">Each slice is an app, not a productivity category. Ignored time is excluded.</p>
+          </article>
+          <article class="card apps-detail-card" aria-labelledby="apps-detail-title">
+            <div class="apps-detail-head">
+              <div><h2 id="apps-detail-title">Activity details</h2><p id="apps-detail-description">See what matched. Change a row if today’s category is wrong.</p></div>
+            </div>
+            <p id="apps-correction-status" class="apps-correction-status" role="status" aria-live="polite"></p>
+            <ul id="app-list" class="app-list apps-detail-list"><li class="empty">No time logged yet</li></ul>
+            <p id="apps-detail-note" class="apps-detail-note">Changes here affect today only. Your Focus Tags stay the same.</p>
           </article>
         </div>
         <div id="panel-lifetime" class="analytics-panel hidden" data-panel="lifetime">
@@ -382,10 +404,6 @@
             </div>
           </div>
 
-          <label class="session-intention-field" for="session-intention">
-            <span>Working on <span class="muted">(optional)</span></span>
-            <input id="session-intention" type="text" maxlength="80" autocomplete="off" spellcheck="true" placeholder="A short intention" />
-          </label>
           <p id="session-intention-status" class="session-intention-status" role="alert"></p>
           <div class="session-alarm-row">
             <div class="session-alarm-left">
@@ -411,7 +429,7 @@
             </div>
             <label class="session-day-pick">
               <span class="muted tiny">Day</span>
-              <select id="session-day-select" aria-label="Session day"></select>
+              <select id="session-day-select" aria-label="Session day"><option value="">Today</option></select>
             </label>
           </div>
           <div id="session-log-list" class="session-log-list">
@@ -437,26 +455,9 @@
           <select id="profile-editor-select" aria-label="Active Focus profile"></select>
         </div>
 
-        <article class="card tags-other-card" id="tags-other-card" hidden>
-          <div class="lf-kicker tag-kicker">Unclassified today</div>
-          <p class="hint tags-hint">Start with the apps taking the most unclassified time.</p>
-          <div id="tags-other-list" class="tags-other-list"></div>
-          <div id="tags-other-editor" class="tags-other-editor" hidden>
-            <h3 id="tags-other-editor-title">Review app</h3>
-            <p id="tags-other-editor-note" class="muted"></p>
-            <div class="tags-other-fields">
-              <label>Apply to <select id="tags-other-scope"><option value="today">Other time today</option><option value="future">Future activity in this profile</option><option value="ignore">Ignore this app in this profile</option></select></label>
-              <label id="tags-other-category-field">Classify as <select id="tags-other-category"><option value="productive">Productive</option><option value="unproductive">Unproductive</option></select></label>
-              <label id="tags-other-keyword-field" hidden>App or title keyword <input id="tags-other-keyword" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="A word from the app or window title" /></label>
-            </div>
-            <div class="tags-other-actions"><button type="button" id="tags-other-apply" class="btn primary">Apply</button><button type="button" id="tags-other-cancel" class="btn ghost">Cancel</button></div>
-            <p id="tags-other-status" class="muted tiny" role="status" aria-live="polite"></p>
-          </div>
-        </article>
-
         <article class="card tags-card tags-quick-card">
           <div class="lf-kicker tag-kicker">Quick add</div>
-          <p class="hint tags-hint">Add words from an app or page title. Ignore is for whole apps. On Windows, SydTrack does not read browser addresses, so site: rules cannot match; use title words instead.</p>
+          <p class="hint tags-hint">Add words from an app or page title. Ignore is for whole apps. On Windows, sydtrack does not read browser addresses, so site: rules cannot match; use title words instead.</p>
           <div class="tags-quick-row">
             <input type="text" id="tags-quick-input" class="tags-quick-input" placeholder="Type a keyword…" spellcheck="false" autocomplete="off" />
             <div class="tags-quick-btns" role="group" aria-label="Add keyword to list">
@@ -466,19 +467,6 @@
             </div>
           </div>
           <p id="tags-quick-status" class="muted tiny tags-quick-status" role="status" aria-live="polite">Type a keyword to see which list it is in.</p>
-        </article>
-
-        <article class="card tags-preview-card">
-          <div class="lf-kicker tag-kicker">Test a title</div>
-          <p class="hint tags-hint">Check unsaved rules before saving. The text stays in this window.</p>
-          <div class="tags-preview-fields">
-            <label class="field"><span>App</span><input id="tags-preview-app" type="text" maxlength="120" placeholder="chrome" autocomplete="off" /></label>
-            <label class="field"><span>Window title</span><input id="tags-preview-title" type="text" maxlength="500" placeholder="GitHub - Chrome" autocomplete="off" /></label>
-          </div>
-          <div class="rules-actions">
-            <button type="button" id="tags-preview-run" class="btn">Preview classification</button>
-            <span id="tags-preview-result" class="muted" role="status" aria-live="polite">Enter an app and title to test the current draft.</span>
-          </div>
         </article>
 
         <div class="profile-tag-fields">
@@ -516,6 +504,15 @@
         </div>
 
         </div>
+        <details class="card neutral-rules-card">
+          <summary>Other overrides</summary>
+          <p class="hint tags-hint">Title words kept neutral even when a broader productive or unproductive rule matches. These belong to the active Focus profile.</p>
+          <textarea id="rules-other-edit" class="rules-textarea tags-textarea" spellcheck="false" rows="4" placeholder="one title word per line"></textarea>
+          <div class="rules-actions">
+            <button type="button" id="rules-other-save" class="btn primary">Save overrides</button>
+            <span id="rules-other-status" class="muted tiny" role="status"></span>
+          </div>
+        </details>
         <article class="card tags-card" id="browser-keywords-card">
           <div class="lf-kicker tag-kicker">Browser keywords</div>
           <p class="hint tags-hint">Exact title words used after profile rules miss. Unmatched browser pages stay Other. One keyword per line.</p>
@@ -646,7 +643,7 @@
             <label class="field settings-inline-field">
               <div class="settings-field-copy">
                 <span>Polling mode</span>
-                <div class="hint">How quickly SydTrack notices an app switch.</div>
+                <div class="hint">How quickly sydtrack notices an app switch.</div>
               </div>
               <select id="poll-mode">
                 <option value="5000">Low · 5 sec</option>
@@ -654,6 +651,19 @@
                 <option value="1000">Max · 1 sec</option>
               </select>
             </label>
+          </div>
+
+          <div class="settings-block" id="profile-shortcut-settings">
+            <div class="field settings-inline-field profile-shortcut-row">
+              <label for="profile-shortcut" class="settings-block-title">Focus profile hotswap</label>
+              <select id="profile-shortcut">
+                <option value="">Off</option>
+                <option value="Alt+B">Alt+B</option>
+                <option value="CommandOrControl+Alt+B">Ctrl/⌘+Alt+B</option>
+                <option value="CommandOrControl+Shift+B">Ctrl/⌘+Shift+B</option>
+              </select>
+            </div>
+            <p id="profile-shortcut-status" class="hint hidden" role="status"></p>
           </div>
 
           <!-- Reminder timing fields -->
@@ -761,10 +771,10 @@
         <article class="card data-card" id="settings-data-card">
           <h3>Data</h3>
           <details class="storage-details" id="settings-storage-details">
-            <summary>What SydTrack stores</summary>
+            <summary>What sydtrack stores</summary>
             <div class="storage-details-body">
-              <p>SydTrack checks the app you're using and its window title. On Windows, it does not read browser addresses. Pause tracking to stop these checks.</p>
-              <p>Daily history keeps app names, categories, time, and the word or rule that matched. The active title appears live, but SydTrack does not save a title-by-title log. Sessions and optional session labels, Focus profiles, settings, and error logs also stay on this computer.</p>
+              <p>sydtrack checks the app you're using and its window title. On Windows, it does not read browser addresses. Pause tracking to stop these checks.</p>
+              <p>Daily history keeps app names, categories, time, and the word or rule that matched. The active title appears live, but sydtrack does not save a title-by-title log. Sessions and optional session labels, Focus profiles, settings, and error logs also stay on this computer.</p>
               <p>Detailed history and the day timeline stay for 90 days. After that, daily, hourly, and app totals remain for lifetime stats. The exact sequence and matched words expire.</p>
               <p>No screenshots, keystrokes, background-window history, or automatic activity uploads. Exports are files you choose to save and can contain private activity details.</p>
             </div>
@@ -797,15 +807,11 @@
   </div>
   <section id="onboarding-screen" class="onboarding-screen hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
     <div class="onboarding-card">
-      <span class="onboarding-eyebrow">Welcome to SydTrack</span>
-      <h1 id="onboarding-title">See where your computer time goes.</h1>
-      <p class="onboarding-lead">SydTrack watches the active app and uses its window title to classify your time.</p>
-      <div class="onboarding-privacy" role="note">
-        <strong>Your data stays on this computer</strong>
-        <p>No screenshots, keystrokes, background windows, or automatic uploads. You can pause tracking or delete your data in Settings.</p>
-      </div>
+      <span class="onboarding-eyebrow">Welcome to sydtrack</span>
+      <h1 id="onboarding-title">See the pattern, not every move.</h1>
+      <p class="onboarding-privacy" role="note"><strong>Private by default.</strong> No screenshots, keystrokes, background windows, or uploads. Your data stays here.</p>
       <fieldset class="onboarding-profiles">
-        <legend>What do you mainly use this computer for?</legend>
+        <legend>Choose a starting profile</legend>
         <div class="onboarding-profile-grid">
           <label><input type="radio" name="onboarding-profile" value="default" checked /><span>General</span></label>
           <label><input type="radio" name="onboarding-profile" value="coding" /><span>Coding</span></label>
@@ -814,9 +820,8 @@
           <label><input type="radio" name="onboarding-profile" value="creative" /><span>Creative</span></label>
         </div>
       </fieldset>
-      <label class="onboarding-startup"><input type="checkbox" id="onboarding-startup" checked /> Open SydTrack when I sign in</label>
+      <label class="onboarding-startup"><input type="checkbox" id="onboarding-startup" checked /> Open sydtrack when I sign in</label>
       <div class="onboarding-actions">
-        <span>Balanced tracking · about every 3 seconds</span>
         <button type="button" id="onboarding-start" class="btn primary">Start tracking</button>
       </div>
       <p id="onboarding-error" class="onboarding-error hidden" role="alert"></p>
@@ -828,6 +833,7 @@
   <script src="lib/goals.js"></script>
   <script src="lib/insights.js"></script>
   <script src="lib/day-timeline.js"></script>
+  <script src="lib/apps-analytics.js"></script>
   <script src="wellbeing-ui.js"></script>
   <script src="renderer.js"></script>
   <script src="focus-profiles-ui.js"></script>

@@ -31,7 +31,8 @@ function normalizeKeywords(list) {
 function normalizeRules(parsed) {
   return {
     productive: normalizeKeywords(parsed && parsed.productive),
-    unproductive: normalizeKeywords(parsed && parsed.unproductive)
+    unproductive: normalizeKeywords(parsed && parsed.unproductive),
+    other: normalizeKeywords(parsed && parsed.other)
   };
 }
 
@@ -150,9 +151,9 @@ function appMatchesIdentity(win, identities) {
 
 /**
  * True if process name / app label matches an ignore keyword (case-insensitive).
- * Also: electron process with SydTrack in the title → ignored (self).
+ * Also: electron process with sydtrack in the title → ignored (self).
  * Match against owner.name, path basename, and app label — not arbitrary title text
- * (except the SydTrack self-exclusion rule).
+ * (except the sydtrack self-exclusion rule).
  */
 function isIgnored(win, ignoreList, identities) {
   if (!win) return false;
@@ -166,7 +167,7 @@ function isIgnored(win, ignoreList, identities) {
   if (/electron/i.test(nameHay) && /\b(sydtrack|focusflow)\b/i.test(title)) {
     return true;
   }
-  // Self: packaged SydTrack, including the previous focusflow process name.
+  // Self: packaged sydtrack, including the previous focusflow process name.
   if (/\b(sydtrack|focusflow)\b/i.test(owner) || /\b(sydtrack|focusflow)\b/i.test(baseNoExt) || /\b(sydtrack|focusflow)\b/i.test(label)) {
     return true;
   }
@@ -183,17 +184,19 @@ function isIgnored(win, ignoreList, identities) {
 }
 
 /**
- * Unproductive wins on overlap (e.g. Chrome title "YouTube"). Profile
+ * Explicit Other wins over broader P/U title matches. Otherwise unproductive
+ * wins on overlap (e.g. Chrome title "YouTube"). Profile
  * keywords use whole-term matching. Browsers without a match remain Other.
  */
 function classify(win, rules) {
-  rules = rules || { productive: [], unproductive: [] };
+  rules = rules || { productive: [], unproductive: [], other: [] };
   const browser = isBrowserProcess(win, rules.identities);
   if (browser) return classifyBrowser(win, rules);
+  const hay = haystack(win);
+  if (normalizeKeywords(rules.other).some(keyword => !keyword.startsWith('site:') && exactKeyword(hay, keyword))) return 'other';
   // Explicit app tags remain editable; project/title words cannot override an identity.
   if (matchesProcess(win, rules.unproductive)) return 'unproductive';
   if (appMatchesIdentity(win, rules.identities) === 'productive') return 'productive';
-  const hay = haystack(win);
   if (!hay.trim()) return 'other';
 
   for (const keyword of normalizeKeywords(rules.unproductive)) {
@@ -201,6 +204,7 @@ function classify(win, rules) {
       return 'unproductive';
     }
   }
+  if (matchesProcess(win, rules.productive)) return 'productive';
   for (const keyword of normalizeKeywords(rules.productive)) {
     if (!keyword.startsWith('site:') && exactKeyword(hay, keyword)) {
       return 'productive';
@@ -212,9 +216,14 @@ function classify(win, rules) {
 function classifyWithReason(win, rules = {}) {
   if (isBrowserProcess(win, rules.identities)) return require('./browser-rules').browserMatch(win, rules);
   const category = classify(win, rules);
+  const neutralTag = normalizeKeywords(rules.other).find(tag => !tag.startsWith('site:') && exactKeyword(haystack(win), tag));
+  if (neutralTag) return { category, reason: neutralTag, source: 'profile keyword' };
   const processTag = normalizeKeywords(rules.unproductive).find(tag => matchesProcess(win, [tag]));
   if (processTag) return { category, reason: processTag, source: 'app identity' };
   if (appMatchesIdentity(win, rules.identities) === 'productive') return { category, reason: 'App identity', source: 'app identity' };
+  const productiveProcessTag = category === 'productive' &&
+    normalizeKeywords(rules.productive).find(tag => matchesProcess(win, [tag]));
+  if (productiveProcessTag) return { category, reason: productiveProcessTag, source: 'app identity' };
   const reason = normalizeKeywords(rules[category]).find(tag => !tag.startsWith('site:') && exactKeyword(haystack(win), tag));
   return { category, reason: reason || 'No matching rule', source: reason ? 'profile keyword' : 'none' };
 }

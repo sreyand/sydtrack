@@ -6,7 +6,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const unique = (...groups) => [...new Set(groups.flat().map(value => String(value).trim().toLowerCase()).filter(Boolean))];
 
-// Foreground Windows shell surfaces, transient hosts, capture overlays, and SydTrack itself.
+// Foreground Windows shell surfaces, transient hosts, capture overlays, and sydtrack itself.
 // Keep this process-oriented: broad nouns create false positives because Ignore uses substring matching.
 const windowsIgnore = unique([
   'explorer', 'applicationframehost', 'shellexperiencehost', 'shellhost', 'searchapp', 'searchui', 'searchhost',
@@ -24,12 +24,12 @@ const distractions = unique([
   'youtube', 'youtube.com', 'youtube shorts', 'youtube — mozilla firefox', 'reddit', 'reddit.com',
   'reddit - dive into anything', 'instagram', 'instagram.com', 'instagram • photos and videos', 'tiktok',
   'tiktok.com', 'for you - tiktok', 'facebook', 'facebook.com', 'fb.com', 'facebook – log in or sign up',
-  'twitter', 'x.com', 'home / x', 'home x', 'notifications / x', 'explore / x', 'threads', 'threads.net', 'snapchat',
+  'twitter', 'x.com', 'home / x', 'home x', 'notifications / x', 'explore / x', 'threads.net', 'snapchat',
   'pinterest', 'tumblr', '9gag', 'imgur', 'buzzfeed', 'quora', 'discord', 'telegram', 'whatsapp', 'messenger',
   'bluesky', 'mastodon', 'twitch', 'twitch.tv', 'following - twitch', 'kick.com', 'netflix', 'netflix.com',
   'netflix - watch tv shows online', 'hulu', 'disney+',
   'disneyplus', 'max.com', 'hbo max', 'prime video', 'primevideo', 'peacock', 'paramount+', 'crunchyroll',
-  'spotify', 'soundcloud', 'apple music', 'steam', 'epic games', 'battle.net', 'roblox', 'minecraft',
+  'spotify', 'soundcloud', 'apple music', 'steam.exe', 'epic games', 'battle.net', 'roblox', 'minecraft',
   'fortnite', 'valorant', 'league of legends', 'riot client', 'ea app', 'ubisoft connect', 'playstation',
   'xbox app', 'amazon.com', 'ebay', 'ebay.com', 'etsy', 'temu', 'aliexpress', 'shein', 'doordash',
   'uber eats', 'grubhub', 'dailymail', 'daily mail', 'cnn.com', 'fox news', 'foxnews', 'nytimes',
@@ -37,11 +37,11 @@ const distractions = unique([
 ]);
 
 const collaboration = unique([
-  'microsoft word', 'word', 'winword', 'winword.exe', 'excel', 'excel.exe', 'powerpoint', 'powerpnt',
+  'microsoft word', 'winword', 'winword.exe', 'excel', 'excel.exe', 'powerpoint', 'powerpnt',
   'powerpnt.exe', 'outlook', 'outlook.exe', 'onenote', 'onenote.exe', 'microsoft 365',
   'office 365', 'google docs', 'docs.google', 'google sheets', 'sheets.google', 'google slides', 'slides.google',
   'google drive', 'drive.google', 'sharepoint', 'onedrive', 'dropbox', 'notion', 'obsidian', 'evernote', 'coda',
-  'airtable', 'slack', 'microsoft teams', 'zoom', 'google meet', 'meet.google', 'webex', 'linear', 'linear.app',
+  'airtable', 'slack', 'microsoft teams', 'zoom', 'google meet', 'meet.google', 'webex', 'linear.app',
   'jira', 'confluence', 'trello', 'asana', 'clickup', 'monday.com', 'basecamp', 'miro', 'lucidchart', 'draw.io'
 ]);
 
@@ -51,33 +51,33 @@ const aiResearch = unique([
 ]);
 
 const coding = unique(collaboration, aiResearch, [
-  'visual studio code', 'vscode', 'code.exe', 'cursor', 'windsurf', 'visual studio', 'devenv', 'jetbrains',
+  'visual studio code', 'vscode', 'code.exe', 'windsurf', 'visual studio', 'devenv', 'jetbrains',
   'intellij idea', 'intellij', 'pycharm', 'webstorm', 'goland', 'rider', 'clion', 'rubymine', 'phpstorm',
   'datagrip', 'android studio', 'studio64', 'eclipse', 'netbeans', 'neovim', 'nvim', 'vim', 'emacs',
   'sublime text', 'notepad++', 'zed', 'helix', 'arduino ide', 'platformio', 'rstudio', 'jupyter', 'spyder',
-  'windows terminal', 'windowsterminal', 'terminal', 'powershell', 'pwsh', 'cmd.exe', 'command prompt', 'git bash',
-  'wsl', 'ubuntu', 'debian', 'putty', 'mobaxterm', 'wezterm', 'alacritty', 'kitty', 'warp', 'github', 'gitlab',
+  'windows terminal', 'windowsterminal', 'powershell', 'pwsh', 'cmd.exe', 'command prompt', 'git bash',
+  'wsl', 'ubuntu', 'debian', 'putty', 'mobaxterm', 'wezterm', 'alacritty', 'github', 'gitlab',
   'bitbucket', 'azure devops', 'sourcegraph', 'stackoverflow', 'stack overflow', 'server fault', 'mdn', 'mdn web docs',
   'microsoft learn', 'learn.microsoft', 'docs.microsoft', 'devdocs', 'npm', 'pypi', 'crates.io', 'nuget', 'maven',
   'gradle', 'docker desktop', 'docker', 'kubernetes', 'kubectl', 'terraform', 'postman', 'insomnia', 'swagger',
   'openapi', 'dbeaver', 'sql server management studio', 'ssms', 'pgadmin', 'mongodb compass', 'redis insight',
   'grafana', 'kibana', 'sentry', 'datadog', 'vercel', 'netlify', 'cloudflare', 'aws console', 'azure portal',
-  'google cloud console', 'firebase', 'supabase', 'render', 'railway', 'heroku', 'localhost', 'unity',
+  'google cloud console', 'firebase', 'supabase', 'render', 'railway', 'heroku', 'localhost', 'unity.exe',
   'unreal editor', 'godot', 'wireshark', 'virtualbox', 'vmware', 'github desktop', 'sourcetree', 'gitkraken'
 ]);
 
 const writing = unique(collaboration, aiResearch, [
   'libreoffice writer', 'openoffice writer', 'scrivener', 'typora', 'ia writer', 'focuswriter', 'write!',
-  'manuskript', 'bibisco', 'novlr', 'livingwriter', 'atticus', 'ulysses', 'craft', 'bear', 'simplenote',
+  'manuskript', 'bibisco', 'novlr', 'livingwriter', 'atticus', 'ulysses', 'simplenote',
   'standard notes', 'dropbox paper', 'quip', 'overleaf', 'texstudio', 'texmaker', 'lyx', 'latex', 'zotero',
   'mendeley', 'endnote', 'grammarly', 'hemingway editor', 'prowritingaid', 'languagetool', 'deepl',
   'merriam-webster', 'dictionary.com', 'thesaurus.com', 'oxford english dictionary', 'chicago manual of style',
   'ap stylebook', 'google scholar', 'jstor', 'pubmed', 'semantic scholar', 'researchgate', 'arxiv', 'wordpress',
-  'ghost', 'substack', 'medium', 'contentful', 'sanity', 'webflow', 'mailchimp', 'convertkit', 'beehiiv'
+  'substack', 'medium', 'contentful', 'sanity', 'webflow', 'mailchimp', 'convertkit', 'beehiiv'
 ]);
 
 const study = unique(collaboration, aiResearch, [
-  'anki', 'ankiweb', 'quizlet', 'remnote', 'brainscape', 'knowt', 'zotero', 'mendeley', 'endnote', 'canvas',
+  'anki', 'ankiweb', 'quizlet', 'remnote', 'brainscape', 'knowt', 'zotero', 'mendeley', 'endnote',
   'canvas.instructure', 'instructure', 'blackboard', 'moodle', 'brightspace', 'd2l', 'schoology', 'google classroom',
   'classroom.google', 'gradescope', 'turnitin', 'pearson', 'mastering', 'mylab', 'mcgraw hill connect', 'cengage',
   'webassign', 'coursera', 'edx', 'khan academy', 'udemy', 'linkedin learning', 'pluralsight', 'brilliant',
@@ -91,13 +91,13 @@ const creative = unique(collaboration, aiResearch, [
   'figma', 'figjam', 'canva', 'framer', 'webflow', 'adobe photoshop', 'photoshop', 'adobe illustrator', 'illustrator',
   'adobe indesign', 'indesign', 'adobe premiere', 'premiere pro', 'after effects', 'adobe audition', 'lightroom',
   'adobe animate', 'adobe xd', 'adobe bridge', 'adobe acrobat', 'affinity photo', 'affinity designer',
-  'affinity publisher', 'blender', 'maya', '3ds max', 'cinema 4d', 'houdini', 'zbrush', 'substance 3d',
-  'davinci resolve', 'resolve', 'final cut pro', 'vegas pro', 'capcut', 'handbrake', 'frame.io', 'logic pro',
+  'affinity publisher', 'blender', '3ds max', 'cinema 4d', 'houdini', 'zbrush', 'substance 3d',
+  'davinci resolve', 'final cut pro', 'vegas pro', 'capcut', 'handbrake', 'frame.io', 'logic pro',
   'ableton live', 'fl studio', 'pro tools', 'reaper', 'audacity', 'studio one', 'cubase', 'bitwig studio',
   'obs studio', 'krita', 'gimp', 'inkscape', 'clip studio paint', 'painttool sai', 'procreate', 'aseprite',
   'sketchbook', 'coreldraw', 'pureRef', 'milanote', 'artstation', 'behance', 'dribbble', 'adobe fonts',
   'google fonts', 'envato elements', 'creative market', 'unsplash', 'pexels', 'pixabay', 'freepik', 'shutterstock',
-  'epidemic sound', 'artlist', 'storyblocks', 'unity', 'unreal editor', 'godot', 'rhinoceros 3d', 'autocad',
+  'epidemic sound', 'artlist', 'storyblocks', 'unreal editor', 'godot', 'rhinoceros 3d', 'autocad',
   'fusion 360', 'solidworks', 'sketchup'
 ]);
 

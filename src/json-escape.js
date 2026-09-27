@@ -1,6 +1,6 @@
 'use strict';
 
-// Must match SydTrackWin.EscapeJson in scripts/get-foreground.ps1.
+// Must match sydtrackWin.EscapeJson in scripts/get-foreground.ps1.
 function escapeJsonString(value) {
   let out = '';
   const text = value == null ? '' : String(value);

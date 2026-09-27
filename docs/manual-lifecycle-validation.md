@@ -4,9 +4,9 @@ Allow about 10–15 minutes, plus an optional natural hour/midnight check. These
 
 ## Prepare
 
-1. Quit SydTrack from its tray menu so another instance is not running. Run `npm start` from the repository and keep the terminal open for errors. Use real tracking, not demo mode.
+1. Quit sydtrack from its tray menu so another instance is not running. Run `npm start` from the repository and keep the terminal open for errors. Use real tracking, not demo mode.
 2. Note your current pause, idle-timeout, reminder, notification, and FocusBoost settings so you can restore them afterward. Export a backup if desired; exports include focus sessions, with running timers represented as stopped checkpoints.
-3. Use an app that SydTrack actually records, such as Notepad. Check its app/category in Home and its time in Analytics. Avoid Explorer and SydTrack itself, which are ignored. Note totals or take screenshots before and after each test. Small differences of a polling interval and UI rounding are normal; a jump matching the whole locked/asleep period is not.
+3. Use an app that sydtrack actually records, such as Notepad. Check its app/category in Home and its time in Analytics. Avoid Explorer and sydtrack itself, which are ignored. Note totals or take screenshots before and after each test. Small differences of a polling interval and UI rounding are normal; a jump matching the whole locked/asleep period is not.
 4. Keep typing or moving the mouse during the awake control periods so ordinary idle detection does not confuse the result. Test records are real local activity; do not clear existing history to run this checklist.
 
 ## 1. Lock and unlock (about two minutes)
@@ -27,7 +27,7 @@ Allow about 10–15 minutes, plus an optional natural hour/midnight check. These
 
 - Pause tracking in Home and note the chosen app's total.
 - Sleep/wake the PC, unlock, and use that app for 20 seconds.
-- Pass: SydTrack still says Paused and the app total is unchanged. Resume manually; activity then grows again.
+- Pass: sydtrack still says Paused and the app total is unchanged. Resume manually; activity then grows again.
 
 ## 4. Reminder streak restarts after an interruption
 

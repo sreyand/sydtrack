@@ -8,7 +8,7 @@ const sign = process.env.SYDTRACK_SIGN === '1';
 base.appId = APP_ID;
 base.publish = null;
 base.linux = Object.assign({}, base.linux, {
-  maintainer: 'SydTrack <noreply@sydtrack.app>'
+  maintainer: 'sydtrack <noreply@sydtrack.app>'
 });
 // Resource editing embeds the product icon/version even for unsigned builds.
 // electron-builder signs only when certificate credentials are available.

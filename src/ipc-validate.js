@@ -1,5 +1,7 @@
 'use strict';
 
+const { PROFILE_SHORTCUTS } = require('./profile-shortcut');
+
 const CHANNELS = [
   'state:get',
   'apps:correctActivityToday',
@@ -17,6 +19,7 @@ const CHANNELS = [
   'profiles:get',
   'profiles:save',
   'profiles:activate',
+  'profiles:cycle',
   'profiles:delete',
   'profiles:import',
   'settings:update',
@@ -164,12 +167,13 @@ function historyDays(payload) {
 
 function rulesSet(payload) {
   const obj = plainObject(payload);
-  assertKeys(obj, ['productive', 'unproductive', 'profileId']);
+  assertKeys(obj, ['productive', 'unproductive', 'other', 'profileId']);
   if (!Object.hasOwn(obj, 'productive') || !Object.hasOwn(obj, 'unproductive')) invalid();
   const out = {
     productive: stringList(obj.productive),
     unproductive: stringList(obj.unproductive)
   };
+  if (Object.hasOwn(obj, 'other')) out.other = stringList(obj.other);
   if (Object.hasOwn(obj, 'profileId')) out.profileId = optionalProfileId(obj.profileId);
   return out;
 }
@@ -200,11 +204,11 @@ function ignoreSet(payload) {
 
 function profileFields(value) {
   const obj = plainObject(value);
-  assertKeys(obj, ['name', 'productive', 'unproductive', 'ignore']);
+  assertKeys(obj, ['name', 'productive', 'unproductive', 'other', 'ignore']);
   if (!Object.keys(obj).length) invalid();
   const out = {};
   if (Object.hasOwn(obj, 'name')) out.name = profileName(obj.name);
-  for (const field of ['productive', 'unproductive', 'ignore']) {
+  for (const field of ['productive', 'unproductive', 'other', 'ignore']) {
     if (Object.hasOwn(obj, field)) out[field] = stringList(obj[field]);
   }
   return out;
@@ -236,6 +240,10 @@ const SETTINGS = {
     const ms = finiteInt(value, 1000, 5000);
     if (ms !== 1000 && ms !== 3000 && ms !== 5000) invalid();
     return ms;
+  },
+  profileShortcut: (value) => {
+    if (!PROFILE_SHORTCUTS.includes(value)) invalid();
+    return value;
   },
   trackingPaused: bool,
   notificationsEnabled: bool,
@@ -373,6 +381,7 @@ const VALIDATORS = {
   'profiles:get': noPayload,
   'profiles:save': profilesSave,
   'profiles:activate': requiredProfileId,
+  'profiles:cycle': noPayload,
   'profiles:delete': requiredProfileId,
   'profiles:import': noPayload,
   'settings:update': settingsUpdate,

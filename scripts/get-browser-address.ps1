@@ -9,7 +9,7 @@ try {
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
-public class SydTrackBrowserWindow {
+public class sydtrackBrowserWindow {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [StructLayout(LayoutKind.Sequential)] public struct GUIINFO {
@@ -28,15 +28,15 @@ public class SydTrackBrowserWindow {
 }
 '@
   $handle = [IntPtr]$WindowId
-  if ([SydTrackBrowserWindow]::GetForegroundWindow() -ne $handle) { exit 0 }
+  if ([sydtrackBrowserWindow]::GetForegroundWindow() -ne $handle) { exit 0 }
   $title = New-Object System.Text.StringBuilder 1024
-  [void][SydTrackBrowserWindow]::GetWindowText($handle, $title, $title.Capacity)
+  [void][sydtrackBrowserWindow]::GetWindowText($handle, $title, $title.Capacity)
   $root = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
   # Chromium can report HasKeyboardFocus=false for an edited omnibox. Its
   # browser chrome owns root-window focus; web content owns a child window.
   # Conservatively use title fallback while browser chrome or menus have focus.
   $chromium = $root.Current.ClassName -like 'Chrome_WidgetWin*'
-  if ($chromium -and -not [SydTrackBrowserWindow]::ContentHasFocus($handle)) { return }
+  if ($chromium -and -not [sydtrackBrowserWindow]::ContentHasFocus($handle)) { return }
   $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
   $queue = New-Object System.Collections.Queue
   $queue.Enqueue(@{ Element = $root; Toolbar = $false; Depth = 0 })
@@ -65,8 +65,8 @@ public class SydTrackBrowserWindow {
     }
   }
   $afterTitle = New-Object System.Text.StringBuilder 1024
-  [void][SydTrackBrowserWindow]::GetWindowText($handle, $afterTitle, $afterTitle.Capacity)
-  if ([SydTrackBrowserWindow]::GetForegroundWindow() -eq $handle -and $afterTitle.ToString() -eq $title.ToString() -and (-not $chromium -or [SydTrackBrowserWindow]::ContentHasFocus($handle))) {
+  [void][sydtrackBrowserWindow]::GetWindowText($handle, $afterTitle, $afterTitle.Capacity)
+  if ([sydtrackBrowserWindow]::GetForegroundWindow() -eq $handle -and $afterTitle.ToString() -eq $title.ToString() -and (-not $chromium -or [sydtrackBrowserWindow]::ContentHasFocus($handle))) {
     @{ id = [string]$WindowId; title = $title.ToString(); url = $address } | ConvertTo-Json -Compress
   }
 } catch {

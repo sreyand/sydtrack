@@ -94,12 +94,12 @@ function mergeAppEntries(entries) {
 
 function categoryForStoredApp(name, current, rules) {
   const text = String(name || '').toLowerCase();
-  const { isBrowserProcess, classify } = require('./classifier');
+  const { isBrowserProcess, classifyWithReason } = require('./classifier');
   const win = { owner: { name } };
   // Original browser titles/URLs are unavailable in history. Preserve their categories.
   if (isBrowserProcess(win, rules && rules.identities)) return current;
-  const classified = classify(win, rules);
-  if (classified !== 'other') return classified;
+  const classified = classifyWithReason(win, rules);
+  if (classified.category !== 'other' || classified.source === 'profile keyword') return classified.category;
   const unproductive = (rules && rules.unproductive) || [];
   const productive = (rules && rules.productive) || [];
   if (unproductive.some((keyword) => text.includes(String(keyword).toLowerCase()))) {
@@ -248,6 +248,7 @@ function defaultSettings() {
     trackMusicWhileIdle: false,
     trackVideoWhileIdle: false,
     pollMs: 3000,
+    profileShortcut: '',
     focusBoost: false,
     focusBoostRestoreSec: null,
     focusBoostSec: 180,
@@ -747,6 +748,9 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
       date: state.date,
       byCategory,
       topApps,
+      // Complete, category-independent app totals for the Apps donut. Ignored
+      // activity is excluded, but the detailed rows below remain correctable.
+      appBreakdown: visible.map(app => ({ name: app.name, seconds: app.seconds, category: app.category })),
       otherApps: visible.filter(app => app.category === 'other' && app.seconds > 0).slice(0, 5),
       analyticsApps: Object.values(Object.entries(state.byApp).reduce((apps, [key, info]) => {
         const name = appEntryName(key), id = name.toLowerCase();

@@ -280,7 +280,7 @@ assert(headless.headless && headless.args.includes('--no-sandbox'), 'headless Li
 
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 assert(pkg.build.publish === null, 'electron-builder publish is disabled');
-assert(pkg.build.linux.maintainer === 'SydTrack <noreply@sydtrack.app>', 'Linux deb maintainer is set');
+assert(pkg.build.linux.maintainer === 'sydtrack <noreply@sydtrack.app>', 'Linux deb maintainer is set');
 assert(pkg.build.win.signAndEditExecutable === true, 'Windows resource editing stays on for product icon and metadata');
 assert(pkg.build.mac && pkg.build.linux, 'macOS and Linux package targets exist');
 const builder = require('../build/electron-builder.config.js');

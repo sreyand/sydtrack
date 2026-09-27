@@ -20,7 +20,7 @@ function formatRemaining(sec) {
 }
 
 /**
- * Minimal SydTrack tray (v1).
+ * Minimal sydtrack tray (v1).
  * @param {object} deps
  * @param {() => import('electron').BrowserWindow|null} deps.getMainWindow
  * @param {() => object|null} deps.getStore
@@ -43,7 +43,7 @@ function createAppTray(deps) {
     image = image.resize({ width: 24, height: 24 });
   }
   const tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
-  tray.setToolTip('SydTrack');
+  tray.setToolTip('sydtrack');
 
   function settings() {
     const store = getStore();
@@ -150,6 +150,8 @@ function createAppTray(deps) {
     const s = settings();
     const parts = [];
     parts.push(s.trackingPaused ? 'Paused' : 'Live');
+    const profile = deps.getActiveProfile && deps.getActiveProfile();
+    if (profile) parts.push('Profile: ' + profile.name);
     parts.push(s.focusBoost ? 'focusboost' : 'boost off');
     parts.push(s.notificationsEnabled === false ? 'DND' : 'ALERTS ON');
     const session = activeSession();
@@ -165,7 +167,7 @@ function createAppTray(deps) {
         parts.push(label);
       }
     }
-    return 'SydTrack — ' + parts.join(' · ');
+    return 'sydtrack — ' + parts.join(' · ');
   }
 
   function buildMenu() {

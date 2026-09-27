@@ -17,7 +17,7 @@ const SEQUENCE = [
     dwellMs: 7000
   },
   {
-    title: 'SydTrack — Notion',
+    title: 'sydtrack — Notion',
     owner: { name: 'Notion', path: '/usr/bin/notion' },
     dwellMs: 6000
   },

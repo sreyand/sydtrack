@@ -10,8 +10,9 @@ if (!file || file === '--help') {
     const pack = readProfilePackFile(file);
     const result = validateProfiles({ schemaVersion: 1, activeId: 'default', profiles: [{ ...pack, id: 'default' }] });
     const profile = result.profiles[0];
-    console.log(`Valid profile: ${profile.name} (${profile.productive.length} productive, ${profile.unproductive.length} unproductive, ${profile.ignore.length} ignore tags)`);
-    if ([...profile.productive, ...profile.unproductive].some(tag => tag.startsWith('site:'))) console.log('Note: site: rules do not match normal Windows title-only capture.');
+    console.log(`Valid profile: ${profile.name} (${profile.productive.length} productive, ${profile.unproductive.length} unproductive, ${profile.other.length} other, ${profile.ignore.length} ignore tags)`);
+    if ([...profile.productive, ...profile.unproductive, ...profile.other].some(tag => tag.startsWith('site:'))) console.log('Note: site: rules do not match normal Windows title-only capture.');
+    if (profile.other.some(tag => profile.productive.includes(tag) || profile.unproductive.includes(tag))) console.log('Note: Other overrides overlapping productive or unproductive title tags.');
     if (profile.productive.some(tag => profile.unproductive.includes(tag))) console.log('Note: overlapping tags use Unproductive precedence.');
   } catch (err) { console.error(err.message); process.exitCode = 1; }
 }

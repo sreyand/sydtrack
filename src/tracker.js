@@ -117,7 +117,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     since: Date.now(),
     source: 'idle'
   };
-  /** Last non-ignored, non-SydTrack window — survives while user looks at SydTrack. */
+  /** Last non-ignored, non-sydtrack window — survives while user looks at sydtrack. */
   let lastFocused = null;
 
   function resetStreakSafely() {

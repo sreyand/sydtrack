@@ -40,8 +40,8 @@
     const host = hostname(url);
     if (!host) return null;
     let best = '', category = null;
-    // More specific subdomains win; equal specificity favors unproductive.
-    for (const type of ['productive', 'unproductive']) {
+    // More specific subdomains win; an explicit Other exception wins ties.
+    for (const type of ['productive', 'unproductive', 'other']) {
       for (const tag of (rules && rules[type]) || []) {
         const domain = siteDomain(tag);
         if (domain && (host === domain || host.endsWith(`.${domain}`)) && domain.length >= best.length) {
@@ -56,7 +56,7 @@
   function classifySite(url, rules) { return siteMatch(url, rules)?.category || null; }
   function keywordMatch(text, rules) {
     if (!rules) return null;
-    for (const type of ['unproductive', 'productive']) {
+    for (const type of ['other', 'unproductive', 'productive']) {
       const match = (rules[type] || []).find((tag) => {
         const key = String(tag || '').trim().toLowerCase();
         return key && !key.startsWith('site:') && exactKeyword(text, key);
@@ -94,7 +94,7 @@
   function classifyBrowser(entry, rules) { return browserMatch(entry, rules).category; }
 
   function validateSiteTags(rules) {
-    for (const type of ['productive', 'unproductive']) {
+    for (const type of ['productive', 'unproductive', 'other']) {
       for (const tag of (rules && rules[type]) || []) {
         if (typeof tag === 'string' && /^site:/i.test(tag.trim()) && !siteDomain(tag)) {
           throw new Error(`Invalid website tag: ${tag}. Use site:example.com.`);

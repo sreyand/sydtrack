@@ -134,8 +134,8 @@ assert(
   'Code editor is not ignored'
 );
 assert(
-  isIgnored({ owner: { name: 'electron' }, title: 'SydTrack' }, ignore) === true,
-  'electron + SydTrack title is ignored (self)'
+  isIgnored({ owner: { name: 'electron' }, title: 'sydtrack' }, ignore) === true,
+  'electron + sydtrack title is ignored (self)'
 );
 assert(
   isIgnored({ owner: { name: 'Electron' }, title: 'sydtrack — Today' }, ignore) === true,
@@ -143,10 +143,10 @@ assert(
 );
 assert(
   isIgnored({ owner: { name: 'electron' }, title: 'Some Other App' }, ignore) === false,
-  'electron without SydTrack title is NOT ignored'
+  'electron without sydtrack title is NOT ignored'
 );
 assert(
-  isIgnored({ owner: { name: 'SydTrack' }, title: 'Today' }, ignore) === true,
+  isIgnored({ owner: { name: 'sydtrack' }, title: 'Today' }, ignore) === true,
   'sydtrack process name is ignored'
 );
 assert(
@@ -735,9 +735,15 @@ for (const url of ['https://notyoutube.com', 'https://youtube.com.evil.test', 'h
 assert(classify(browserWindow('', 'distraction'), siteRules) === 'unproductive', '#7 unavailable URL preserves title fallback');
 assert(classify({ owner: { name: 'Unknown' }, title: 'site:youtube.com', url: 'https://youtube.com' }, siteRules) === 'other', '#7 site tags never classify native apps');
 assert(browserRules.classifySite('https://EXAMPLE.COM.', { productive: ['site:example.com'], unproductive: ['site:example.com'] }) === 'unproductive', '#7 domain normalization and equal-specificity precedence');
+assert(classify(browserWindow('', 'YouTube lecture'), { productive: [], unproductive: ['youtube'], other: ['lecture'] }) === 'other', 'Explicit Other title rule overrides a broad unproductive match');
+assert(browserRules.classifySite('https://example.com', { productive: ['site:example.com'], other: ['site:example.com'] }) === 'other', 'Explicit Other site rule wins an equal-specificity tie');
+assert(classify({ owner: { name: 'Code' }, title: 'Project' }, { productive: ['code'], other: ['code'] }) === 'other', 'Explicit Other app rule overrides productive identity tags');
 assert(!browserRules.siteDomain('site:example.com/path') && !browserRules.siteDomain('site:*.com'), '#7 invalid website rules are not substring rules');
 const { buildProfilePack, parseProfilePack } = require('../src/profile-pack');
 assert(parseProfilePack(JSON.stringify(buildProfilePack(siteRules))).productive[0] === 'site:learn.youtube.com', '#7 website tags survive existing profile packs');
+assert(parseProfilePack(buildProfilePack({ other: ['lecture'] })).other[0] === 'lecture' &&
+  parseProfilePack({ format: 'sydtrack-profile', schemaVersion: 1, productive: [], unproductive: [], ignore: [] }).other.length === 0,
+  'Neutral tags roundtrip while older profile packs remain compatible');
 
 async function browserProbeChecks() {
   const { createWindowsBackend } = require('../src/windows-backend');
@@ -1188,10 +1194,47 @@ async function appCorrectionChecks() {
 }
 
 async function activityReasonChecks() {
-  const { createFocusProfiles } = require('../src/focus-profiles');
+  const { createFocusProfiles, presetFingerprint, refreshUntouchedPresets } = require('../src/focus-profiles');
+  const { classifyWithReason } = require('../src/classifier');
   const defaults = require('../src/default-focus-profiles.json');
   const presetSource = require('./sync-focus-presets');
   assert(JSON.stringify(defaults) === JSON.stringify(presetSource.buildDefaults()), 'Bundled Focus profile JSON matches its researched preset source');
+  const general = defaults.profiles.find(profile => profile.id === 'default');
+  const browserDefaults = require('../src/default-browser-keywords.json');
+  const classifyGeneral = title => classifyWithReason({ owner: { name: 'Chrome' }, title },
+    { ...general, browserKeywords: browserDefaults }).category;
+  for (const title of ['Understanding threads in Python', 'How to change the CSS cursor',
+    'Terminal velocity explained', 'The ghost in the machine', 'How to craft a resume',
+    'Linear equations homework', 'How to resolve a conflict', 'Steam engine history',
+    'How to use canvas in JavaScript', 'Why unity matters', 'The word of the day']) {
+    assert(classifyGeneral(title) === 'other', 'Ambiguous browser title stays Other: ' + title);
+  }
+  assert(classifyGeneral('GitHub - sydtrack') === 'productive' &&
+    classifyGeneral('YouTube - Home') === 'unproductive', 'Specific browser titles remain classifiable');
+  assert(classifyWithReason({ owner: { name: 'Steam', path: 'C:\\Games\\steam.exe' }, title: 'Library' },
+    general).category === 'unproductive' &&
+    classifyWithReason({ owner: { name: 'Unity', path: 'C:\\Unity\\Unity.exe' }, title: 'Project' },
+      general).category === 'productive', 'Exact app names remain classifiable without generic browser keywords');
+  const previous = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'focus-profiles.json'), 'utf8'));
+  const oldGeneral = previous.profiles.find(profile => profile.id === 'default');
+  const legacyStock = presetFingerprint(oldGeneral) === 'c9b03d38b42265d467fe6cc912b89593c3f122e0b477a9dd8a0fea0dcaa7192d';
+  const baselineFingerprints = Object.fromEntries(previous.profiles.map(profile => [profile.id, presetFingerprint(profile)]));
+  const customized = structuredClone(previous);
+  customized.profiles.find(profile => profile.id === 'coding').productive.push('my-private-editor');
+  const refreshed = refreshUntouchedPresets(customized, defaults, legacyStock ? undefined : baselineFingerprints);
+  assert(refreshed.changed && !refreshed.state.profiles.find(profile => profile.id === 'default').productive.includes('word'),
+    'Untouched General receives more precise stock rules');
+  assert(refreshed.state.profiles.find(profile => profile.id === 'coding').productive.includes('my-private-editor') &&
+    refreshed.state.activeId === customized.activeId, 'Custom profile rules and active selection survive preset refresh');
+  if (legacyStock) {
+    const precisionRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-preset-precision-'));
+    fs.writeFileSync(path.join(precisionRoot, 'focus-profiles.json'), JSON.stringify(customized));
+    fs.writeFileSync(path.join(precisionRoot, 'focus-profiles-seeded-v1.json'), JSON.stringify({ version: 1 }));
+    const upgraded = createFocusProfiles({ dataDir: precisionRoot, rules: {}, ignore: [], defaults }).snapshot();
+    assert(!upgraded.profiles.find(profile => profile.id === 'default').productive.includes('word') &&
+      upgraded.profiles.find(profile => profile.id === 'coding').productive.includes('my-private-editor'),
+    'Existing installs refresh untouched presets once without changing custom rules');
+  }
   assert(defaults.profiles.every(profile => profile.ignore.includes('explorer') && profile.ignore.includes('snippingtool') && profile.ignore.includes('sydtrack')), 'Every bundled profile carries the Windows Ignore baseline');
   assert(defaults.profiles.reduce((total, profile) => total + profile.productive.length + profile.unproductive.length, 0) > 1000, 'Bundled presets provide broad role-specific coverage');
   const seedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-bundled-profiles-'));
@@ -1206,7 +1249,6 @@ async function activityReasonChecks() {
   const freshRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-fresh-profiles-'));
   const fresh = createFocusProfiles({ ...seedOptions, dataDir: freshRoot, defaults });
   assert(fresh.snapshot().profiles.length === 5 && fresh.active().name === 'General', 'Fresh install gets all five bundled profiles with General active');
-  const { classifyWithReason } = require('../src/classifier');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-reasons-'));
   const store = createStore(root);
   const rules = { productive: ['github'], unproductive: ['youtube', 'reddit'], identities: { productiveApps: ['code'] } };

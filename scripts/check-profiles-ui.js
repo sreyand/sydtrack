@@ -28,7 +28,13 @@ app.whenReady().then(async () => {
     'profiles:get': () => profiles.snapshot(),
     'profiles:save': (_e, { id, fields }) => profiles.save(id, fields),
     'profiles:activate': (_e, id) => profiles.activate(id),
-    'rules:set': (_e, fields) => { profiles.save(profiles.snapshot().activeId, { productive: fields.productive, unproductive: fields.unproductive }); return { ...profiles.active(), profileId: profiles.snapshot().activeId }; },
+    'profiles:cycle': () => {
+      const current = profiles.snapshot();
+      const index = current.profiles.findIndex(profile => profile.id === current.activeId);
+      return profiles.activate(current.profiles[(index + 1) % current.profiles.length].id);
+    },
+    'rules:set': (_e, fields) => { profiles.save(profiles.snapshot().activeId, { productive: fields.productive, unproductive: fields.unproductive,
+      other: fields.other === undefined ? profiles.active().other : fields.other }); return { ...profiles.active(), profileId: profiles.snapshot().activeId }; },
     'ignore:set': (_e, fields) => { profiles.save(profiles.snapshot().activeId, { ignore: fields.ignore }); return { ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId }; },
     'profiles:delete': (_e, id) => profiles.remove(id),
     'rules:get': () => ({ ...profiles.active(), profileId: profiles.snapshot().activeId }),
@@ -54,7 +60,7 @@ app.whenReady().then(async () => {
     await window.sydtrackProfilesUI.reload();
     await loadRulesAndIgnore();
     const check = (condition, message) => { if (!condition) throw new Error(message); };
-    const wait = async predicate => { for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('UI wait timed out'); };
+    const wait = async predicate => { for (let i = 0; i < 100; i++) { if (await predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('UI wait timed out'); };
     document.getElementById('focus-profile-btn').click();
     await wait(() => !document.getElementById('focus-profile-menu').classList.contains('hidden'));
     check(document.querySelectorAll('.profile-choice').length === 5, 'Expected five Home options');
@@ -74,6 +80,8 @@ app.whenReady().then(async () => {
     const selector = document.getElementById('profile-editor-select');
     selector.value = 'default'; selector.dispatchEvent(new Event('change'));
     check(document.getElementById('rules-prod-edit').value === 'unsaved' && selector.value !== 'default', 'Canceled switch preserves draft and selection');
+    await window.sydtrackProfilesUI.cycleProfile();
+    check(document.getElementById('focus-profile-label').textContent === 'Coding' && document.getElementById('rules-prod-edit').value === 'unsaved', 'Shortcut does not discard unsaved tags');
     document.getElementById('profile-rename-named').click();
     document.getElementById('profile-name').value = 'Default';
     document.getElementById('profile-save-named').click();
@@ -93,6 +101,29 @@ app.whenReady().then(async () => {
     await wait(() => !document.getElementById('focus-profile-menu').classList.contains('hidden'));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     check(document.getElementById('focus-profile-btn').getAttribute('aria-expanded') === 'false', 'Escape must close the chooser');
+    await window.sydtrackProfilesUI.cycleProfile();
+    await wait(() => document.getElementById('focus-profile-label').textContent === 'Development');
+    check(document.getElementById('home-profile-status').textContent.includes('Development'), 'Shortcut cycle confirms the active profile');
+    await window.sydtrackProfilesUI.cycleProfile();
+    await wait(() => document.getElementById('focus-profile-label').textContent === 'default');
+    fillRulesEditors(await window.sydtrack.setRules({ productive: ['code'], unproductive: [], other: [] }));
+    renderLastFocused({ app: 'Code', title: 'Project', category: 'productive' }, null);
+    document.getElementById('lf-other').click();
+    await wait(async () => (await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default').other.includes('code'));
+    check(lastFocusedCache.category === 'other' && document.getElementById('lf-other').classList.contains('selected'), 'Home O saves and displays the neutral rule');
+    document.getElementById('lf-prod').click();
+    await wait(async () => { const p = (await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default'); return p.productive.includes('code') && !p.other.includes('code'); });
+    check(lastFocusedCache.category === 'productive', 'Home P replaces an Other override');
+    document.querySelector('.nav-btn[data-tab="tags"]').click();
+    check(!document.getElementById('tags-other-card') && document.getElementById('rules-other-edit').value === '', 'Redundant inbox is gone and neutral overrides remain editable');
+    document.querySelector('.nav-btn[data-tab="home"]').click();
+  })()`);
+  win.webContents.send('profiles:cycle-requested');
+  await win.webContents.executeJavaScript(`(async () => {
+    for (let i = 0; i < 100 && document.getElementById('focus-profile-label').textContent !== 'Development'; i++)
+      await new Promise(resolve => setTimeout(resolve, 20));
+    if (document.getElementById('focus-profile-label').textContent !== 'Development') throw new Error('Preload shortcut event did not cycle profiles');
+    await window.sydtrackProfilesUI.cycleProfile();
   })()`);
   for (const width of [800, 1040, 1600]) {
     win.setSize(width, 800);
@@ -127,74 +158,23 @@ app.whenReady().then(async () => {
   console.log('Profile UI checks passed: create, activate, failed save, draft cancellation, five slots, keyboard dismissal.');
   await win.webContents.executeJavaScript(`(async () => {
     const check = (value, message) => { if (!value) throw new Error(message); };
-    const wait = async predicate => { for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('Other review timed out'); };
-    document.querySelector('.nav-btn[data-tab="tags"]').click();
-    renderStats((await window.sydtrack.getState()).stats);
-    const rows = document.querySelectorAll('#tags-other-list .tags-other-row');
-    check(rows.length === 3 && rows[0].textContent.includes('Chrome'), 'Other inbox is impact-ranked');
-    rows[0].querySelector('button').click();
-    await wait(() => !document.getElementById('tags-other-editor').hidden);
-    check(document.getElementById('tags-other-editor-note').textContent.includes('recorded timeline'), 'Today scope is explicit');
-    document.getElementById('tags-other-scope').value = 'future';
-    document.getElementById('tags-other-scope').dispatchEvent(new Event('change'));
-    document.getElementById('tags-other-keyword').value = 'Chrome';
-    document.getElementById('tags-other-apply').click();
-    check(document.getElementById('tags-other-status').textContent.includes('every tab'), 'Browser-wide title rule needs a safer keyword');
-    document.getElementById('tags-other-scope').value = 'today';
-    document.getElementById('tags-other-scope').dispatchEvent(new Event('change'));
-    document.getElementById('tags-other-category').value = 'unproductive';
-    document.getElementById('tags-other-apply').click();
-    await wait(() => document.getElementById('tags-other-status').textContent.includes('Today’s Other'));
-    let stats = (await window.sydtrack.getState()).stats;
-    check(stats.byCategory.productive === 30 && stats.byCategory.unproductive === 60, 'Today only keeps classified browser time');
-    document.querySelectorAll('#tags-other-list .tags-other-row')[0].querySelector('button').click();
-    await wait(() => document.getElementById('tags-other-editor-title').textContent.includes('Code'));
-    document.getElementById('tags-other-scope').value = 'future';
-    document.getElementById('tags-other-scope').dispatchEvent(new Event('change'));
-    document.getElementById('tags-other-keyword').value = 'coding';
-    document.getElementById('tags-other-apply').click();
-    await wait(() => document.getElementById('tags-other-status').textContent.includes('Future windows'));
-    check((await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default').productive.includes('coding'), 'Future rule saves in active profile');
-    stats = (await window.sydtrack.getState()).stats;
-    check(stats.byCategory.other === 35, 'Future rule does not rewrite today');
-    document.querySelectorAll('#tags-other-list .tags-other-row')[1].querySelector('button').click();
-    await wait(() => document.getElementById('tags-other-editor-title').textContent.includes('Spotify'));
-    document.getElementById('tags-other-scope').value = 'ignore';
-    document.getElementById('tags-other-scope').dispatchEvent(new Event('change'));
-    document.getElementById('rules-prod-edit').value = 'unsaved draft';
-    document.getElementById('tags-other-apply').click();
-    check(document.getElementById('tags-other-status').textContent.includes('Save or discard'), 'Unsaved edits cannot be overwritten');
-    fillRulesEditors(await window.sydtrack.getRules());
-    document.getElementById('tags-other-apply').click();
-    await wait(() => document.getElementById('tags-other-status').textContent.includes('will be ignored'));
-    check((await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default').ignore.some(name => name.toLowerCase() === 'spotify'), 'Ignore is scoped to active profile');
-    check((await window.sydtrack.getState()).stats.byCategory.other === 35, 'Ignore does not rewrite today');
-    applyTheme('graphite');
-    document.getElementById('tags-other-editor').scrollIntoView({ block: 'center' });
-  })()`);
-  await new Promise(resolve => setTimeout(resolve, 250));
-  await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
-  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-other-inbox-graphite.png'), (await win.webContents.capturePage()).toPNG());
-  console.log('Other inbox UI checks passed: impact order, today-only browser correction, future profile rule, Ignore, unsaved draft guard.');
-  await win.webContents.executeJavaScript(`(async () => {
-    const check = (value, message) => { if (!value) throw new Error(message); };
-    const wait = async predicate => { for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('Session intention UI timed out'); };
+    const wait = async predicate => { for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('Historical intention check timed out'); };
     document.querySelector('.nav-btn[data-tab="sessions"]').click();
-    const input = document.getElementById('session-intention');
-    input.value = 'Draft <milestone>';
-    await startFocusSession();
-    check(input.disabled && (await window.sydtrack.getActiveSession()).intention === 'Draft <milestone>', 'Starting stores the optional intention');
+    check(!document.getElementById('session-intention'), 'Intention input is absent from the simplified timer');
+    const session = await window.sydtrack.startSession({ mode: 'pomodoro', intention: 'Draft <milestone>' });
+    renderActiveSession(session);
+    refreshSessionLog();
+    check((await window.sydtrack.getActiveSession()).intention === 'Draft <milestone>', 'Existing intention data remains supported');
     await wait(() => document.getElementById('session-log-list').textContent.includes('Draft <milestone>'));
     check(!document.querySelector('#session-log-list milestone'), 'Session label is escaped');
     await stopFocusSession();
-    await wait(() => !input.disabled && input.value === '');
     await wait(() => !!document.querySelector('#session-log-list .session-log-item[data-status="stopped"]'));
     check(document.getElementById('session-log-list').textContent.includes('Draft <milestone>'), 'Completed log keeps intention');
     document.querySelector('#session-log-list .session-log-summary').click();
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-session-intention.png'), (await win.webContents.capturePage()).toPNG());
-  console.log('Session intention UI checks passed: start, active display, escaped history, completion.');
+  console.log('Historical intention UI checks passed: simplified timer, escaped history, completion.');
   await win.webContents.executeJavaScript(`document.getElementById('profile-rename-named').click(); document.getElementById('profile-name-form').scrollIntoView({ block: 'end' });`);
   await new Promise(resolve => setTimeout(resolve, 300));
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-profile-name-editor.png'), (await win.webContents.capturePage()).toPNG());

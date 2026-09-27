@@ -1,6 +1,6 @@
 # sydtrack v2.0.0
 
-SydTrack 2 is a new generation of the app: a rebuilt interface, more dependable tracking, stronger local-data recovery, and much better defaults. It remains a local-first Windows app with no account or cloud sync.
+sydtrack 2 is a new generation of the app: a rebuilt interface, more dependable tracking, stronger local-data recovery, and much better defaults. It remains a local-first Windows app with no account or cloud sync.
 
 ## A clearer daily view
 
@@ -12,7 +12,7 @@ SydTrack 2 is a new generation of the app: a rebuilt interface, more dependable 
 ## Focus profiles that are useful immediately
 
 - General, Coding, Writing, Study, and Creative presets now ship with **507 unique researched terms** across work tools, learning services, creative software, common distractions, real page-title signatures, and Windows shell processes.
-- Every bundled profile includes the same Windows-specific Ignore baseline for transient surfaces such as Explorer, Search, Snipping Tool, Start, shell hosts, overlays, and SydTrack itself.
+- Every bundled profile includes the same Windows-specific Ignore baseline for transient surfaces such as Explorer, Search, Snipping Tool, Start, shell hosts, overlays, and sydtrack itself.
 - Switch profiles from Home or manage them under Focus Tags. Profiles can be created, renamed, imported, exported, and edited independently.
 - Browser fallback keywords are editable under Focus Tags and travel with backups.
 
@@ -48,7 +48,7 @@ SydTrack 2 is a new generation of the app: a rebuilt interface, more dependable 
 
 - Existing activity and settings are preserved. The first launch may migrate local storage and remove retired experimental settings.
 - Existing edited Focus profiles are not overwritten. The expanded presets apply to fresh installs and are also available as importable files in the repository’s `profiles` folder.
-- Quit the previous SydTrack copy from the tray before installing or opening the portable build.
+- Quit the previous sydtrack copy from the tray before installing or opening the portable build.
 - Windows binaries are currently unsigned, so Windows may show a SmartScreen warning.
 
 **Full changelog:** `dev...v2.0.0`

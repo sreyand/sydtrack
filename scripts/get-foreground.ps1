@@ -1,11 +1,11 @@
 param([switch]$IncludeMedia)
 $ErrorActionPreference = "Stop"
-if (-not ("SydTrackWin" -as [type])) {
+if (-not ("sydtrackWin" -as [type])) {
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
-public class SydTrackWin {
+public class sydtrackWin {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -37,7 +37,7 @@ public class SydTrackWin {
 "@
 }
 function Esc([string]$s) {
-  return [SydTrackWin]::EscapeJson($s)
+  return [sydtrackWin]::EscapeJson($s)
 }
 # SMTC is the local play/pause signal. Failure here must not drop the foreground sample.
 function Get-MediaJson {
@@ -83,28 +83,28 @@ function Get-MediaJson {
     return $unavailable
   }
 }
-$lastInput = New-Object SydTrackWin+LASTINPUTINFO
+$lastInput = New-Object sydtrackWin+LASTINPUTINFO
 $lastInput.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($lastInput)
 $idleSec = 0
-if ([SydTrackWin]::GetLastInputInfo([ref]$lastInput)) {
+if ([sydtrackWin]::GetLastInputInfo([ref]$lastInput)) {
   # Both values are unsigned 32-bit ticks. Windows PowerShell 5.1 has no
   # Environment.TickCount64; unchecked subtraction also handles tick rollover.
-  $idleMs = [SydTrackWin]::ElapsedTicks([SydTrackWin]::GetTickCount(), $lastInput.dwTime)
+  $idleMs = [sydtrackWin]::ElapsedTicks([sydtrackWin]::GetTickCount(), $lastInput.dwTime)
   $idleSec = [Math]::Floor($idleMs / 1000)
 }
 $screenOff = 'false'
-try { if ([SydTrackWin]::ScreenSaverRunning()) { $screenOff = 'true' } } catch {}
+try { if ([sydtrackWin]::ScreenSaverRunning()) { $screenOff = 'true' } } catch {}
 $mediaJson = '{"available":false,"source":"smtc","sessions":[]}'
 if ($IncludeMedia) { $mediaJson = Get-MediaJson }
-$hwnd = [SydTrackWin]::GetForegroundWindow()
+$hwnd = [sydtrackWin]::GetForegroundWindow()
 if ($hwnd -eq [IntPtr]::Zero) {
   Write-Output ("{`"window`":null,`"idleSec`":$idleSec,`"screenOff`":$screenOff,`"media`":$mediaJson,`"error`":null}")
   exit 0
 }
 $sb = New-Object System.Text.StringBuilder 1024
-[void][SydTrackWin]::GetWindowText($hwnd, $sb, $sb.Capacity)
+[void][sydtrackWin]::GetWindowText($hwnd, $sb, $sb.Capacity)
 $procId = [uint32]0
-[void][SydTrackWin]::GetWindowThreadProcessId($hwnd, [ref]$procId)
+[void][sydtrackWin]::GetWindowThreadProcessId($hwnd, [ref]$procId)
 $name = ""
 $path = ""
 $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
@@ -115,12 +115,12 @@ if ($proc) {
 # UWP windows report ApplicationFrameHost for every hosted app. The child process is the real app.
 if ($name -eq 'ApplicationFrameHost') {
   try {
-    $child = [SydTrackWin]::GetWindow($hwnd, [SydTrackWin]::GW_CHILD)
+    $child = [sydtrackWin]::GetWindow($hwnd, [sydtrackWin]::GW_CHILD)
     $guard = 0
     while ($child -ne [IntPtr]::Zero -and $guard -lt 12) {
       $guard++
       $childPid = [uint32]0
-      [void][SydTrackWin]::GetWindowThreadProcessId($child, [ref]$childPid)
+      [void][sydtrackWin]::GetWindowThreadProcessId($child, [ref]$childPid)
       if ($childPid -ne 0 -and $childPid -ne $procId) {
         $childProc = Get-Process -Id $childPid -ErrorAction SilentlyContinue
         if ($childProc -and $childProc.ProcessName -and $childProc.ProcessName -ne 'ApplicationFrameHost') {
@@ -130,7 +130,7 @@ if ($name -eq 'ApplicationFrameHost') {
           break
         }
       }
-      $child = [SydTrackWin]::GetWindow($child, [SydTrackWin]::GW_HWNDNEXT)
+      $child = [sydtrackWin]::GetWindow($child, [sydtrackWin]::GW_HWNDNEXT)
     }
   } catch {}
 }

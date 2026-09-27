@@ -3,7 +3,7 @@
 const path = require('path');
 
 /**
- * Focus profile pack — tag lists only (productive / unproductive / ignore).
+ * Focus profile pack — tag lists only (productive / unproductive / other / ignore).
  * Separate from .sydtrack backups (format: sydtrack-backup).
  *
  * Format choice: single JSON file with extension .sydtrack-profile.
@@ -42,7 +42,7 @@ function asStringList(value, fieldName) {
 
 /**
  * Build a portable Focus profile pack from tag lists.
- * @param {{ name?: string, productive?: string[], unproductive?: string[], ignore?: string[] }} opts
+ * @param {{ name?: string, productive?: string[], unproductive?: string[], other?: string[], ignore?: string[] }} opts
  */
 function buildProfilePack(opts) {
   const options = opts || {};
@@ -58,6 +58,7 @@ function buildProfilePack(opts) {
     appVersion: appVersion(),
     productive: asStringList(options.productive, 'productive'),
     unproductive: asStringList(options.unproductive, 'unproductive'),
+    other: asStringList(options.other, 'other'),
     ignore: asStringList(options.ignore, 'ignore')
   };
 
@@ -70,7 +71,7 @@ function buildProfilePack(opts) {
 
 /**
  * Parse and validate a Focus profile pack (object or JSON string).
- * @returns {{ format, schemaVersion, exportedAt?, appVersion?, name?, productive, unproductive, ignore }}
+ * @returns {{ format, schemaVersion, exportedAt?, appVersion?, name?, productive, unproductive, other, ignore }}
  */
 function parseProfilePack(objOrString) {
   let obj = objOrString;
@@ -110,6 +111,7 @@ function parseProfilePack(objOrString) {
     appVersion: typeof obj.appVersion === 'string' ? obj.appVersion : undefined,
     productive: asStringList(obj.productive, 'productive'),
     unproductive: asStringList(obj.unproductive, 'unproductive'),
+    other: asStringList(obj.other, 'other'),
     ignore: asStringList(obj.ignore, 'ignore')
   };
   if (name !== undefined) pack.name = name;

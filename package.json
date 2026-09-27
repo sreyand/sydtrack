@@ -1,9 +1,9 @@
 {
   "name": "sydtrack",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Desktop productivity tracker — active window time, classification, and focus reminders",
   "main": "src/main.js",
-  "author": "SydTrack",
+  "author": "sydtrack",
   "license": "GPL-3.0-only",
   "scripts": {
     "start": "node scripts/start.js",
@@ -11,7 +11,7 @@
     "start:demo": "node scripts/start.js --demo",
     "postinstall": "node scripts/ensure-install-scripts.js",
     "check": "node scripts/check-syntax.js",
-    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js && node scripts/test-storage.js && node scripts/test-start.js && node scripts/test-startup.js && node scripts/test-live-ticker.js && node scripts/test-timed-pause.js && node scripts/test-break-reminder.js && node scripts/test-timeline.js && node scripts/test-other-inbox.js && node scripts/test-session-intention.js",
+    "test": "node scripts/check-syntax.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js && node scripts/test-storage.js && node scripts/test-start.js && node scripts/test-startup.js && node scripts/test-profile-shortcut.js && node scripts/test-live-ticker.js && node scripts/test-timed-pause.js && node scripts/test-break-reminder.js && node scripts/test-timeline.js && node scripts/test-other-inbox.js && node scripts/test-apps-analytics.js && node scripts/test-session-intention.js",
     "test:start": "node scripts/test-start.js",
     "test:hardening": "node scripts/test-hardening.js",
     "generate:activity": "node scripts/generate-activity.js",
@@ -101,7 +101,7 @@
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "linux": {
-      "maintainer": "SydTrack <noreply@sydtrack.app>",
+      "maintainer": "sydtrack <noreply@sydtrack.app>",
       "icon": "build/icon.png",
       "category": "Utility",
       "target": [

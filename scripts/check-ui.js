@@ -81,8 +81,7 @@ app.whenReady().then(async () => {
         ['timeline date', document.getElementById('timeline-date'), document.getElementById('timeline-date')],
         ['longest block', document.getElementById('timeline-longest'), document.querySelector('.timeline-card')],
         ['data disclosure', document.querySelector('.storage-details summary'), document.querySelector('.storage-details summary')],
-        ['data explanation', document.querySelector('.storage-details-body p'), document.querySelector('.storage-details-body')],
-        ['session intention', document.getElementById('session-intention'), document.getElementById('session-intention')]
+        ['data explanation', document.querySelector('.storage-details-body p'), document.querySelector('.storage-details-body')]
       ];
       for (const [name, foreground, background] of samples) {
         const fg = getComputedStyle(foreground).color;
@@ -109,22 +108,44 @@ app.whenReady().then(async () => {
     const blocks = document.querySelectorAll('#timeline-visual .timeline-block').length;
     const text = document.getElementById('timeline-text').textContent;
     const longest = document.getElementById('timeline-longest').textContent;
-    const category = document.getElementById('timeline-category');
-    category.value = 'idle'; renderTimeline();
-    const filtered = document.querySelectorAll('#timeline-visual .timeline-block').length;
-    const hiddenWhenIdle = document.getElementById('timeline-longest').classList.contains('hidden');
-    category.value = 'all';
-    const profile = document.getElementById('timeline-profile');
-    profile.innerHTML = '<option value="all">All profiles</option><option value="coding">Coding</option>';
-    profile.value = 'coding'; renderTimeline();
-    const profileFiltered = document.querySelectorAll('#timeline-visual .timeline-block').length;
-    profile.value = 'all';
+    const defaultSpan = timelineViewport.end - timelineViewport.start;
+    const exactHourlyHidden = document.getElementById('day-hourly-card').classList.contains('hidden');
+    const visual = document.getElementById('timeline-visual');
+    const pinch = new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, clientX: 400, cancelable: true });
+    visual.dispatchEvent(pinch);
+    const pinchZoomed = pinch.defaultPrevented && timelineViewport.end - timelineViewport.start < defaultSpan;
+    const recenter = document.getElementById('timeline-recenter');
+    const recenterBox = recenter.getBoundingClientRect();
+    const cardBox = recenter.closest('.timeline-card').getBoundingClientRect();
+    const recenterBottomRight = !recenter.classList.contains('hidden') &&
+      cardBox.right - recenterBox.right < 50 && cardBox.bottom - recenterBox.bottom < 50;
+    recenter.click();
+    const buttonReset = recenter.classList.contains('hidden') && timelineViewport.end - timelineViewport.start === defaultSpan;
+    visual.dispatchEvent(pinch);
+    const reset = new KeyboardEvent('keydown', { key: '0', bubbles: true, cancelable: true });
+    visual.dispatchEvent(reset);
+    const keyboardReset = reset.defaultPrevented && timelineViewport.end - timelineViewport.start === defaultSpan;
+    const axis = document.querySelectorAll('#timeline-visual .timeline-axis span').length;
+    const overviewLabel = document.getElementById('timeline-precision').textContent.includes('overview');
+    const noControls = !document.getElementById('timeline-category') && !document.getElementById('timeline-profile') &&
+      !document.querySelector('.timeline-details') && document.getElementById('timeline-visual').getAttribute('aria-describedby') === 'timeline-text';
+    timelineDayData = { date, timeline: Array.from({ length: 180 }, (_, i) => ({
+      start: at(19) + i * 60000, end: at(19) + (i + 1) * 60000,
+      kind: i % 2 ? 'unproductive' : 'productive', profileId: 'default'
+    })), byHour: [] };
+    renderTimeline();
+    const denseBlocks = document.querySelectorAll('#timeline-visual .timeline-block').length;
+    const denseOverview = document.getElementById('timeline-precision').textContent.includes('overview');
+    const denseMixed = !document.getElementById('timeline-mixed-key').classList.contains('hidden');
     timelineDayData = { date, timeline: [], byHour: [{ productive: 7200 }] };
     renderTimeline();
     const older = document.getElementById('timeline-precision').textContent;
     const oldHidden = document.getElementById('timeline-visual').classList.contains('hidden');
     const oldLongestHidden = document.getElementById('timeline-longest').classList.contains('hidden');
-    return { blocks, text, longest, filtered, hiddenWhenIdle, profileFiltered, older, oldHidden, oldLongestHidden };
+    const olderHourlyShown = !document.getElementById('day-hourly-card').classList.contains('hidden');
+    return { blocks, text, longest, noControls, older, oldHidden, oldLongestHidden,
+      axis, defaultSpan, exactHourlyHidden, pinchZoomed, keyboardReset, buttonReset, recenterBottomRight,
+      overviewLabel, denseBlocks, denseOverview, denseMixed, olderHourlyShown };
   })()`);
   console.log('Timeline checks:', JSON.stringify(timelineChecks));
   await win.webContents.executeJavaScript(`(() => {
@@ -206,12 +227,16 @@ app.whenReady().then(async () => {
         tip.closest('.view').classList.remove('hidden');
         const panel = tip.closest('.analytics-panel');
         if (panel) panel.classList.remove('hidden');
+        const hourlyCard = tip.closest('#day-hourly-card');
+        const hourlyWasHidden = hourlyCard && hourlyCard.classList.contains('hidden');
+        if (hourlyCard) hourlyCard.classList.remove('hidden');
         tip.classList.remove('hidden');
         tip.style.left = '0px'; tip.style.top = '0px';
         tip.innerHTML = '<div class="pt-cat">Productive · top apps</div><ul><li><span class="pt-name app-trunc">Intel Connectivity Performance Suite with a very long application name</span><span class="pt-secs">123:59:59</span></li></ul>';
         const box = tip.getBoundingClientRect();
         const time = tip.querySelector('.pt-secs').getBoundingClientRect();
         results.push({ id, width: innerWidth, overflow: tip.scrollWidth > tip.clientWidth + 1, timeInside: time.right <= box.right - 10 });
+        if (hourlyWasHidden) hourlyCard.classList.add('hidden');
       }
       return results;
     })()`));
@@ -258,6 +283,7 @@ app.whenReady().then(async () => {
     const results = [];
     document.querySelectorAll('.view').forEach(view => view.classList.toggle('hidden', view.id !== 'view-analytics'));
     document.querySelector('.main').scrollTop = 0;
+    document.getElementById('day-hourly-card').classList.remove('hidden');
     for (const mode of ['day', 'week']) {
       setAnalyticsSegment(mode);
       const stats = { date: '2026-09-09', byHour: Array.from({length: 24}, () => ({productive: 0, unproductive: 0, other: 0, byApp: {}})), week: [] };
@@ -284,18 +310,131 @@ app.whenReady().then(async () => {
       const leftHidden = tip.classList.contains('hidden');
       results.push({mode, stayedVisible, leftHidden});
     }
+    renderTimeline();
     return results;
   })()`);
   console.log('Stationary hover checks:', JSON.stringify(hoverChecks));
+  const homePieNavigation = await win.webContents.executeJavaScript(`(() => {
+    document.querySelector('.nav-btn[data-tab="home"]').click();
+    renderPie({ byCategory: { productive: 60, unproductive: 30, other: 10 }, topApps: [] });
+    appsRange = 'week';
+    const pie = document.getElementById('pie-chart');
+    const rect = pie.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height * 0.08;
+    pie.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+    const reachedDayApps = !document.getElementById('view-analytics').classList.contains('hidden') &&
+      !document.getElementById('panel-apps').classList.contains('hidden') && appsRange === 'day' &&
+      document.querySelector('[data-apps-range="day"]').getAttribute('aria-pressed') === 'true';
+    document.querySelector('.nav-btn[data-tab="home"]').click();
+    pie.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+    const keyboardWorks = !document.getElementById('panel-apps').classList.contains('hidden') &&
+      !document.getElementById('view-analytics').classList.contains('hidden');
+    document.querySelector('.nav-btn[data-tab="home"]').click();
+    renderPie({ byCategory: { productive: 0, unproductive: 0, other: 0 }, topApps: [] });
+    pie.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: x, clientY: y }));
+    const emptyStaysHome = !document.getElementById('view-home').classList.contains('hidden');
+    return { reachedDayApps, keyboardWorks, emptyStaysHome };
+  })()`);
+  console.log('Home pie navigation:', JSON.stringify(homePieNavigation));
   await win.webContents.executeJavaScript(`(() => {
-    renderAppList({ activityRows: [
+    renderAppList({ date: '2026-09-25', appBreakdown: [
+      { name: 'Chrome', category: 'unproductive', seconds: 20 },
+      { name: 'Chrome', category: 'productive', seconds: 10 }
+    ], activityRows: [
       { id: 'a', name: 'Chrome', reason: 'youtube', category: 'unproductive', seconds: 20 },
       { id: 'b', name: 'Chrome', reason: 'github', category: 'productive', seconds: 10 },
-      { id: 'c', name: 'Chrome', reason: '<legacy>', category: 'ignored', seconds: 5 }
+      { id: 'c', name: 'Chrome', reason: '<legacy>', category: 'ignored', seconds: 5 },
+      { id: 'd', name: 'Chrome', reason: 'No matching rule', category: 'other', seconds: 0 }
     ] });
     const list = document.getElementById('app-list');
-    if (list.children.length !== 3 || list.querySelectorAll('button.selected').length !== 3 || !list.textContent.includes('youtube') || list.querySelector('legacy')) throw new Error('Activity rows/reasons/highlights failed');
+    if (list.children.length !== 1 || list.querySelectorAll('.app-activity').length !== 4 ||
+      list.querySelector('.app-group-details').open || !list.textContent.includes('U 20s') ||
+      !list.textContent.includes('youtube') || list.querySelector('legacy') ||
+      !document.getElementById('apps-donut').getAttribute('aria-label').includes('Chrome, 30s'))
+      throw new Error('Compact mixed-app summary or collapsed activity failed');
+    list.querySelector('.app-group-details summary').click();
+    if (!list.querySelector('.app-group-details').open)
+      throw new Error('App activity disclosure failed');
+    const groups = [...list.querySelectorAll('.app-activity-type')].map(node => node.getAttribute('aria-label'));
+    if (groups.join(',') !== 'productive activity,unproductive activity,other activity,ignored activity' ||
+      /productive|unproductive/i.test(list.querySelector('.app-group-mix').textContent) ||
+      !list.querySelector('.app-activity[data-row-id="d"] .app-activity-reason')?.textContent.includes('Default ruleset') ||
+      !list.querySelector('.app-group-duration.productive') || !list.querySelector('.app-group-duration.unproductive') ||
+      list.querySelector('.app-group-head > span'))
+      throw new Error('Category groups, colored durations, or compact Day summary failed');
+    const current = id => list.querySelector('.app-activity[data-row-id="' + id + '"] .app-activity-category:disabled');
+    if (list.querySelectorAll('.app-activity-category').length !== 16 ||
+      current('a')?.dataset.category !== 'unproductive' || current('b')?.dataset.category !== 'productive' ||
+      current('c')?.dataset.category !== 'ignored' || current('d')?.dataset.category !== 'other' ||
+      list.querySelector('.app-activity-change'))
+      throw new Error('P/U/O/I buttons do not reflect each activity’s current category');
+    const active = current('b');
+    const available = list.querySelector('.app-activity[data-row-id="a"] .app-activity-category[data-category="productive"]');
+    if (getComputedStyle(active).color === getComputedStyle(available).color ||
+      getComputedStyle(active).borderColor === getComputedStyle(available).borderColor)
+      throw new Error('Current category should be colored and outlined; available buttons should stay neutral');
+    const rowTops = [...list.querySelectorAll('.app-activity-row')].map(row => row.getBoundingClientRect().top);
+    const rowGaps = rowTops.slice(1).map((top, index) => top - rowTops[index]);
+    if (Math.max(...rowGaps) - Math.min(...rowGaps) > 1)
+      throw new Error('Activity rows have uneven gaps between categories');
+    list.querySelector('.app-group-details').open = false;
   })()`);
+  win.setSize(1100, 850);
+  const appsChecks = await win.webContents.executeJavaScript(`(async () => {
+    renderAppList({ date: '2026-09-25', appBreakdown: [
+      { name: 'Chrome', category: 'productive', seconds: 5400 },
+      { name: 'Chrome', category: 'unproductive', seconds: 1800 },
+      { name: 'Code', category: 'productive', seconds: 4200 },
+      { name: 'Discord', category: 'unproductive', seconds: 1800 },
+      { name: 'Notion', category: 'productive', seconds: 900 }
+    ], activityRows: [
+      { id: 'a', name: 'Chrome', reason: 'github', category: 'productive', seconds: 5400 },
+      { id: 'b', name: 'Chrome', reason: 'youtube', category: 'unproductive', seconds: 1800 },
+      { id: 'c', name: 'Code', reason: 'App identity', category: 'productive', seconds: 4200 },
+      { id: 'd', name: 'Discord', reason: 'discord', category: 'unproductive', seconds: 1800 },
+      { id: 'e', name: 'Notion', reason: 'notion', category: 'productive', seconds: 900 }
+    ] });
+    document.querySelector('[data-tab="analytics"]').click();
+    setAnalyticsSegment('apps');
+    document.querySelector('.main').scrollTop = 0;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const panel = document.getElementById('panel-apps');
+    const tab = document.querySelector('.analytics-apps-tab').getBoundingClientRect();
+    const leftTabs = document.querySelector('.analytics-toolbar .segment-control').getBoundingClientRect();
+    const overview = panel.querySelector('.apps-overview').getBoundingClientRect();
+    const details = panel.querySelector('.apps-detail-card').getBoundingClientRect();
+    const total = document.getElementById('apps-total');
+    const normal = total.textContent;
+    total.textContent = '23h 59m';
+    const number = total.getBoundingClientRect();
+    const center = document.querySelector('.apps-donut-center').getBoundingClientRect();
+    const centerPadding = Math.min(number.left - center.left, center.right - number.right);
+    total.textContent = normal;
+    appsRange = 'week'; appsHistoryRange = 'week';
+    appsHistoryDays = [{ date: '2026-09-24', apps: [{ name: 'Chrome', category: 'unproductive', seconds: 3600 }] },
+      { date: '2026-09-25', apps: [] }];
+    renderAppList(lastAppsStats);
+    const weekly = document.getElementById('apps-period-label').textContent.includes('Last 7 days') &&
+      document.querySelectorAll('#app-list .app-activity-category').length === 0 &&
+      document.getElementById('apps-total').textContent === '4h 55m';
+    appsRange = 'day'; appsHistoryRange = null; renderAppList(lastAppsStats);
+    return { overflow: panel.scrollWidth > panel.clientWidth + 1,
+      cardGap: details.top - overview.bottom, centerPadding, weekly,
+      appsOnRight: tab.left > leftTabs.right + 20,
+      slices: document.querySelectorAll('#apps-legend li').length,
+      mixed: document.querySelector('.app-group-mix').textContent.includes('P 1h 30m') && document.querySelector('.app-group-mix').textContent.includes('U 30m'),
+      collapsed: !document.querySelector('.app-group-details').open,
+      rows: document.querySelectorAll('.app-activity').length };
+  })()`);
+  console.log('Apps analytics checks:', JSON.stringify(appsChecks));
+  await win.webContents.executeJavaScript("applyTheme('coral')");
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-apps-light.png'), (await win.webContents.capturePage()).toPNG());
+  await win.webContents.executeJavaScript("document.querySelector('.app-group-details summary').click(); document.querySelector('.apps-detail-card').scrollIntoView({block:'start'})");
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-apps-detail.png'), (await win.webContents.capturePage()).toPNG());
+  await win.webContents.executeJavaScript("document.querySelector('.main').scrollTop = 0");
+  await win.webContents.executeJavaScript("applyTheme('midnight')");
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-apps-dark.png'), (await win.webContents.capturePage()).toPNG());
   const historyChecks = await win.webContents.executeJavaScript(`(async () => {
     document.querySelector('[data-tab="analytics"]').click();
     setAnalyticsSegment('month');
@@ -328,11 +467,9 @@ app.whenReady().then(async () => {
         { name: 'chrome', category: 'unproductive', seconds: 90, topMatch: { reason: 'youtube', seconds: 90 } }
       ], otherApps: [{ name: 'Unmatched App', category: 'other', seconds: 60 }] };
     renderRoundup(stats);
-    renderOtherInbox(stats);
     const story = document.getElementById('roundup-story');
-    const other = document.getElementById('tags-other-card');
     return { productive: story.textContent.includes('github'), unproductive: story.textContent.includes('youtube'),
-      otherVisible: !other.hidden, reviewLabel: other.querySelector('button').getAttribute('aria-label') };
+      redundantCardRemoved: !document.getElementById('tags-other-card') };
   })()`);
   console.log('Roundup evidence checks:', JSON.stringify(roundupEvidence));
   const settingsChecks = await win.webContents.executeJavaScript(`(() => {
@@ -347,6 +484,13 @@ app.whenReady().then(async () => {
     const notifications = visible('notifications') && document.getElementById('settings-reminder-timing').closest('#settings-panel-notifications') != null &&
       document.getElementById('fb-schedule-toggle').closest('#settings-panel-notifications') != null;
     document.querySelector('[data-settings-tab="tracking"]').click();
+    applySettingsInputs({ profileShortcut: 'Alt+B' });
+    const shortcut = document.getElementById('profile-shortcut').value === 'Alt+B' &&
+      document.getElementById('profile-shortcut').closest('#settings-panel-tracking') != null &&
+      document.getElementById('profile-shortcut').options.length === 4 &&
+      document.querySelector('#profile-shortcut-settings .settings-block-title').textContent === 'Focus profile hotswap' &&
+      document.getElementById('profile-shortcut-status').classList.contains('hidden') &&
+      !document.getElementById('profile-shortcut-settings').textContent.includes('Cycles through');
     const storage = document.getElementById('settings-storage-details');
     storage.open = true;
     const storageText = storage.textContent;
@@ -354,7 +498,7 @@ app.whenReady().then(async () => {
       storageText.includes('does not read browser addresses') && storageText.includes('90 days') &&
       storageText.includes('lifetime stats') && storageText.includes('No screenshots') &&
       document.getElementById('data-path').closest('#settings-data-card') != null;
-    return { initial, wellbeing, notifications, dataPrivacy,
+    return { initial, wellbeing, notifications, dataPrivacy, shortcut,
       overflow: document.getElementById('view-settings').scrollWidth > document.getElementById('view-settings').clientWidth + 1 };
   })()`);
   console.log('Settings tabs checks:', JSON.stringify(settingsChecks));
@@ -375,9 +519,52 @@ app.whenReady().then(async () => {
   await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   const screenshot = await win.webContents.capturePage();
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-home.png'), screenshot.toPNG());
+  await win.webContents.executeJavaScript("document.querySelector('.nav-btn[data-tab=\"sessions\"]').click(); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-sessions.png'), (await win.webContents.capturePage()).toPNG());
+  const sessionDayChecks = await win.webContents.executeJavaScript(`(() => {
+    const today = localDateKey();
+    fillSessionDaySelect({ date: '2026-09-24', recentDays: [] });
+    const select = document.getElementById('session-day-select');
+    return { todayPresent: [...select.options].some(option => option.value === today && option.textContent.includes('today')),
+      historicalSelected: select.value === '2026-09-24', minutesRightAligned: getComputedStyle(document.getElementById('session-custom-min')).textAlign === 'right' };
+  })()`);
+  console.log('Session control checks:', JSON.stringify(sessionDayChecks));
+  win.setSize(1040, 760);
+  const onboardingChecks = await win.webContents.executeJavaScript(`(() => {
+    document.getElementById('onboarding-screen').classList.remove('hidden');
+    document.querySelector('.shell').inert = true;
+    applyTheme('midnight');
+    const screen = document.getElementById('onboarding-screen');
+    const card = screen.querySelector('.onboarding-card');
+    const rect = card.getBoundingClientRect();
+    return { visible: !screen.classList.contains('hidden'),
+      generalSelected: document.querySelector('input[name="onboarding-profile"]:checked').value === 'default',
+      startupSelected: document.getElementById('onboarding-startup').checked,
+      currentCopy: card.textContent.includes('See the pattern, not every move.') && card.textContent.includes('Private by default.') &&
+        card.textContent.includes('No screenshots') && card.textContent.includes('Choose a starting profile'),
+      fits: rect.left >= 0 && rect.top >= 32 && rect.right <= innerWidth && rect.bottom <= innerHeight };
+  })()`);
+  console.log('Onboarding checks:', JSON.stringify(onboardingChecks));
+  await win.webContents.executeJavaScript(`(async () => {
+    document.querySelectorAll('.scroll-active').forEach(area => area.classList.remove('scroll-active'));
+    await new Promise(resolve => setTimeout(resolve, 250));
+  })()`);
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-onboarding-midnight.png'), (await win.webContents.capturePage()).toPNG());
+  await win.webContents.executeJavaScript("applyTheme('graphite')");
+  await win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 250))');
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-onboarding-graphite.png'), (await win.webContents.capturePage()).toPNG());
+  const scrollbarChecks = await win.webContents.executeJavaScript(`(async () => {
+    const area = document.querySelector('.main');
+    area.classList.remove('scroll-active');
+    area.dispatchEvent(new PointerEvent('pointermove'));
+    const appeared = area.classList.contains('scroll-active');
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    return { appeared, faded: !area.classList.contains('scroll-active') };
+  })()`);
+  console.log('Scrollbar checks:', JSON.stringify(scrollbarChecks));
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-results.json'), JSON.stringify(results.flat(), null, 2));
-  const failed = contrastChecks.some(check => check.ratio < 4.5) || timelineChecks.blocks !== 3 || !timelineChecks.text.includes('Idle') || !timelineChecks.text.includes('Untracked') || !timelineChecks.longest.includes('Longest productive block: 2h') || timelineChecks.filtered !== 1 || !timelineChecks.hiddenWhenIdle || timelineChecks.profileFiltered !== 1 || !timelineChecks.older.includes('hourly totals') || !timelineChecks.oldHidden || !timelineChecks.oldLongestHidden || !boostSyncChecks.trayEnabled || !boostSyncChecks.trayDisabled || !timedPauseUi.active || !timedPauseUi.cleared || results.flat().some((r) => r.overflow || !r.timeInside) || !tagChecks.loaded || !tagChecks.removed || !titleOnlyCheck || hoverChecks.some(r => !r.stayedVisible || !r.leftHidden) || !segmentChecks.analyticsPreserved || !segmentChecks.sessionPreserved;
-  app.exit(failed || historyChecks.share !== '75%' || !historyChecks.visible || historyChecks.overflow || historyChecks.scoreCells !== 30 || historyChecks.scoreHeight > 520 || !lifetimeChecks.visible || lifetimeChecks.total !== '10h tracked' || lifetimeChecks.days !== '4' || lifetimeChecks.bars !== 3 || lifetimeChecks.overflow || !roundupEvidence.productive || !roundupEvidence.unproductive || !roundupEvidence.otherVisible || roundupEvidence.reviewLabel !== 'Review unclassified time for Unmatched App' || !settingsChecks.initial || !settingsChecks.wellbeing || !settingsChecks.notifications || !settingsChecks.dataPrivacy || settingsChecks.overflow || layoutChecks.some(r => !r.sidebarAligned || !r.mobileRail || !r.customAligned || !r.controlsInside) ? 1 : 0);
+  const failed = contrastChecks.some(check => check.ratio < 4.5) || timelineChecks.blocks < 1 || timelineChecks.blocks > 24 || !timelineChecks.text.includes('Idle') || timelineChecks.text.includes('Untracked') || timelineChecks.axis < 2 || timelineChecks.defaultSpan >= 86400000 || !timelineChecks.exactHourlyHidden || !timelineChecks.pinchZoomed || !timelineChecks.keyboardReset || !timelineChecks.buttonReset || !timelineChecks.recenterBottomRight || !timelineChecks.overviewLabel || !timelineChecks.denseOverview || !timelineChecks.denseMixed || timelineChecks.denseBlocks > 24 || !timelineChecks.olderHourlyShown || !timelineChecks.longest.includes('Longest productive block: 2h') || !timelineChecks.noControls || !timelineChecks.older.includes('hourly totals') || !timelineChecks.oldHidden || !timelineChecks.oldLongestHidden || !boostSyncChecks.trayEnabled || !boostSyncChecks.trayDisabled || !timedPauseUi.active || !timedPauseUi.cleared || results.flat().some((r) => r.overflow || !r.timeInside) || !tagChecks.loaded || !tagChecks.removed || !titleOnlyCheck || hoverChecks.some(r => !r.stayedVisible || !r.leftHidden) || !segmentChecks.analyticsPreserved || !segmentChecks.sessionPreserved;
+  app.exit(failed || !homePieNavigation.reachedDayApps || !homePieNavigation.keyboardWorks || !homePieNavigation.emptyStaysHome || appsChecks.overflow || appsChecks.cardGap > 20 || appsChecks.centerPadding < 10 || !appsChecks.weekly || !appsChecks.appsOnRight || appsChecks.slices !== 4 || !appsChecks.mixed || !appsChecks.collapsed || appsChecks.rows !== 5 || historyChecks.share !== '75%' || !historyChecks.visible || historyChecks.overflow || historyChecks.scoreCells !== 30 || historyChecks.scoreHeight > 520 || !lifetimeChecks.visible || lifetimeChecks.total !== '10h tracked' || lifetimeChecks.days !== '4' || lifetimeChecks.bars !== 3 || lifetimeChecks.overflow || !roundupEvidence.productive || !roundupEvidence.unproductive || !roundupEvidence.redundantCardRemoved || !settingsChecks.initial || !settingsChecks.wellbeing || !settingsChecks.notifications || !settingsChecks.dataPrivacy || !settingsChecks.shortcut || settingsChecks.overflow || !sessionDayChecks.todayPresent || !sessionDayChecks.historicalSelected || !sessionDayChecks.minutesRightAligned || !onboardingChecks.visible || !onboardingChecks.generalSelected || !onboardingChecks.startupSelected || !onboardingChecks.currentCopy || !onboardingChecks.fits || !scrollbarChecks.appeared || !scrollbarChecks.faded || layoutChecks.some(r => !r.sidebarAligned || !r.mobileRail || !r.customAligned || !r.controlsInside) ? 1 : 0);
 }).catch((error) => { console.error(error); app.exit(1); });
 
-setTimeout(() => { console.error('UI checks timed out'); app.exit(1); }, 20000).unref();
+setTimeout(() => { console.error('UI checks timed out'); app.exit(1); }, 30000).unref();

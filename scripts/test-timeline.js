@@ -8,7 +8,7 @@ const { createStore, todayKey, toRollup } = require('../src/store');
 const { createTracker } = require('../src/tracker');
 const { buildExport, importBackup } = require('../src/backup');
 const { validateIpcPayload } = require('../src/ipc-validate');
-const { model } = require('../renderer/lib/day-timeline');
+const { model, rowsForDate, activityWindow, zoomWindow, overviewBuckets } = require('../renderer/lib/day-timeline');
 
 const temporary = [];
 function temp() {
@@ -58,6 +58,35 @@ async function run() {
     'hourly-only history never fabricates a longest block');
   assert.strictEqual(model({ date, byCategory: { productive: 120 }, byHour: [], timeline: [] }).precision, 'daily');
   assert.strictEqual(model({ date, byHour: [{ productive: 600 }], timeline: timeline.timeline }).precision, 'partial');
+  const rows = rowsForDate('2026-09-26');
+  const evening = hour => new Date(2026, 8, 26, hour).getTime();
+  const viewport = activityWindow(rows, [{ kind: 'productive', start: evening(20), end: evening(21) }]);
+  assert(viewport.start <= evening(20) && viewport.end >= evening(21));
+  assert(viewport.end - viewport.start >= 3 * 3600000 && viewport.end - viewport.start < 86400000,
+    'the default viewport gives short evening activity readable width');
+  const zoomed = zoomWindow(viewport, rows[0].start, rows[3].end, 0.5, 0.25);
+  assert(zoomed.end - zoomed.start < viewport.end - viewport.start);
+  assert(Math.abs(zoomed.start + (zoomed.end - zoomed.start) * 0.25 -
+    (viewport.start + (viewport.end - viewport.start) * 0.25)) < 1,
+  'pinch zoom keeps the pointed-at time in place');
+  const minimum = zoomWindow(viewport, rows[0].start, rows[3].end, 0.001, 0.5);
+  assert.strictEqual(minimum.end - minimum.start, 15 * 60000);
+  const wholeDay = zoomWindow(viewport, rows[0].start, rows[3].end, 100, 0.5);
+  assert.deepStrictEqual(wholeDay, { start: rows[0].start, end: rows[3].end });
+  const bucketStart = evening(20);
+  const bins = overviewBuckets([
+    { kind: 'productive', start: bucketStart, end: bucketStart + 7 * 60000 },
+    { kind: 'unproductive', start: bucketStart + 7 * 60000, end: bucketStart + 9 * 60000 }
+  ], bucketStart, bucketStart + 20 * 60000, rows[0].start, 10 * 60000);
+  assert.deepStrictEqual(bins.map(bin => bin.kind), ['productive', 'untracked'],
+    'overview shows the dominant state without fabricating activity across gaps');
+  assert.strictEqual(bins[0].durations.unproductive, 2 * 60000,
+    'the exact minority category remains available in bucket detail');
+  const mixed = overviewBuckets([
+    { kind: 'productive', start: bucketStart, end: bucketStart + 5 * 60000 },
+    { kind: 'unproductive', start: bucketStart + 5 * 60000, end: bucketStart + 10 * 60000 }
+  ], bucketStart, bucketStart + 10 * 60000, rows[0].start, 10 * 60000);
+  assert.strictEqual(mixed[0].kind, 'mixed', 'a 50/50 interval is not mislabeled productive');
   assert.strictEqual(validateIpcPayload('history:timelineDay', date), date);
   assert.throws(() => validateIpcPayload('history:timelineDay', '../settings'));
   assert(!Object.hasOwn(toRollup(store.getState()), 'timeline'), 'long-term rollups retain hourly/category totals, not exact segments');

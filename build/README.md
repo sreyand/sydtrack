@@ -1,6 +1,6 @@
 # Packaging and signing
 
-SydTrack installers are built with [electron-builder](https://www.electron.build/). Builds are unsigned and do not publish an auto-update feed. Nothing in the packaged app phones home.
+sydtrack installers are built with [electron-builder](https://www.electron.build/). Builds are unsigned and do not publish an auto-update feed. Nothing in the packaged app phones home.
 
 ```bash
 npm run dist:win      # NSIS installer + portable exe
@@ -27,4 +27,4 @@ macOS (Developer ID):
 - `build/entitlements.mac.plist` is applied only when `SYDTRACK_SIGN=1`
 - Notarization is left off. To notarize later, set `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`, and change `notarize` in `build/electron-builder.config.js`
 
-Without `SYDTRACK_SIGN=1`, macOS uses `identity: null` and Windows remains unsigned. Windows resource editing stays enabled so the executable still receives SydTrack’s icon and version metadata; it does not require a certificate.
+Without `SYDTRACK_SIGN=1`, macOS uses `identity: null` and Windows remains unsigned. Windows resource editing stays enabled so the executable still receives sydtrack’s icon and version metadata; it does not require a certificate.

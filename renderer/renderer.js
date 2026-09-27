@@ -122,11 +122,12 @@ function showNameTip(ev) {
 const api = window.sydtrack;
 let applying = false;
 /** Cached rules/ignore for one-click reclassify. */
-let cachedRules = { productive: [], unproductive: [] };
+let cachedRules = { productive: [], unproductive: [], other: [] };
 let cachedBrowserApps = [];
+let cachedIgnoredApps = [];
 let cachedIgnore = [];
 let tagsQuickSaving = false;
-/** Last focused window for Home quick-classify (P/U). */
+/** Last focused window for Home quick-classify (P/U/O). */
 let lastFocusedCache = null;
 /** Session overrides so Last focused chip/buttons don't snap back before tracker reclassifies. */
 const lfSessionClass = Object.create(null);
@@ -138,12 +139,13 @@ function lfOverrideKey(entry) {
 }
 
 function applyLfButtonOutlines(category) {
-  const prod = $('lf-prod');
-  const unprod = $('lf-unprod');
-  const ign = $('lf-ignore');
-  if (prod) prod.classList.toggle('selected', category === 'productive');
-  if (unprod) unprod.classList.toggle('selected', category === 'unproductive');
-  if (ign) ign.classList.toggle('selected', category === 'ignored');
+  for (const [id, value] of [['lf-prod', 'productive'], ['lf-unprod', 'unproductive'], ['lf-other', 'other'], ['lf-ignore', 'ignored']]) {
+    const button = $(id);
+    if (!button) continue;
+    const active = category === value;
+    button.classList.toggle('selected', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
 }
 
 function processNameForIgnore(entry) {
@@ -253,6 +255,19 @@ async function applyFocusBoostSchedule(settings, opts) {
 const reduceMotion =
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+for (const scrollArea of document.querySelectorAll('.main, .rail, textarea')) {
+  let hideScrollThumb;
+  const revealScrollThumb = () => {
+    scrollArea.classList.add('scroll-active');
+    clearTimeout(hideScrollThumb);
+    hideScrollThumb = setTimeout(() => scrollArea.classList.remove('scroll-active'), reduceMotion ? 600 : 1100);
+  };
+  scrollArea.addEventListener('scroll', revealScrollThumb, { passive: true });
+  scrollArea.addEventListener('pointermove', revealScrollThumb, { passive: true });
+  scrollArea.addEventListener('pointerenter', revealScrollThumb, { passive: true });
+  scrollArea.addEventListener('keydown', revealScrollThumb);
+}
+
 /** Session-only Analytics segment. */
 let analyticsSegment = 'day';
 let currentPlatform = null;
@@ -264,6 +279,8 @@ let timelineLastRefresh = 0;
 let liveDayDate = null;
 let timelineFollowsToday = true;
 let timelineProfileNames = {};
+let timelineManualViewport = null;
+let timelineViewport = null;
 
 function localDateKey() {
   const d = new Date();
@@ -274,18 +291,36 @@ function timelineTime(ms) {
   return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
+function timelineAxis(start, end) {
+  const span = end - start;
+  const minute = 60000;
+  const interval = [5, 10, 15, 30, 60, 120, 180, 240, 360]
+    .find(value => span / (value * minute) <= 5) || 360;
+  const ticks = [start];
+  for (let time = Math.ceil(start / (interval * minute)) * interval * minute;
+    time < end; time += interval * minute) {
+    if ((time - start) / span > 0.12 && (end - time) / span > 0.12) ticks.push(time);
+  }
+  ticks.push(end);
+  return ticks.map((time, index) => {
+    const percent = (time - start) / span * 100;
+    const align = index === 0 ? 'first' : index === ticks.length - 1 ? 'last' : '';
+    return '<span class="' + align + '" style="left:' + percent + '%">' + esc(timelineTime(time)) + '</span>';
+  }).join('');
+}
+
 function renderTimeline() {
   const visual = $('timeline-visual');
   if (!visual) return;
   const date = $('timeline-date').value;
   const day = timelineDayData && timelineDayData.date === date ? timelineDayData : { date, timeline: [], byHour: [] };
-  const category = $('timeline-category').value;
-  const profile = $('timeline-profile').value;
-  const data = sydtrackDayTimeline.model(day, category, profile);
+  const data = sydtrackDayTimeline.model(day);
+  const hourlyCard = $('day-hourly-card');
+  if (hourlyCard) hourlyCard.classList.toggle('hidden', data.precision !== 'hourly' && data.precision !== 'partial');
   const precision = $('timeline-precision');
   const longest = $('timeline-longest');
-  const showLongest = (category === 'all' || category === 'productive') &&
-    (data.precision === 'segments' || data.precision === 'partial') && data.longestProductive;
+  const showLongest = (data.precision === 'segments' || data.precision === 'partial') && data.longestProductive &&
+    data.longestProductive.end - data.longestProductive.start >= 300000;
   longest.classList.toggle('hidden', !showLongest);
   if (showLongest) {
     const block = data.longestProductive;
@@ -301,43 +336,105 @@ function renderTimeline() {
       ? 'Segments began after some activity was recorded. Earlier activity remains in hourly totals below.'
       : data.precision === 'empty'
         ? 'No activity recorded for this day.'
-        : 'Category changes and detected idle time. Blank means untracked.';
+        : 'Colors show activity; gaps are untracked.';
   if (data.precision === 'hourly' || data.precision === 'daily' || data.precision === 'empty') {
+    timelineViewport = null;
+    $('timeline-recenter').classList.add('hidden');
+    $('timeline-footer').classList.add('hidden');
     visual.classList.add('hidden');
-    $('timeline-text').innerHTML = '<li>No precise segments for this day. See hourly totals below.</li>';
+    $('timeline-legend').classList.add('hidden');
+    $('timeline-text').innerHTML = '<li>No precise segments for this day.</li>';
     return;
   }
   visual.classList.remove('hidden');
+  $('timeline-legend').classList.remove('hidden');
   const labels = { productive: 'Productive', unproductive: 'Unproductive', other: 'Other', idle: 'Idle' };
-  visual.innerHTML = data.rows.map((row, index) =>
-    '<div class="timeline-row"><span class="timeline-row-label">' + esc(row.label) + '</span>' +
-    '<div class="timeline-track">' + data.pieces[index].map(piece => {
-      const label = labels[piece.kind] + ' · ' + timelineTime(piece.start) + '–' + timelineTime(piece.end) +
-        (piece.profileId ? ' · ' + (timelineProfileNames[piece.profileId] || piece.profileId) : '');
-      return '<span class="timeline-block ' + piece.kind + '" style="left:' + piece.left + '%;width:' + piece.width + '%" title="' + esc(label) + '"></span>';
-    }).join('') + '</div></div>'
-  ).join('');
+  const viewport = timelineManualViewport && timelineManualViewport.date === date
+    ? timelineManualViewport
+    : sydtrackDayTimeline.activityWindow(data.rows, data.visible);
+  timelineViewport = { ...viewport, dayStart: data.rows[0].start, dayEnd: data.rows[data.rows.length - 1].end, date };
+  const { start, end } = viewport;
+  const recenter = $('timeline-recenter');
+  recenter.classList.toggle('hidden', !(timelineManualViewport && timelineManualViewport.date === date));
+  $('timeline-footer').classList.toggle('hidden', !showLongest && recenter.classList.contains('hidden'));
+  const spanHours = (end - start) / 3600000;
+  const bucketMinutes = spanHours > 12 ? 30 : spanHours > 4 ? 15 : spanHours > 1 ? 10 : spanHours > 0.75 ? 5 : 0;
+  if (data.precision === 'segments') precision.textContent = bucketMinutes
+    ? bucketMinutes + '-min overview · dominant state or mix; gaps untracked.'
+    : 'Exact category changes; gaps are untracked.';
+  else if (data.precision === 'partial' && bucketMinutes) precision.textContent +=
+    ' The timeline is a ' + bucketMinutes + '-minute dominant-state overview; zoom in for exact changes.';
+  const overview = bucketMinutes
+    ? sydtrackDayTimeline.overviewBuckets(data.visible, start, end, data.rows[0].start, bucketMinutes * 60000)
+    : null;
+  $('timeline-mixed-key').classList.toggle('hidden', !overview || !overview.some(bucket => bucket.kind === 'mixed'));
+  const displaySegments = overview ? overview.filter(bucket => bucket.kind !== 'untracked') : data.visible;
+  const blocks = displaySegments.flatMap(segment => {
+    const from = Math.max(start, segment.start);
+    const to = Math.min(end, segment.end);
+    if (to <= from) return [];
+    const label = overview
+      ? timelineTime(from) + '–' + timelineTime(to) + ' · ' +
+        Object.entries(segment.durations).filter(([, ms]) => ms >= 1000)
+          .map(([kind, ms]) => (labels[kind] || 'Untracked') + ' ' + (ms >= 60000 ? fmtDuration(ms / 1000) : Math.round(ms / 1000) + 's')).join(' · ')
+      : labels[segment.kind] + ' · ' + timelineTime(from) + '–' + timelineTime(to) +
+        (segment.profileId ? ' · ' + (timelineProfileNames[segment.profileId] || segment.profileId) : '');
+    return ['<span class="timeline-block ' + segment.kind + '" style="left:' + ((from - start) / (end - start) * 100) +
+      '%;width:' + ((to - from) / (end - start) * 100) + '%" title="' + esc(label) + '"></span>'];
+  });
+  visual.innerHTML = '<div class="timeline-track">' + blocks.join('') + '</div>' +
+    '<div class="timeline-axis" aria-hidden="true">' + timelineAxis(start, end) + '</div>';
   visual.setAttribute('aria-label', 'Timeline for ' + date + '. ' + precision.textContent +
-    ' ' + data.visible.length + ' matching segments. Text list follows.');
-  const entries = [];
-  if (category === 'all' && profile === 'all') {
-    data.rows.forEach((row, index) => {
-      let cursor = row.start;
-      for (const piece of data.pieces[index]) {
-        if (piece.start > cursor) entries.push(timelineTime(cursor) + '–' + timelineTime(piece.start) + ': Untracked');
-        entries.push(timelineTime(piece.start) + '–' + timelineTime(piece.end) + ': ' + labels[piece.kind] +
-          (piece.profileId ? ' · ' + (timelineProfileNames[piece.profileId] || piece.profileId) : ''));
-        cursor = Math.max(cursor, piece.end);
-      }
-      if (cursor < row.end) entries.push(timelineTime(cursor) + '–' + timelineTime(row.end) + ': Untracked');
-    });
-  } else {
-    for (const segment of data.visible) entries.push(timelineTime(segment.start) + '–' + timelineTime(segment.end) +
-      ': ' + labels[segment.kind] + (segment.profileId ? ' · ' + (timelineProfileNames[segment.profileId] || segment.profileId) : ''));
-  }
+    ' Showing ' + timelineTime(start) + ' to ' + timelineTime(end) + '. ' + data.visible.length +
+    ' recorded segments. Pinch to zoom, or press plus and minus. Press zero to reset. Text list follows.');
+  const entries = data.visible.map(segment => timelineTime(segment.start) + '–' + timelineTime(segment.end) +
+    ': ' + labels[segment.kind] + (segment.profileId ? ' · ' + (timelineProfileNames[segment.profileId] || segment.profileId) : ''));
   $('timeline-text').innerHTML = entries.length
     ? entries.map(entry => '<li>' + esc(entry) + '</li>').join('')
     : '<li>No segments match these filters.</li>';
+}
+
+const timelineRecenter = $('timeline-recenter');
+if (timelineRecenter) timelineRecenter.addEventListener('click', () => {
+  timelineManualViewport = null;
+  renderTimeline();
+  $('timeline-visual').focus();
+});
+
+const timelineVisual = $('timeline-visual');
+if (timelineVisual) {
+  timelineVisual.addEventListener('wheel', event => {
+    if (!event.ctrlKey || !timelineViewport) return;
+    event.preventDefault();
+    const track = timelineVisual.querySelector('.timeline-track');
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const fraction = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
+    const scale = Math.exp(Math.max(-120, Math.min(120, event.deltaY)) * 0.008);
+    const next = sydtrackDayTimeline.zoomWindow(timelineViewport, timelineViewport.dayStart,
+      timelineViewport.dayEnd, scale, fraction);
+    timelineManualViewport = { ...next, date: timelineViewport.date };
+    renderTimeline();
+  }, { passive: false });
+  timelineVisual.addEventListener('keydown', event => {
+    if (!timelineViewport) return;
+    if (event.key === '0') {
+      event.preventDefault();
+      timelineManualViewport = null;
+      renderTimeline();
+    } else if (event.key === '+' || event.key === '=' || event.key === '-') {
+      event.preventDefault();
+      const next = sydtrackDayTimeline.zoomWindow(timelineViewport, timelineViewport.dayStart,
+        timelineViewport.dayEnd, event.key === '-' ? 1.5 : 2 / 3, 0.5);
+      timelineManualViewport = { ...next, date: timelineViewport.date };
+      renderTimeline();
+    }
+  });
+  timelineVisual.addEventListener('dblclick', () => {
+    if (!timelineViewport) return;
+    timelineManualViewport = null;
+    renderTimeline();
+  });
 }
 
 async function loadTimelineDay() {
@@ -353,14 +450,6 @@ async function loadTimelineDay() {
     if (request !== timelineRequest || dateInput.value !== date) return;
     timelineProfileNames = Object.fromEntries(((profiles && profiles.profiles) || []).map(p => [p.id, p.name]));
     timelineDayData = day || { date, timeline: [], byHour: [] };
-    const ids = [...new Set((timelineDayData.timeline || []).map(s => s.profileId).filter(Boolean))];
-    const selector = $('timeline-profile');
-    const selected = selector.value;
-    selector.innerHTML = '<option value="all">All profiles</option>' + ids.map(id =>
-      '<option value="' + esc(id) + '">' + esc(timelineProfileNames[id] || id) + '</option>').join('');
-    selector.value = ids.includes(selected) ? selected : 'all';
-    selector.disabled = ids.length === 0;
-    selector.title = ids.length ? '' : 'Profile was not stored for this day';
     renderTimeline();
     if (analyticsSegment === 'day') renderDay(timelineDayData);
     timelineLastRefresh = Date.now();
@@ -468,10 +557,10 @@ function monthMarkup(days) {
 }
 
 const ANALYTICS_SUBTITLES = {
-  day: 'Today’s hours',
+  day: 'Timeline and hourly totals',
   week: 'Last 7 days',
   month: 'Last 30 days',
-  apps: 'Top 10 today · Corrections update today only.',
+  apps: 'App time and classifications',
   lifetime: 'All the time you have tracked'
 };
 
@@ -528,12 +617,14 @@ function setAnalyticsSegment(segment) {
     const id = panel.getAttribute('data-panel') || panel.id.replace(/^panel-/, '');
     panel.classList.toggle('hidden', id !== segment);
   });
+  if ($('apps-range')) $('apps-range').classList.toggle('hidden', segment !== 'apps');
   const sub = $('analytics-subtitle');
   if (sub) sub.textContent = ANALYTICS_SUBTITLES[segment] || ANALYTICS_SUBTITLES.day;
   historyRequest++;
   loadAnalyticsHistory();
   if (segment === 'lifetime') loadLifetime();
   if (segment === 'day') loadTimelineDay();
+  if (segment === 'apps' && appsRange !== 'day') setAppsRange(appsRange);
 }
 
 function initSettingsPanels() {
@@ -602,10 +693,9 @@ if (timelineDateInput) {
   timelineDateInput.addEventListener('change', () => {
     if (timelineDateInput.value > timelineDateInput.max) timelineDateInput.value = timelineDateInput.max;
     timelineFollowsToday = timelineDateInput.value === timelineDateInput.max;
+    timelineManualViewport = null;
     loadTimelineDay();
   });
-  $('timeline-category').addEventListener('change', renderTimeline);
-  $('timeline-profile').addEventListener('change', renderTimeline);
 }
 
 const navToggle = $('nav-toggle');
@@ -796,11 +886,12 @@ function listHasKey(arr, key) {
  */
 function defaultCategoryFromRules(entry, rules, ignore) {
   if (!entry) return 'other';
-  const r = rules || cachedRules || { productive: [], unproductive: [] };
+  const r = rules || cachedRules || { productive: [], unproductive: [], other: [] };
   const ign = ignore != null ? ignore : cachedIgnore || [];
   const pname = processNameForIgnore(entry);
   if (pname) {
     const pk = pname.toLowerCase();
+    if (cachedIgnoredApps.some(name => String(name).toLowerCase().replace(/\.exe$/i, '') === pk)) return 'ignored';
     for (const x of ign) {
       const k = String(x || '').toLowerCase();
       if (!k) continue;
@@ -811,6 +902,7 @@ function defaultCategoryFromRules(entry, rules, ignore) {
   const kw = keywordForQuickClassify(entry);
   if (kw) {
     const key = kw.toLowerCase();
+    if ((r.other || []).some((x) => String(x).toLowerCase() === key)) return 'other';
     if ((r.unproductive || []).some((x) => String(x).toLowerCase() === key)) {
       return 'unproductive';
     }
@@ -850,7 +942,7 @@ function renderLastFocused(lf, now) {
   const catEl = $('lf-cat');
   if (!appEl) return;
 
-  // Prefer lastFocused (survives while SydTrack is foreground); never show self as last focused
+  // Prefer lastFocused (survives while sydtrack is foreground); never show self as last focused
   const selfish =
     now &&
     (now.ignored ||
@@ -1017,6 +1109,12 @@ function renderPie(stats) {
     }
   };
   pie.classList.toggle('has-data', total > 0);
+  pie.setAttribute('role', total > 0 ? 'button' : 'img');
+  pie.tabIndex = total > 0 ? 0 : -1;
+  pie.setAttribute('aria-label', total > 0
+    ? 'Time breakdown: ' + fmtDuration(prod) + ' productive, ' + fmtDuration(unp) + ' unproductive, ' +
+      fmtDuration(oth) + ' other. Press Enter for today’s apps.'
+    : 'No time tracked yet');
 
   const token = (name, fallback) => {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -1428,6 +1526,9 @@ function applySettingsInputs(settings) {
   if ($('poll-mode') && document.activeElement !== $('poll-mode')) {
     const pollMs = Number(settings.pollMs);
     $('poll-mode').value = pollMs === 1000 || pollMs === 5000 ? String(pollMs) : '3000';
+  }
+  if ($('profile-shortcut') && document.activeElement !== $('profile-shortcut')) {
+    $('profile-shortcut').value = settings.profileShortcut || '';
   }
   if ($('reminder-message') && document.activeElement !== $('reminder-message')) {
     $('reminder-message').value = settings.reminderMessage || "You've been on {app} for a while... maybe it's time to get back?";
@@ -2056,219 +2157,181 @@ function renderStats(stats) {
     if (stats.dataDir && $('data-path')) $('data-path').textContent = stats.dataDir;
   }
   renderAppList(stats);
-  renderOtherInbox(stats);
 }
 
-function renderOtherInbox(stats) {
-  const card = $('tags-other-card');
-  const list = $('tags-other-list');
-  if (!card || !list) return;
-  const apps = (stats.otherApps || []).filter(app => app && app.name && app.seconds > 0).slice(0, 5);
-  card.hidden = apps.length === 0 && $('tags-other-editor').hidden;
-  list.replaceChildren();
-  for (const app of apps) {
-    const row = document.createElement('div');
-    row.className = 'tags-other-row';
-    const name = document.createElement('span');
-    name.textContent = app.name;
-    name.title = app.name;
-    const time = document.createElement('strong');
-    time.textContent = fmt(app.seconds);
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn ghost';
-    button.textContent = 'Review';
-    button.setAttribute('aria-label', 'Review unclassified time for ' + app.name);
-    button.addEventListener('click', () => openOtherInboxReview(app));
-    row.append(name, time, button);
-    list.append(row);
-  }
+let lastAppsStats = null;
+let appCorrectionBusy = false;
+let appsRange = 'day';
+let appsHistoryDays = [];
+let appsHistoryRange = null;
+let appsHistoryDate = null;
+let appsHistoryRequest = 0;
+const appDuration = seconds => seconds < 60 ? Math.round(seconds) + 's' : fmtDuration(seconds);
+const appsPeriodLabel = () => appsRange === 'day' ? 'Today' : appsRange === 'week' ? 'Last 7 days' : 'Last 30 days';
+
+function renderAppsOverview(entries) {
+  const { total, slices, appCount } = window.sydtrackAppsAnalytics.buildAppSlices(entries, 6);
+  const donut = $('apps-donut');
+  const legend = $('apps-legend');
+  $('apps-total').textContent = appDuration(total);
+  donut.style.backgroundImage = total ? 'conic-gradient(' + window.sydtrackAppsAnalytics.conicStops(slices, total) + ')' : 'none';
+  donut.setAttribute('aria-label', total ? 'App time, ' + appsPeriodLabel().toLowerCase() + ': ' + slices.map(slice => slice.name + ', ' + appDuration(slice.seconds)).join('; ') : 'No app time tracked yet');
+  legend.innerHTML = total ? slices.map((slice, index) => {
+    const percent = Math.round(slice.seconds / total * 100);
+    const mixed = slice.byCategory && Object.values(slice.byCategory).filter(seconds => seconds > 0).length > 1;
+    return '<li>' +
+      '<span class="apps-swatch" style="--slice-color:var(--apps-slice-' + Math.min(index + 1, 7) + ')" aria-hidden="true"></span>' +
+      '<span class="apps-legend-name" title="' + esc(slice.name) + '">' + esc(slice.name) + (mixed ? ' <small>mixed</small>' : '') + '</span>' +
+      '<span class="apps-legend-percent">' + percent + '%</span>' +
+      '<span class="apps-legend-time">' + appDuration(slice.seconds) + '</span></li>';
+  }).join('') : '<li class="empty">No apps tracked yet</li>';
+  $('apps-overview-title').textContent = appCount ? 'Where your time went' : 'App time';
+  $('apps-overview-note').classList.toggle('hidden', !appCount);
+  $('apps-period-label').textContent = appsPeriodLabel() + ' · active app time';
 }
 
-let otherInboxSelection = null;
-let otherInboxRequest = 0;
-let otherInboxSaving = false;
-
-function otherInboxDraftsDirty() {
-  const normalized = values => JSON.stringify((values || []).map(value => value.trim().toLowerCase()).filter(Boolean).sort());
-  const draft = currentTagLists();
-  return normalized(draft.productive) !== normalized(cachedRules.productive) ||
-    normalized(draft.unproductive) !== normalized(cachedRules.unproductive) ||
-    normalized(draft.ignore) !== normalized(cachedIgnore);
+function appReason(reason) {
+  if (!reason || reason === 'Keyword not recorded') return 'Reason unavailable';
+  if (reason === 'No matching rule' || reason === 'No matching keyword') return 'Default ruleset';
+  if (reason === 'App identity') return 'App rule';
+  return 'Matched “' + reason + '”';
 }
 
-function updateOtherInboxScope() {
-  if (!otherInboxSelection) return;
-  const scope = $('tags-other-scope').value;
-  const app = otherInboxSelection.name;
-  const profile = otherInboxSelection.profileName;
-  $('tags-other-category-field').hidden = scope === 'ignore';
-  $('tags-other-keyword-field').hidden = scope !== 'future';
-  $('tags-other-apply').textContent = scope === 'today' ? 'Classify today' : scope === 'future' ? 'Save rule' : 'Ignore app';
-  $('tags-other-apply').disabled = false;
-  $('tags-other-editor-note').textContent = scope === 'today'
-    ? 'Classifies all of today’s Other time for ' + app + '. Already-classified time and the recorded timeline stay as they are.'
-    : scope === 'future'
-      ? 'Add an app or title keyword to ' + profile + '. It affects future activity only; today’s time stays as it is.'
-      : 'Ignore all ' + app + ' activity in ' + profile + ' from now on. Today’s time stays as it is.';
-  $('tags-other-status').textContent = '';
+function appGroupSummary(group, showTotal = true) {
+  const categories = [['productive', 'P', 'productive'], ['unproductive', 'U', 'unproductive'], ['other', 'O', 'other'], ['ignored', 'I', 'ignored']];
+  const mix = categories.filter(([key]) => group.byCategory[key] > 0)
+    .map(([key, letter, label]) => '<span aria-label="' + appDuration(group.byCategory[key]) + ' ' + label + '"><b aria-hidden="true">' + letter + '</b> ' +
+      '<strong aria-hidden="true" class="app-group-duration ' + key + '">' + appDuration(group.byCategory[key]) + '</strong></span>').join(' · ');
+  return '<div class="app-group-head"><strong>' + esc(group.name) + '</strong>' +
+    (showTotal ? '<span>' + appDuration(group.seconds) + '</span>' : '') + '</div>' +
+    '<p class="app-group-mix">' + mix + '</p>';
 }
 
-async function openOtherInboxReview(app) {
-  if (otherInboxSaving || !api || !api.getProfiles) return;
-  const request = ++otherInboxRequest;
-  try {
-    const profiles = await api.getProfiles();
-    if (request !== otherInboxRequest) return;
-    const active = (profiles.profiles || []).find(profile => profile.id === profiles.activeId);
-    otherInboxSelection = { name: app.name, profileId: profiles.activeId,
-      profileName: active ? active.name : 'this profile' };
-    $('tags-other-editor-title').textContent = 'Review ' + app.name;
-    $('tags-other-scope').value = 'today';
-    $('tags-other-category').value = 'productive';
-    $('tags-other-keyword').value = '';
-    $('tags-other-editor').hidden = false;
-    $('tags-other-card').hidden = false;
-    updateOtherInboxScope();
-    $('tags-other-scope').focus();
-  } catch (_) {
-    $('tags-other-status').textContent = 'Could not open review.';
-  }
+function renderAppsPeriod() {
+  const entries = window.sydtrackAppsAnalytics.periodEntries(appsHistoryDays, lastAppsStats);
+  const model = window.sydtrackAppsAnalytics.buildAppSlices(entries, 6);
+  renderAppsOverview(entries);
+  document.querySelector('.apps-detail-card').classList.toggle('hidden', !model.apps.length);
+  $('apps-detail-title').textContent = 'Top apps';
+  $('apps-detail-description').textContent = '';
+  $('apps-detail-note').classList.add('hidden');
+  $('apps-correction-status').textContent = '';
+  $('app-list').innerHTML = model.apps.length ? model.apps.slice(0, 10).map(app =>
+    '<li class="app-group">' + appGroupSummary(app) + '</li>').join('') :
+    '<li class="empty">No app time in this period</li>';
 }
-
-async function applyOtherInboxReview() {
-  if (!otherInboxSelection || otherInboxSaving || tagsQuickSaving || !api) return;
-  const selected = { ...otherInboxSelection };
-  const scope = $('tags-other-scope').value;
-  const category = $('tags-other-category').value;
-  const keyword = $('tags-other-keyword').value.trim();
-  const status = $('tags-other-status');
-  if (scope === 'future' && (!keyword || /^site:/i.test(keyword))) {
-    status.textContent = 'Enter an app or title word, not a website address.';
-    $('tags-other-keyword').focus();
-    return;
-  }
-  const browserName = selected.name.replace(/\.exe$/i, '').toLowerCase();
-  const knownBrowser = isBrowserApp(selected.name);
-  if (scope === 'future' && knownBrowser && keyword.replace(/\.exe$/i, '').toLowerCase() === browserName) {
-    status.textContent = 'Use a page-title word. The browser name would classify every tab.';
-    $('tags-other-keyword').focus();
-    return;
-  }
-  if (scope !== 'today' && otherInboxDraftsDirty()) {
-    status.textContent = 'Save or discard your unsaved Focus Tags edits first.';
-    return;
-  }
-  otherInboxSaving = true;
-  tagsQuickSaving = true;
-  $('tags-other-apply').disabled = true;
-  $('tags-other-cancel').disabled = true;
-  for (const id of ['tags-other-scope', 'tags-other-category', 'tags-other-keyword']) $(id).disabled = true;
-  status.textContent = 'Saving…';
-  let savedSuccessfully = false;
-  try {
-    if (scope === 'today') {
-      const stats = await api.correctOtherToday(selected.name, category);
-      historicalWeek = null;
-      historyRequest++;
-      setLiveStats(stats, lastFocusedCache);
-      renderStats(stats);
-      paintLivePie();
-      status.textContent = 'Today’s Other time for ' + selected.name + ' was changed. The recorded timeline is unchanged.';
-      savedSuccessfully = true;
-    } else {
-      const profiles = await api.getProfiles();
-      if (profiles.activeId !== selected.profileId) throw new Error('Profile changed');
-      if (scope === 'future') {
-        const rules = await api.getRules();
-        if (rules.profileId !== selected.profileId) throw new Error('Profile changed');
-        const productive = (rules.productive || []).filter(word => word.toLowerCase() !== keyword.toLowerCase());
-        const unproductive = (rules.unproductive || []).filter(word => word.toLowerCase() !== keyword.toLowerCase());
-        (category === 'productive' ? productive : unproductive).push(keyword);
-        const saved = await api.setRules({ productive, unproductive });
-        fillRulesEditors(saved || { productive, unproductive });
-        status.textContent = 'Future windows matching “' + keyword + '” use ' + category + ' in ' + selected.profileName + '. Today is unchanged.';
-        savedSuccessfully = true;
-      } else if (scope === 'ignore') {
-        const current = await api.getIgnore();
-        if (current.profileId !== selected.profileId) throw new Error('Profile changed');
-        const ignore = (current.ignore || []).filter(name => name.toLowerCase() !== selected.name.toLowerCase());
-        ignore.push(selected.name);
-        const saved = await api.setIgnore(ignore);
-        fillIgnoreEditor(saved || { ignore });
-        status.textContent = selected.name + ' will be ignored in ' + selected.profileName + ' from now on. Today is unchanged.';
-        savedSuccessfully = true;
-      }
-    }
-  } catch (error) {
-    status.textContent = error && error.message === 'Profile changed'
-      ? 'The active profile changed. Reopen this review.' : 'Could not save this change.';
-  } finally {
-    otherInboxSaving = false;
-    tagsQuickSaving = false;
-    $('tags-other-apply').disabled = savedSuccessfully;
-    $('tags-other-cancel').disabled = false;
-    for (const id of ['tags-other-scope', 'tags-other-category', 'tags-other-keyword']) $(id).disabled = false;
-  }
-}
-
-if ($('tags-other-scope')) $('tags-other-scope').addEventListener('change', updateOtherInboxScope);
-if ($('tags-other-category')) $('tags-other-category').addEventListener('change', () => { $('tags-other-apply').disabled = false; });
-if ($('tags-other-keyword')) $('tags-other-keyword').addEventListener('input', () => { $('tags-other-apply').disabled = false; });
-if ($('tags-other-apply')) $('tags-other-apply').addEventListener('click', applyOtherInboxReview);
-if ($('tags-other-cancel')) $('tags-other-cancel').addEventListener('click', () => {
-  if (otherInboxSaving) return;
-  otherInboxRequest++;
-  otherInboxSelection = null;
-  $('tags-other-editor').hidden = true;
-  if (!$('tags-other-list').children.length) $('tags-other-card').hidden = true;
-});
 
 function renderAppList(stats) {
+  lastAppsStats = stats;
+  if (appsRange !== 'day') {
+    if (appsHistoryRange === appsRange) renderAppsPeriod();
+    return;
+  }
+  renderAppsOverview(stats && stats.appBreakdown);
+  $('apps-detail-title').textContent = 'Activity details';
+  $('apps-detail-description').textContent = '';
+  $('apps-detail-note').classList.add('hidden');
   const list = $('app-list');
-  if (!list) return;
-  const apps = (stats && (stats.activityRows || stats.topApps)) || [];
-  if (!apps.length) {
+  const openGroups = new Set([...list.querySelectorAll('.app-group-details[open]')]
+    .map(details => details.closest('.app-group').dataset.groupName));
+  const rows = (stats && (stats.activityRows || stats.topApps)) || [];
+  document.querySelector('.apps-detail-card').classList.toggle('hidden', !rows.length);
+  if (!rows.length) {
     list.innerHTML = '<li class="empty">No time logged yet</li>';
     return;
   }
-  list.innerHTML = apps.map(a => {
-    const category = a.category;
-    const chip = category === 'mixed' ? { className: 'chip other', label: 'mixed' } : chipDisplay(category, a.name);
-    return '<li class="app-row">' +
-      '<div class="app-row-copy">' +
-      '<span class="app-name app-trunc" title="' + esc(a.name) + '">' + esc(a.name) + '</span>' +
-      '<small class="app-match-reason">' + esc(a.reason || 'Keyword not recorded') + '</small>' +
-      '</div>' +
-      '<div class="app-row-tools">' +
-      '<span class="reclass" data-app="' + encodeURIComponent(a.id || '') + '">' +
-      [['productive', 'prod', 'P'], ['unproductive', 'unprod', 'U'], ['ignored', 'ignore', 'ign']].map(([value, cls, label]) =>
-        '<button type="button" class="btn-mini ' + cls + (category === value ? ' selected' : '') + '" aria-pressed="' + (category === value) +
-        '" data-action="' + value + '" title="' + (value === 'ignored' && category === 'ignored' ? 'Unignore for today' : 'Mark this activity ' + value + ' for today') + '">' + label + '</button>').join('') +
-      '</span>' +
-      '<span class="' + chip.className + '">' + chip.label + '</span>' +
-      '<span class="secs">' + fmt(a.seconds) + '</span>' +
-      '</div></li>';
+  const groups = new Map();
+  for (const row of rows) {
+    const key = row.name.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { name: row.name, rows: [], seconds: 0, byCategory: { productive: 0, unproductive: 0, other: 0, ignored: 0 } });
+    const group = groups.get(key);
+    group.rows.push(row);
+    group.byCategory[row.category] = (group.byCategory[row.category] || 0) + row.seconds;
+    if (row.category !== 'ignored') group.seconds += row.seconds;
+  }
+  list.innerHTML = [...groups.values()].map(group => {
+    const categories = [['productive', 'P', 'Productive'], ['unproductive', 'U', 'Unproductive'], ['other', 'O', 'Other'], ['ignored', 'I', 'Ignore']];
+    const activeTypes = categories.filter(([value]) => group.rows.some(row => row.category === value));
+    const groupKey = encodeURIComponent(group.name);
+    const open = openGroups.has(groupKey);
+    return '<li class="app-group" data-group-name="' + encodeURIComponent(group.name) + '">' +
+      '<details class="app-group-details"' + (open ? ' open' : '') + '><summary>' + appGroupSummary(group, false) + '</summary>' +
+      '<div class="app-group-activities"><p class="app-group-hint">Changes apply today only.</p>' +
+      activeTypes.map(([value]) => {
+        const typeRows = group.rows.filter(row => row.category === value).sort((a, b) => b.seconds - a.seconds);
+        return '<div class="app-activity-type" role="group" aria-label="' + value + ' activity">' +
+          typeRows.map(row => '<div class="app-activity" data-row-id="' + encodeURIComponent(row.id || '') + '">' +
+            '<div class="app-activity-row"><span class="app-activity-reason">' + esc(appReason(row.reason)) + '</span>' +
+            '<span class="app-activity-time">' + appDuration(row.seconds) + '</span>' +
+            (row.id ? '<span class="app-activity-actions" role="group" tabindex="-1" aria-label="' + esc(group.name) + ', ' + esc(appReason(row.reason)) + ': ' + esc(row.category) + ' today">' +
+              categories.map(([category, letter, name]) => '<button type="button" class="app-activity-category" data-app-command="choose" data-category="' + category + '" aria-label="' + name + '" aria-pressed="' + (row.category === category) + '" title="' + name + (row.category === category ? ' (current)' : ' for today') + '"' + (row.category === category ? ' disabled' : '') + '>' + letter + '</button>').join('') + '</span>' : '') + '</div></div>'
+          ).join('') + '</div>';
+      }).join('') + '</div></details></li>';
   }).join('');
 }
 
-$('app-list').addEventListener('click', async ev => {
-  const btn = ev.target.closest('button[data-action]');
-  if (!btn || !api || !api.correctActivityToday) return;
-  const wrap = btn.closest('.reclass');
-  const name = decodeURIComponent(wrap.getAttribute('data-app'));
-  let category = btn.dataset.action;
-  if (category === 'ignored' && btn.getAttribute('aria-pressed') === 'true') category = 'other';
-  btn.disabled = true;
+async function setAppsRange(range) {
+  if (!['day', 'week', 'month'].includes(range)) return;
+  appsRange = range;
+  document.querySelectorAll('[data-apps-range]').forEach(button => {
+    const active = button.dataset.appsRange === range;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const request = ++appsHistoryRequest;
+  const status = $('apps-range-status');
+  if (range === 'day') { status.textContent = ''; renderAppList(lastAppsStats); return; }
+  if (appsHistoryRange === range && appsHistoryDate === (lastAppsStats && lastAppsStats.date)) {
+    status.textContent = ''; renderAppsPeriod(); return;
+  }
+  status.textContent = 'Loading app time…';
+  appsHistoryRange = null;
+  renderAppsOverview([]);
+  $('app-list').innerHTML = '<li class="empty">Loading app time…</li>';
   try {
-    const stats = await api.correctActivityToday(name, category);
+    if (!api || !api.getHistorySummary) throw new Error('History unavailable');
+    const days = await api.getHistorySummary(range === 'week' ? 7 : 30);
+    if (request !== appsHistoryRequest) return;
+    appsHistoryDays = days;
+    appsHistoryRange = range;
+    appsHistoryDate = lastAppsStats && lastAppsStats.date;
+    status.textContent = '';
+    renderAppsPeriod();
+  } catch (err) {
+    if (request !== appsHistoryRequest) return;
+    appsHistoryRange = null;
+    status.textContent = 'Could not load app time. Select this range to retry.';
+  }
+}
+
+document.querySelectorAll('[data-apps-range]').forEach(button => button.addEventListener('click', () => setAppsRange(button.dataset.appsRange)));
+
+$('app-list').addEventListener('click', async ev => {
+  const btn = ev.target.closest('button[data-app-command]');
+  if (!btn || appCorrectionBusy) return;
+  const row = btn.closest('.app-activity');
+  const id = decodeURIComponent(row.dataset.rowId || '');
+  if (!id) return;
+  if (btn.dataset.appCommand !== 'choose' || btn.disabled || !api || !api.correctActivityToday) return;
+  appCorrectionBusy = true;
+  row.querySelectorAll('button').forEach(button => { button.disabled = true; });
+  const groupName = row.closest('.app-group').dataset.groupName;
+  try {
+    const stats = await api.correctActivityToday(id, btn.dataset.category);
     historicalWeek = null;
     historyRequest++;
     setLiveStats(stats, lastFocusedCache);
     renderStats(stats);
     paintLivePie();
-  } catch (err) { console.warn('App correction failed', err); }
-  finally { btn.disabled = false; }
+    $('apps-correction-status').textContent = 'Updated today’s activity. Future tracking is unchanged.';
+    const group = [...$('app-list').querySelectorAll('.app-group')].find(item => item.dataset.groupName === groupName);
+    if (group) group.querySelector('.app-activity[data-row-id="' + encodeURIComponent(id) + '"] .app-activity-actions')?.focus();
+  } catch (err) {
+    $('apps-correction-status').textContent = 'Could not change this activity. Try again.';
+    console.warn('App correction failed', err);
+    renderAppList(lastAppsStats);
+    $('app-list').querySelector('.app-activity[data-row-id="' + encodeURIComponent(id) + '"] .app-activity-category[data-category="' + btn.dataset.category + '"]')?.focus();
+  } finally { appCorrectionBusy = false; }
 });
 
 async function pushSettings(partial) {
@@ -2341,6 +2404,23 @@ if ($('launch-startup-toggle')) {
 if ($('poll-mode')) {
   $('poll-mode').addEventListener('change', () => {
     pushSettings({ pollMs: Number($('poll-mode').value) });
+  });
+}
+if ($('profile-shortcut')) {
+  $('profile-shortcut').addEventListener('change', async () => {
+    const select = $('profile-shortcut');
+    const old = latestGoalSettings && latestGoalSettings.profileShortcut || '';
+    const status = $('profile-shortcut-status');
+    select.disabled = true;
+    try {
+      await pushSettings({ profileShortcut: select.value });
+      status.textContent = '';
+      status.classList.add('hidden');
+    } catch (err) {
+      select.value = old;
+      status.textContent = 'That shortcut is unavailable. Choose another.';
+      status.classList.remove('hidden');
+    } finally { select.disabled = false; }
   });
 }
 if ($('reminder-message')) {
@@ -2471,12 +2551,15 @@ function linesToList(text) {
 function fillRulesEditors(rules) {
   if (!rules) return;
   if (Array.isArray(rules.browserApps)) cachedBrowserApps = rules.browserApps.slice();
+  if (Array.isArray(rules.ignoredApps)) cachedIgnoredApps = rules.ignoredApps.slice();
   cachedRules = {
     productive: rules.productive || [],
-    unproductive: rules.unproductive || []
+    unproductive: rules.unproductive || [],
+    other: rules.other || []
   };
   if ($('rules-prod-edit')) $('rules-prod-edit').value = (rules.productive || []).join('\n');
   if ($('rules-unprod-edit')) $('rules-unprod-edit').value = (rules.unproductive || []).join('\n');
+  if ($('rules-other-edit')) $('rules-other-edit').value = (rules.other || []).join('\n');
   if (rules.path && $('rules-path')) $('rules-path').textContent = rules.path;
   if (rules.path && $('rules-unprod-path')) $('rules-unprod-path').textContent = rules.path;
   if ($('rules-custom-label')) {
@@ -2539,7 +2622,8 @@ async function saveRulesFromEditors(statusId) {
   try {
     const next = await api.setRules({
       productive: linesToList(($('rules-prod-edit') && $('rules-prod-edit').value) || ''),
-      unproductive: linesToList(($('rules-unprod-edit') && $('rules-unprod-edit').value) || '')
+      unproductive: linesToList(($('rules-unprod-edit') && $('rules-unprod-edit').value) || ''),
+      other: linesToList(($('rules-other-edit') && $('rules-other-edit').value) || '')
     });
     fillRulesEditors(next);
     if (status) status.textContent = 'Saved — live now';
@@ -2580,6 +2664,9 @@ if ($('rules-unprod-save')) {
 
 if ($('rules-unprod-reset')) {
   $('rules-unprod-reset').addEventListener('click', () => resetRulesFromEditors('rules-unprod-status'));
+}
+if ($('rules-other-save')) {
+  $('rules-other-save').addEventListener('click', () => saveRulesFromEditors('rules-other-status'));
 }
 
 if ($('ignore-save')) {
@@ -2661,6 +2748,7 @@ function currentTagLists() {
   return {
     productive: read('rules-prod-edit', cachedRules.productive),
     unproductive: read('rules-unprod-edit', cachedRules.unproductive),
+    other: read('rules-other-edit', cachedRules.other),
     ignore: read('ignore-edit', cachedIgnore)
   };
 }
@@ -2672,6 +2760,7 @@ function listsContainingKeyword(keyword) {
   const found = [];
   if (lists.productive.some((x) => x.toLowerCase() === key)) found.push('Productive');
   if (lists.unproductive.some((x) => x.toLowerCase() === key)) found.push('Unproductive');
+  if (lists.other.some((x) => x.toLowerCase() === key)) found.push('Other');
   if (lists.ignore.some((x) => x.toLowerCase() === key)) found.push('Ignore');
   return found;
 }
@@ -2724,22 +2813,24 @@ async function tagsQuickAdd(target) {
   // Source of truth for edits: live textareas (unsaved edits included)
   let prod = linesToList(($('rules-prod-edit') && $('rules-prod-edit').value) || '');
   let unprod = linesToList(($('rules-unprod-edit') && $('rules-unprod-edit').value) || '');
+  let other = linesToList(($('rules-other-edit') && $('rules-other-edit').value) || '');
   let ignore = linesToList(($('ignore-edit') && $('ignore-edit').value) || '');
 
   const key = kw.toLowerCase();
   const inProd = prod.some((x) => x.toLowerCase() === key);
   const inUnprod = unprod.some((x) => x.toLowerCase() === key);
+  const inOther = other.some((x) => x.toLowerCase() === key);
   const inIgnore = ignore.some((x) => x.toLowerCase() === key);
 
-  if (target === 'productive' && inProd && !inUnprod && !inIgnore) {
+  if (target === 'productive' && inProd && !inUnprod && !inOther && !inIgnore) {
     if (status) status.textContent = 'Already in Productive.';
     return;
   }
-  if (target === 'unproductive' && inUnprod && !inProd && !inIgnore) {
+  if (target === 'unproductive' && inUnprod && !inProd && !inOther && !inIgnore) {
     if (status) status.textContent = 'Already in Unproductive.';
     return;
   }
-  if (target === 'ignore' && inIgnore && !inProd && !inUnprod) {
+  if (target === 'ignore' && inIgnore && !inProd && !inUnprod && !inOther) {
     if (status) status.textContent = 'Already in Ignore.';
     return;
   }
@@ -2747,10 +2838,12 @@ async function tagsQuickAdd(target) {
   const movedFrom = [];
   if (target !== 'productive' && inProd) movedFrom.push('Productive');
   if (target !== 'unproductive' && inUnprod) movedFrom.push('Unproductive');
+  if (inOther) movedFrom.push('Other');
   if (target !== 'ignore' && inIgnore) movedFrom.push('Ignore');
 
   prod = stripKeywordCI(prod, kw);
   unprod = stripKeywordCI(unprod, kw);
+  other = stripKeywordCI(other, kw);
   ignore = stripKeywordCI(ignore, kw);
   if (target === 'productive') prod.push(kw);
   else if (target === 'unproductive') unprod.push(kw);
@@ -2766,16 +2859,18 @@ async function tagsQuickAdd(target) {
       target === 'productive' ||
       target === 'unproductive' ||
       inProd ||
-      inUnprod;
+      inUnprod ||
+      inOther;
     const ignoreChanged = target === 'ignore' || inIgnore;
 
     if (rulesChanged && api.setRules) {
-      const next = await api.setRules({ productive: prod, unproductive: unprod });
-      fillRulesEditors(next || { productive: prod, unproductive: unprod, isCustom: true });
+      const next = await api.setRules({ productive: prod, unproductive: unprod, other });
+      fillRulesEditors(next || { productive: prod, unproductive: unprod, other, isCustom: true });
     } else {
       if ($('rules-prod-edit')) $('rules-prod-edit').value = prod.join('\n');
       if ($('rules-unprod-edit')) $('rules-unprod-edit').value = unprod.join('\n');
-      cachedRules = { productive: prod.slice(), unproductive: unprod.slice() };
+      if ($('rules-other-edit')) $('rules-other-edit').value = other.join('\n');
+      cachedRules = { productive: prod.slice(), unproductive: unprod.slice(), other: other.slice() };
     }
 
     if (ignoreChanged && api.setIgnore) {
@@ -2808,7 +2903,7 @@ async function tagsQuickAdd(target) {
   const input = $('tags-quick-input');
   if (!input) return;
   input.addEventListener('input', updateTagsQuickStatus);
-  for (const id of ['rules-prod-edit', 'rules-unprod-edit', 'ignore-edit']) {
+  for (const id of ['rules-prod-edit', 'rules-unprod-edit', 'rules-other-edit', 'ignore-edit']) {
     if ($(id)) $(id).addEventListener('input', updateTagsQuickStatus);
   }
   input.addEventListener('keydown', (ev) => {
@@ -2909,7 +3004,7 @@ if ($('data-clear-all')) {
 if ($('data-delete-all')) {
   $('data-delete-all').addEventListener('click', async () => {
     if (!api || !api.deleteAllMyData) return;
-    if (!confirm('Delete all local SydTrack data on this device?\n\nThis removes activity, daily rollups, sessions, settings, Focus profiles, tags, error logs, migration backups, and the leftover focusflow data folder. Nothing is uploaded. This cannot be undone.')) return;
+    if (!confirm('Delete all local sydtrack data on this device?\n\nThis removes activity, daily rollups, sessions, settings, Focus profiles, tags, error logs, migration backups, and the leftover focusflow data folder. Nothing is uploaded. This cannot be undone.')) return;
     const res = await api.deleteAllMyData();
     if (res && res.ok) {
       $('data-status').textContent = 'All local data deleted';
@@ -3064,23 +3159,18 @@ function syncSessionControlsRunning(running) {
   });
   const customEl = $('session-custom-min');
   if (customEl) customEl.disabled = !!running;
-  const intentionEl = $('session-intention');
-  if (intentionEl) intentionEl.disabled = !!running;
   // Live distractions count removed from timer card (still in session log).
 }
 
 function renderActiveSession(session) {
-  const wasRunning = !!activeSessionCache;
   activeSessionCache = session && session.status === 'running' ? session : null;
   if (!activeSessionCache) {
-    if (wasRunning && $('session-intention')) $('session-intention').value = '';
     syncSessionControlsRunning(false);
     updateIdleCountdownDisplay();
     stopSessionUiTicker();
     return;
   }
   syncSessionControlsRunning(true);
-  if ($('session-intention')) $('session-intention').value = session.intention || '';
   if (session.mode) setSelectedSessionMode(session.mode, { silent: true });
   const rem = remainingFromSession(session);
   const text = fmtCountdown(rem);
@@ -3125,8 +3215,6 @@ async function startFocusSession() {
   if (!api) return;
   const opts = { mode: selectedSessionMode };
   if (selectedSessionMode === 'custom') opts.customMin = currentCustomMin();
-  const intention = $('session-intention').value.trim();
-  if (intention) opts.intention = intention;
   $('session-intention-status').textContent = '';
   try {
     const session = await api.startSession(opts);
@@ -3294,16 +3382,17 @@ function renderSessionLogList(payload) {
 function fillSessionDaySelect(payload) {
   const sel = $('session-day-select');
   if (!sel) return;
-  const today = (payload && payload.date) || null;
+  const today = localDateKey();
   let days = (payload && payload.recentDays) || [];
-  if (today && !days.includes(today)) days = [today].concat(days);
-  if (!days.length && today) days = [today];
-  const prev = sessionLogDay || today;
+  const requested = (payload && payload.date) || today;
+  if (!days.includes(today)) days = [today].concat(days);
+  if (!days.includes(requested)) days.push(requested);
+  const prev = sessionLogDay || requested;
   sel.innerHTML = days
     .map((d) => '<option value="' + esc(d) + '">' + esc(d === today ? d + ' (today)' : d) + '</option>')
     .join('');
-  if (prev && days.includes(prev)) sel.value = prev;
-  else if (today) sel.value = today;
+  if (days.includes(prev)) sel.value = prev;
+  else sel.value = today;
   sessionLogDay = sel.value || today;
 }
 
@@ -3323,6 +3412,8 @@ async function refreshSessionLog(dateKey) {
     renderSessionLogList(payload);
   } catch (err) {
     console.warn('refreshSessionLog failed', err);
+    fillSessionDaySelect({ date: sessionLogDay || localDateKey(), recentDays: [] });
+    $('session-log-list').innerHTML = '<div class="empty session-log-empty">Could not load sessions.</div>';
   }
 }
 
@@ -3380,6 +3471,10 @@ async function boot() {
     const state = await api.getState();
     if (state) {
       currentPlatform = state.platform || null;
+      if (state.profileShortcutRegistered === false && $('profile-shortcut-status')) {
+        $('profile-shortcut-status').textContent = 'This shortcut is unavailable on this computer. Choose another.';
+        $('profile-shortcut-status').classList.remove('hidden');
+      }
       if ($('launch-startup-row')) {
         $('launch-startup-row').classList.toggle('hidden', state.platform !== 'win32' && state.platform !== 'darwin');
       }
@@ -3457,55 +3552,6 @@ if ($('onboarding-start')) {
   });
 }
 
-async function previewDraftClassification() {
-  const output = $('tags-preview-result');
-  const app = String($('tags-preview-app').value || '').trim();
-  const title = String($('tags-preview-title').value || '');
-  if (!app) {
-    output.textContent = 'Enter an app name first.';
-    return;
-  }
-  if (!api || !api.previewClassification) {
-    output.textContent = 'Preview is unavailable.';
-    return;
-  }
-  const lists = currentTagLists();
-  const button = $('tags-preview-run');
-  button.disabled = true;
-  try {
-    const result = await api.previewClassification({
-      app, title,
-      productive: lists.productive,
-      unproductive: lists.unproductive,
-      ignore: lists.ignore,
-      browserKeywords: {
-        productive: linesToList($('kw-prod-edit').value),
-        unproductive: linesToList($('kw-unprod-edit').value)
-      }
-    });
-    if (result.category === 'other') {
-      output.textContent = result.browser
-        ? 'Other · no title rule matched. This page will stay unclassified.'
-        : 'Other · no rule matched.';
-    } else if (result.category === 'ignored') {
-      output.textContent = 'Ignored · this app will not be logged.';
-    } else {
-      const label = result.category === 'productive' ? 'Productive' : 'Unproductive';
-      output.textContent = label + ' · ' + (result.source || 'rule') + ': ' + (result.reason || 'match');
-    }
-  } catch (err) {
-    output.textContent = 'Could not preview this title.';
-  } finally {
-    button.disabled = false;
-  }
-}
-
-if ($('tags-preview-run')) $('tags-preview-run').addEventListener('click', previewDraftClassification);
-for (const id of ['tags-preview-app', 'tags-preview-title']) {
-  if ($(id)) $(id).addEventListener('keydown', event => {
-    if (event.key === 'Enter') { event.preventDefault(); previewDraftClassification(); }
-  });
-}
 if ($('pause-15-btn')) {
   $('pause-15-btn').addEventListener('click', async () => {
     if (!api || !api.pauseFor15Minutes) return;
@@ -3537,42 +3583,31 @@ async function quickClassifyLastFocused(category) {
   if (!api || !lastFocusedCache) return;
   const kw = keywordForQuickClassify(lastFocusedCache);
   if (!kw) return;
-  const prod = (cachedRules.productive || []).slice();
-  const unprod = (cachedRules.unproductive || []).slice();
+  const current = {
+    productive: (cachedRules.productive || []).slice(),
+    unproductive: (cachedRules.unproductive || []).slice(),
+    other: (cachedRules.other || []).slice()
+  };
   const key = kw.toLowerCase();
   const strip = (arr) => arr.filter((k) => String(k).toLowerCase() !== key);
-  const already =
-    lastFocusedCache.category === category ||
-    (category === 'productive' && listHasKey(prod, key)) ||
-    (category === 'unproductive' && listHasKey(unprod, key));
-  let nextProd = strip(prod);
-  let nextUnprod = strip(unprod);
-  // Toggle off: strip from both lists and do not re-add
-  if (!already) {
-    if (category === 'productive') nextProd.push(kw);
-    else nextUnprod.push(kw);
-  }
+  const already = listHasKey(current[category], key);
+  const nextRules = Object.fromEntries(Object.entries(current).map(([type, tags]) => [type, strip(tags)]));
+  // Clicking an explicit tag again removes it; otherwise the chosen category
+  // becomes the only direct rule for this title/app in the active profile.
+  if (!already) nextRules[category].push(kw);
   try {
-    const next = await api.setRules({ productive: nextProd, unproductive: nextUnprod });
-    cachedRules = {
-      productive: (next && next.productive) || nextProd,
-      unproductive: (next && next.unproductive) || nextUnprod
-    };
-    fillRulesEditors(
-      next || {
-        productive: nextProd,
-        unproductive: nextUnprod,
-        isCustom: true
-      }
-    );
-    const oKey = lfOverrideKey(lastFocusedCache);
-    let nextCat = category;
-    if (already) {
-      if (oKey) delete lfSessionClass[oKey];
-      nextCat = defaultCategoryFromRules(lastFocusedCache, cachedRules, cachedIgnore);
-    } else if (oKey) {
-      lfSessionClass[oKey] = category;
+    // Ignore is process-wide. Moving from I to P/U/O first restores tracking.
+    const process = processNameForIgnore(lastFocusedCache);
+    if (process && listHasKey(cachedIgnore, process)) {
+      const remaining = cachedIgnore.filter(item => String(item).toLowerCase() !== process.toLowerCase());
+      const payload = await api.setIgnore(remaining);
+      fillIgnoreEditor(payload || { ignore: remaining, isCustom: true });
     }
+    const next = await api.setRules(nextRules);
+    fillRulesEditors(next || { ...nextRules, isCustom: true });
+    const oKey = lfOverrideKey(lastFocusedCache);
+    const nextCat = defaultCategoryFromRules(lastFocusedCache, cachedRules, cachedIgnore);
+    if (oKey) lfSessionClass[oKey] = nextCat;
     lastFocusedCache.category = nextCat;
     const catEl = $('lf-cat');
     applyCategoryChip(
@@ -3592,6 +3627,9 @@ if ($('lf-prod')) {
 }
 if ($('lf-unprod')) {
   $('lf-unprod').addEventListener('click', () => quickClassifyLastFocused('unproductive'));
+}
+if ($('lf-other')) {
+  $('lf-other').addEventListener('click', () => quickClassifyLastFocused('other'));
 }
 if ($('lf-ignore')) {
   $('lf-ignore').addEventListener('click', () => ignoreLastFocused());
@@ -3646,6 +3684,28 @@ const pieEl = $('pie-chart');
 if (pieEl) {
   pieEl.addEventListener('mousemove', showPieTip);
   pieEl.addEventListener('mouseleave', hidePieTip);
+  const openTodayApps = () => {
+    hidePieTip();
+    setAppsRange('day');
+    analyticsSegment = 'apps';
+    document.querySelector('.nav-btn[data-tab="analytics"]').click();
+    document.querySelector('.main').scrollTop = 0;
+    document.querySelector('.analytics-apps-tab')?.focus({ preventScroll: true });
+  };
+  pieEl.addEventListener('dblclick', event => {
+    if (pieHoverState.total <= 0) return;
+    const rect = pieEl.getBoundingClientRect();
+    const distance = Math.hypot(event.clientX - rect.left - rect.width / 2,
+      event.clientY - rect.top - rect.height / 2);
+    const radius = Math.min(rect.width, rect.height);
+    if (distance < radius * 0.22 || distance > radius / 2) return;
+    openTodayApps();
+  });
+  pieEl.addEventListener('keydown', event => {
+    if (pieHoverState.total <= 0 || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    openTodayApps();
+  });
 }
 
 const dayChartEl = $('day-chart');

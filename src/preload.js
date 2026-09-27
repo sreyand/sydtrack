@@ -27,10 +27,17 @@ contextBridge.exposeInMainWorld('sydtrack', {
     ipcRenderer.on('reminder:fired', handler);
     return () => ipcRenderer.removeListener('reminder:fired', handler);
   },
+  onProfileShortcut: (cb) => {
+    const listener = asFunction(cb);
+    const handler = () => listener();
+    ipcRenderer.on('profiles:cycle-requested', handler);
+    return () => ipcRenderer.removeListener('profiles:cycle-requested', handler);
+  },
   getState: () => ipcRenderer.invoke('state:get'),
   getProfiles: () => ipcRenderer.invoke('profiles:get').then(rememberProfile),
   saveProfile: (id, fields) => ipcRenderer.invoke('profiles:save', { id, fields }),
   activateProfile: (id) => ipcRenderer.invoke('profiles:activate', id).then(rememberProfile),
+  cycleProfile: () => ipcRenderer.invoke('profiles:cycle').then(rememberProfile),
   deleteProfile: (id) => ipcRenderer.invoke('profiles:delete', id),
   importNamedProfile: () => ipcRenderer.invoke('profiles:import'),
   correctActivityToday: (id, category) => ipcRenderer.invoke('apps:correctActivityToday', { id, category }),
