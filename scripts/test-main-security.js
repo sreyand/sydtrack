@@ -7,6 +7,9 @@ const Module = require('module');
 const { channels } = require('../src/ipc-validate');
 const { APP_PAGE_URL, windowBackgroundColor } = require('../src/window-security');
 const { APP_ID } = require('../src/app-identity');
+const { createUpdateChecker } = require('../src/updates');
+let updateRequests = 0;
+const releasePagesOpened = [];
 
 let failed = 0;
 function assert(cond, msg) {
@@ -86,6 +89,7 @@ function Notification() {}
 Notification.isSupported = () => false;
 
 const electron = {
+  shell: { openExternal: async url => releasePagesOpened.push(url) },
   globalShortcut: {
     register(key, callback) {
       if (key === blockedShortcut) return false;
@@ -147,6 +151,12 @@ const electron = {
 const originalLoad = Module._load;
 Module._load = function load(request, parent, isMain) {
   if (request === 'electron') return electron;
+  if (request === './updates' && parent.filename === path.join(__dirname, '..', 'src', 'main.js')) {
+    return { createUpdateChecker: options => createUpdateChecker({ ...options, fetch: async () => {
+      updateRequests++;
+      return [{ tag_name: 'v99.0.0', prerelease: false, draft: false, html_url: 'https://evil.example' }];
+    } }) };
+  }
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -212,6 +222,19 @@ async function run() {
   assert(profileSaved.productive.includes('r/learnpython') && profileSaved.ignore.length === 0, 'rule changes can atomically restore an ignored app in the active profile');
   await throws(() => handlers.get('rules:set')(goodEvent, { profileId: beforeCycle.activeId, productive: [], unproductive: [], ignore: [] }), 'atomic rule changes reject a stale profile guard');
   assert(beforeCycle.profiles.length < 2 || afterCycle.activeId !== beforeCycle.activeId, 'profile cycle advances to an available profile');
+  const quick = await handlers.get('rules:quickSet')(goodEvent, { profileId: afterCycle.activeId, app: 'chrome',
+    title: 'A guide to linear algebra - Google Chrome', keyword: 'linear algebra', category: 'productive', toggle: false });
+  assert(quick.rules.productive.includes('linear algebra') && !!quick.undoToken, 'quick IPC returns the saved rule and an opaque Undo token');
+  const undone = await handlers.get('corrections:undo')(goodEvent, quick.undoToken);
+  assert(!undone.rules.productive.includes('linear algebra'), 'Undo IPC restores the previous keyword state');
+  await throws(() => handlers.get('corrections:undo')(goodEvent, quick.undoToken), 'Undo token is one-use');
+  const updateState = await handlers.get('updates:get')(goodEvent);
+  assert(updateState.currentVersion === require('../package.json').version && updateRequests === 0, 'automatic checks are off and startup makes no GitHub request');
+  await throws(() => handlers.get('updates:openRelease')(goodEvent), 'release cannot be opened before an update is known');
+  const foundUpdate = await handlers.get('updates:check')(goodEvent);
+  assert(foundUpdate.available && updateRequests === 1, 'manual IPC performs one scoped update check');
+  await handlers.get('updates:openRelease')(goodEvent);
+  assert(releasePagesOpened[0] === 'https://github.com/sreyand/sydtrack/releases/tag/v99.0.0', 'release opener constructs a trusted repository URL, ignoring remote html_url');
   await handlers.get('settings:update')(goodEvent, { profileShortcut: '' });
   assert(!registeredShortcuts.has('Alt+B'), 'turning the shortcut off unregisters it');
 

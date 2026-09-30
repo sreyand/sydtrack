@@ -141,6 +141,8 @@ function lfOverrideKey(entry) {
 
 function applyLfButtonOutlines(category) {
   const keyword = keywordForQuickClassify(lastFocusedCache);
+  const canChoosePhrase = !!lastFocusedCache && isBrowserApp(lastFocusedCache.app) &&
+    !!window.sydtrackBrowserRules.contentTitle(lastFocusedCache.title, cachedBrowserApps);
   for (const [id, value] of [['lf-prod', 'productive'], ['lf-unprod', 'unproductive'], ['lf-other', 'other'], ['lf-ignore', 'ignored']]) {
     const button = $(id);
     if (!button) continue;
@@ -148,12 +150,12 @@ function applyLfButtonOutlines(category) {
     button.classList.toggle('selected', active);
     button.setAttribute('aria-pressed', String(active));
     button.dataset.saving = String(lfClassifySaving);
-    button.disabled = lfClassifySaving || !lastFocusedCache || (value !== 'ignored' && !keyword);
+    button.disabled = lfClassifySaving || !lastFocusedCache || (value !== 'ignored' && !keyword && !canChoosePhrase);
     const label = value === 'ignored' ? 'Ignore' : value[0].toUpperCase() + value.slice(1);
     button.title = !lastFocusedCache ? 'Waiting for an app' : value === 'ignored'
       ? 'Ignore the whole app: ' + lastFocusedCache.app
       : keyword ? label + ' rule for “' + keyword + '” in this profile'
-      : 'Unrecognized page. Add a specific title keyword in Focus Tags.';
+      : 'Choose a title phrase for a ' + label.toLowerCase() + ' rule';
   }
 }
 
@@ -657,7 +659,7 @@ function initSettingsPanels() {
   trackerCard.append($('settings-idle'));
   $('settings-appearance-card').append(document.querySelector('.font-credit'));
   $('settings-data-card').insertBefore(document.querySelector('.settings-meta'), $('settings-storage-details'));
-  tracking.append($('settings-appearance-card'), trackerCard, $('settings-data-card'));
+  tracking.append($('settings-appearance-card'), trackerCard, $('settings-updates-card'), $('settings-data-card'));
   wellbeing.append(wellbeingCard);
   notifications.append(notificationCard);
   document.querySelectorAll('[data-settings-tab]').forEach(button => button.addEventListener('click', () => {
@@ -722,6 +724,7 @@ if (navToggle) {
     const collapsed = document.body.classList.contains('nav-collapsed');
     navToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     navToggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    navToggle.setAttribute('aria-label', navToggle.title);
   });
 }
 
@@ -758,6 +761,7 @@ function updateSourcePill(now) {
     'fallback-demo': 'Fallback'
   };
   pill.textContent = labels[source] || source;
+  pill.title = pill.textContent;
   pill.className = 'status-pill ' + source;
 }
 
@@ -850,6 +854,7 @@ function refreshLastFocusedAfterToggle(key) {
     lastFocusedCache.browser
   );
   applyLfButtonOutlines(lastFocusedCache.category);
+  window.sydtrackQuickUI?.focusChanged();
 }
 
 function renderLastFocused(lf, now) {
@@ -875,6 +880,7 @@ function renderLastFocused(lf, now) {
       catEl.className = 'chip other';
     }
     applyLfButtonOutlines(null);
+    window.sydtrackQuickUI?.focusChanged();
     return;
   }
   lastFocusedCache = {
@@ -900,6 +906,7 @@ function renderLastFocused(lf, now) {
     );
   }
   applyLfButtonOutlines(lastFocusedCache.category);
+  window.sydtrackQuickUI?.focusChanged();
 }
 
 const MOOD_COPY = {
@@ -1413,6 +1420,7 @@ function renderWeek(stats) {
 
 function applySettingsInputs(settings) {
   settings = settings || {};
+  window.sydtrackUpdatesUI?.applySettings(settings);
   latestGoalSettings = settings;
   if (typeof syncWellbeingSettings === 'function') syncWellbeingSettings(settings);
   if (applying) return;
@@ -1469,7 +1477,7 @@ function applySettingsInputs(settings) {
   applyFocusBoostSchedule(settings).catch(() => {});
 }
 
-const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk'];
+const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk', 'tide', 'linen', 'plum'];
 
 function applyTheme(theme) {
   const id = THEME_IDS.indexOf(theme) >= 0 ? theme : 'midnight';
@@ -1515,6 +1523,7 @@ function syncPauseUi(settings) {
   const pill = $('source-pill');
   if (pill && paused) {
     pill.textContent = 'Paused';
+    pill.title = 'Paused';
     pill.className = 'status-pill paused';
   }
 }
@@ -2243,18 +2252,20 @@ $('app-list').addEventListener('click', async ev => {
   const row = btn.closest('.app-activity');
   const id = decodeURIComponent(row.dataset.rowId || '');
   if (!id) return;
-  if (btn.dataset.appCommand !== 'choose' || btn.disabled || !api || !api.correctActivityToday) return;
+  if (btn.dataset.appCommand !== 'choose' || btn.disabled || !api || !api.correctWithUndo) return;
   appCorrectionBusy = true;
   row.querySelectorAll('button').forEach(button => { button.disabled = true; });
   const groupName = row.closest('.app-group').dataset.groupName;
   try {
-    const stats = await api.correctActivityToday(id, btn.dataset.category);
+    const result = await api.correctWithUndo(id, btn.dataset.category);
+    const stats = result.stats;
     historicalWeek = null;
     historyRequest++;
     setLiveStats(stats, lastFocusedCache);
     renderStats(stats);
     paintLivePie();
     $('apps-correction-status').textContent = 'Updated today’s activity. Future tracking is unchanged.';
+    window.sydtrackQuickUI?.showUndo(result, 'Changed today’s activity.', { rowId: id });
     const group = [...$('app-list').querySelectorAll('.app-group')].find(item => item.dataset.groupName === groupName);
     if (group) group.querySelector('.app-activity[data-row-id="' + encodeURIComponent(id) + '"] .app-activity-actions')?.focus();
   } catch (err) {
@@ -2509,6 +2520,7 @@ function fillRulesEditors(rules) {
   }
   updateTagsQuickStatus();
   applyLfButtonOutlines(lastFocusedCache && lastFocusedCache.category);
+  window.sydtrackQuickUI?.focusChanged();
 }
 
 function fillIgnoreEditor(payload) {
@@ -3537,55 +3549,7 @@ if (focusBoostBtn) {
 }
 
 async function quickClassifyLastFocused(category) {
-  if (!api || !lastFocusedCache || lfClassifySaving || tagsQuickSaving) return;
-  const entry = { ...lastFocusedCache };
-  const profileId = cachedRules.profileId;
-  const oKey = lfOverrideKey(entry);
-  const kw = keywordForQuickClassify(entry);
-  if (!kw) return;
-  const current = {
-    productive: (cachedRules.productive || []).slice(),
-    unproductive: (cachedRules.unproductive || []).slice(),
-    other: (cachedRules.other || []).slice()
-  };
-  const key = kw.toLowerCase();
-  const strip = (arr) => arr.filter((k) => String(k).toLowerCase() !== key);
-  const already = listHasKey(current[category], key);
-  const nextRules = Object.fromEntries(Object.entries(current).map(([type, tags]) => [type, strip(tags)]));
-  // Clicking an explicit tag again removes it; otherwise the chosen category
-  // becomes the only direct rule for this title/app in the active profile.
-  if (!already) nextRules[category].push(kw);
-  const process = processNameForIgnore(entry);
-  const remainingIgnore = process && listHasKey(cachedIgnore, process)
-    ? cachedIgnore.filter(item => String(item).toLowerCase() !== process.toLowerCase()) : null;
-  // Removing whole-app Ignore and adding a rule must be one atomic profile save.
-  if (remainingIgnore) nextRules.ignore = remainingIgnore;
-  lfClassifySaving = true;
-  applyLfButtonOutlines(lastFocusedCache.category);
-  try {
-    const next = await api.setRules(nextRules, profileId);
-    if (cachedRules.profileId !== profileId) return;
-    fillRulesEditors(next || { ...nextRules, isCustom: true });
-    if (remainingIgnore) fillIgnoreEditor({ ignore: remainingIgnore, isCustom: true });
-    const nextCat = defaultCategoryFromRules(entry, cachedRules, cachedIgnore);
-    if (oKey) lfSessionClass[oKey] = nextCat;
-    if (!lastFocusedCache || lfOverrideKey(lastFocusedCache) !== oKey) return;
-    lastFocusedCache.category = nextCat;
-    const catEl = $('lf-cat');
-    applyCategoryChip(
-      catEl,
-      nextCat,
-      lastFocusedCache.app,
-      lastFocusedCache.browser
-    );
-    applyLfButtonOutlines(nextCat);
-  } catch (err) {
-    console.warn('quick-classify failed', err);
-    if ($('home-profile-status')) $('home-profile-status').textContent = 'Could not save the rule. Try again in the active profile.';
-  } finally {
-    lfClassifySaving = false;
-    applyLfButtonOutlines(lastFocusedCache && lastFocusedCache.category);
-  }
+  return window.sydtrackQuickUI?.classify(category);
 }
 
 if ($('lf-prod')) {
@@ -3602,58 +3566,7 @@ if ($('lf-ignore')) {
 }
 
 async function ignoreLastFocused() {
-  if (!api || !lastFocusedCache || lfClassifySaving || tagsQuickSaving) return;
-  const entry = { ...lastFocusedCache };
-  const profileId = cachedRules.profileId;
-  const name = processNameForIgnore(entry);
-  if (!name) return;
-  const prev = cachedIgnore.slice();
-  const key = name.toLowerCase();
-  const already =
-    entry.category === 'ignored' || listHasKey(prev, key);
-  let next;
-  if (already) {
-    next = prev.filter((x) => String(x).toLowerCase() !== key);
-  } else {
-    next = prev.slice();
-    if (!listHasKey(next, key)) next.push(name);
-  }
-  lfClassifySaving = true;
-  applyLfButtonOutlines(lastFocusedCache.category);
-  try {
-    const payload = await api.setIgnore(next, profileId);
-    if (cachedRules.profileId !== profileId) return;
-    cachedIgnore = (payload && payload.ignore) || next;
-    fillIgnoreEditor({
-      ignore: cachedIgnore,
-      path: payload && payload.path,
-      isCustom: true
-    });
-    const oKey = lfOverrideKey(entry);
-    let nextCat = 'ignored';
-    if (already) {
-      if (oKey) delete lfSessionClass[oKey];
-      nextCat = defaultCategoryFromRules(entry, cachedRules, cachedIgnore);
-    } else if (oKey) {
-      lfSessionClass[oKey] = 'ignored';
-    }
-    if (!lastFocusedCache || processNameForIgnore(lastFocusedCache)?.toLowerCase() !== key) return;
-    lastFocusedCache.category = nextCat;
-    const catEl = $('lf-cat');
-    applyCategoryChip(
-      catEl,
-      nextCat,
-      lastFocusedCache.app,
-      lastFocusedCache.browser
-    );
-    applyLfButtonOutlines(nextCat);
-  } catch (err) {
-    console.warn('ignore last-focused failed', err);
-    if ($('home-profile-status')) $('home-profile-status').textContent = 'Could not save Ignore. Try again in the active profile.';
-  } finally {
-    lfClassifySaving = false;
-    applyLfButtonOutlines(lastFocusedCache && lastFocusedCache.category);
-  }
+  return window.sydtrackQuickUI?.classify('ignored');
 }
 
 const pieEl = $('pie-chart');

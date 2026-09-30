@@ -49,6 +49,8 @@
   --color-accent: #6B8AFA;
   --color-accent-tint: #1B2340;
   --color-accent-hover: #85A0FF;
+  --color-on-accent: #FFFFFF;
+  --color-on-unproductive: #FFFFFF;
   --color-data-productive: #3FA372;
   --color-data-productive-tint: #12291F;
   --color-data-unproductive: #E2685F;
@@ -140,6 +142,74 @@
   --color-data-unproductive-tint: #3A2624;
   --color-data-other: #8D899A;
   --color-data-other-tint: #322F3A;
+}
+
+/* Additional palettes use the same component/type tokens as the original five. */
+[data-theme="tide"] {
+  color-scheme: dark;
+  --color-canvas: #0F181E;
+  --color-surface: #17232B;
+  --color-surface-sunken: #1E2E38;
+  --color-border: #2B3C47;
+  --color-border-strong: #415663;
+  --color-ink: #E4EEF3;
+  --color-ink-muted: #B0C2CD;
+  --color-ink-faint: #8198A6;
+  --color-accent: #76BFD4;
+  --color-accent-tint: #1D3540;
+  --color-accent-hover: #94D2E3;
+  --color-on-accent: #102128;
+  --color-data-productive: #61B98F;
+  --color-data-productive-tint: #1A352A;
+  --color-data-unproductive: #ED8B81;
+  --color-data-unproductive-tint: #40272A;
+  --color-on-unproductive: #301719;
+  --color-data-other: #9AABBA;
+  --color-data-other-tint: #293641;
+}
+
+[data-theme="linen"] {
+  color-scheme: light;
+  --color-canvas: #F4F0E8;
+  --color-surface: #FFFCF6;
+  --color-surface-sunken: #EEE8DC;
+  --color-border: #DDD5C8;
+  --color-border-strong: #BFB4A0;
+  --color-ink: #302D27;
+  --color-ink-muted: #625C51;
+  --color-ink-faint: #7F7669;
+  --color-accent: #7A5B27;
+  --color-accent-tint: #F0E5CF;
+  --color-accent-hover: #65471C;
+  --color-data-productive: #346F53;
+  --color-data-productive-tint: #E6EFE4;
+  --color-data-unproductive: #B1433D;
+  --color-data-unproductive-tint: #F7E5DF;
+  --color-data-other: #6F6B62;
+  --color-data-other-tint: #EAE6DE;
+}
+
+[data-theme="plum"] {
+  color-scheme: dark;
+  --color-canvas: #1B1720;
+  --color-surface: #251F2C;
+  --color-surface-sunken: #302838;
+  --color-border: #3D3347;
+  --color-border-strong: #574962;
+  --color-ink: #F0E9F4;
+  --color-ink-muted: #C5B8CE;
+  --color-ink-faint: #9C8AA8;
+  --color-accent: #BAA0DB;
+  --color-accent-tint: #3A2E49;
+  --color-accent-hover: #CFB9E9;
+  --color-on-accent: #251B31;
+  --color-data-productive: #6BB392;
+  --color-data-productive-tint: #21352D;
+  --color-data-unproductive: #EB8B92;
+  --color-data-unproductive-tint: #402730;
+  --color-on-unproductive: #301719;
+  --color-data-other: #AA9CB6;
+  --color-data-other-tint: #342D3F;
 }
 
 :root,

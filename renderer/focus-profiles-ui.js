@@ -14,7 +14,7 @@
       canonical(current.other) !== canonical(cachedRules.other) || canonical(current.ignore) !== canonical(cachedIgnore);
   };
   function mayDiscard(includeEditor = true) {
-    if (busy || tagsQuickSaving) return false;
+    if (busy || tagsQuickSaving || lfClassifySaving) return false;
     if ((includeEditor && editorDirty()) || tagsDirty()) return confirm('Discard unsaved profile or Focus Tags edits? Cancel to save them first.');
     return true;
   }

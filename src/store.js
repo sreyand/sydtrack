@@ -262,6 +262,7 @@ function defaultSettings() {
     sessionHistoryEnabled: true,
     sessionCustomMin: 45,
     notificationsEnabled: true,
+    updateChecksEnabled: false,
     theme: 'midnight'
   };
 }
@@ -559,6 +560,31 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
         isUnrecognizedReason(reason)) {
       throw new Error('Unrecognized browser pages cannot be changed as one group. Add a specific title keyword in Focus Tags.');
     }
+    return moveActivityCorrection(id, category, category);
+  }
+
+  // Capture only the previous override, not a day snapshot. Undo moves the
+  // current seconds back, including time earned since the original change.
+  function activityUndoState(id) {
+    rollIfNeeded();
+    const entry = Object.entries(state.byApp).find(([key, info]) => activityId(key, info) === id);
+    if (!entry) throw new Error('Activity no longer available');
+    return { date: state.date, id, previousCategory: entry[1].category,
+      previousOverride: (state.activityCorrections || {})[id] ?? null };
+  }
+
+  function restoreActivityCorrection(change) {
+    rollIfNeeded();
+    const current = activityUndoState(change.id);
+    if (current.date !== change.date) throw new Error('This change belongs to a different day.');
+    if (current.previousOverride !== change.expectedCategory || current.previousCategory !== change.expectedCategory) {
+      throw new Error('This activity changed again. Undo is no longer available.');
+    }
+    return moveActivityCorrection(change.id, change.previousCategory, change.previousOverride);
+  }
+
+  function moveActivityCorrection(id, category, override) {
+    const [name, originalCategory, reason] = JSON.parse(id);
     const next = structuredClone(state);
     for (const bucket of [next, ...next.byHour]) {
       const totals = bucket === next ? next.byCategory : bucket;
@@ -575,7 +601,9 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
         if (category !== 'ignored') totals[category] = (totals[category] || 0) + seconds;
       }
     }
-    next.activityCorrections = { ...next.activityCorrections, [id]: category };
+    next.activityCorrections = { ...next.activityCorrections };
+    if (override === null) delete next.activityCorrections[id];
+    else next.activityCorrections[id] = override;
     next.unproductiveStreak = 0;
     writeJson(filePath, next); state = next;
     return snapshot();
@@ -1019,6 +1047,8 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
     reclassifyStoredApps,
     correctAppToday,
     correctActivityToday,
+    activityUndoState,
+    restoreActivityCorrection,
     correctOtherAppToday,
     getActivityCorrection: (name, activity) => { rollIfNeeded(); return (state.activityCorrections || {})[JSON.stringify([name, activity.category, activity.reason])]; },
     getAppCorrection: name => { rollIfNeeded(); const corrections = state.appCorrections || {}; const key = String(name).toLowerCase(); return Object.hasOwn(corrections, key) ? corrections[key] : undefined; },

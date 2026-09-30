@@ -6,6 +6,7 @@ const path = require('path');
 
 const roots = [
   path.join(__dirname, '..', 'src'),
+  path.join(__dirname, '..', 'renderer'),
   path.join(__dirname)
 ];
 

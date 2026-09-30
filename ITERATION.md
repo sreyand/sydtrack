@@ -73,7 +73,7 @@ The trust model is stronger when the product has no incentive to collect more be
 
 ## Current stopping point
 
-The repository version is 2.2.1. Version 2.2.0 added first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 adds the `r/` classification fix and recovery from transient Windows foreground-probe failures. Release history belongs in the release-note files; the source refinements below are unreleased and do not replace existing installers.
+The repository version is 2.3.0, prepared locally with publication pending. Version 2.2.0 added first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 added the `r/` classification fix and recovery from transient Windows foreground-probe failures. Version 2.3.0 includes the source/topic classification refinement, coverage-aware Focus Share, precise corrections with Undo, optional GitHub update checks, and three additional themes. Release history belongs in the release-note files; the dated implementation records below describe the work before packaging.
 
 Windows x64 is the supported release target. macOS and Linux packaging are best-effort CI targets. Builds are unsigned. The app is ready for observation and user testing; it does not need another feature wave before people try it.
 
@@ -270,7 +270,7 @@ Inspect the packaged version and hashes. Use the manual lifecycle and Focus prof
 Supporting references:
 
 - [README](README.md)
-- [Current release notes](docs/release-notes-2.2.1.md)
+- [Current release notes](docs/release-notes-2.3.0.md)
 - [Lifecycle validation](docs/manual-lifecycle-validation.md)
 - [Focus profile validation](docs/manual-focus-profiles-validation.md)
 - [Focus profile generation guide](docs/focus-profile-generation-guide.md)
@@ -319,3 +319,38 @@ Run `npm test`, `npm run test:ui`, and `npm run test:profiles-ui`. `npm run benc
 - Older activity cannot be split into communities or pages after the fact. A label recorded as “google chrome” remains historical evidence, not a reason to rewrite the day.
 - The majority-classified threshold is a guard against a visibly partial picture, not statistical confidence or a guarantee that P/U assignments are right.
 - Before the next release, run the manual profile/classification checks on Windows with real titles and observe regular users for several days. Prioritize wrong-source matches and correction scope over maximizing the percentage classified. Packaged lifecycle validation remains required before distributing new installers.
+
+## Sidebar spacing and additional themes — 2026-09-30 (unreleased)
+
+- The collapsed sidebar footer now uses 44px slots and 8px gaps. Notification and pause controls share the navigation's target size, with centered 16px icons. Tracking status is a small light in its own slot instead of an empty circular button; its text and hover label remain available. Expanded and narrow-window layouts retain their existing arrangement.
+- Added **Tide** (deep blue/teal), **Linen** (warm paper/brass), and **Plum** (dark violet). They reuse the existing type, spacing, borders, and category semantics. Midnight remains the default, and the original five themes are unchanged.
+- New themes are wired into the Appearance picker, renderer, validated settings IPC, saved preferences, and native window canvas/title controls. Bright dark-theme action fills use dark text for readable contrast; privacy warnings also follow dark palettes.
+- Regression checks cover theme-list/palette consistency, settings persistence, new-theme contrast and selection, and collapsed footer spacing/containment across window sizes and tracking states. No version bump or installer rebuild is part of this pass.
+- Verified `npm test`, `npm run test:ui`, `npm run test:profiles-ui`, and `git diff --check`. New-theme sampled text/controls meet the 4.5:1 contrast check; visual previews were inspected.
+
+## Quick corrections, Undo, and update checks — 2026-09-30 (unreleased)
+
+### Implemented
+
+- **Unknown-title correction on Home.** Recognized sources and existing matched rules retain their one-click P/U/O behavior. An unfamiliar browser title opens a compact phrase picker instead of inventing a tag: select literal title words or type a matching phrase, choose P/U/O, and confirm. Browser suffixes are stripped from the preview; browser-name catchalls, fabricated phrases, partial-word matches, and address rules are rejected. Full unmatched titles remain transient, not saved as a browsing diary. Only the explicitly confirmed keyword enters the active profile. Existing historical groups are not rewritten or split.
+- **Scoped Undo.** Home rules and whole-app Ignore changes, plus Analytics today-only match corrections, expose a brief Undo action. Opaque main-process tokens expire after two minutes and are single-use, bounded, and cleared on data import/clearing/deletion or quit. Rule Undo restores only the affected keyword/Ignore memberships, preserves unrelated edits, and checks the active profile and current target state. Activity Undo restores the prior override (including its absence), hourly/category totals, and all currently recorded seconds for that match, including time accrued after the original change. Stale/day-changed/deleted activity cannot be restored. Disk failures leave the token available to retry.
+- **Draft protection and compact feedback.** Home corrections do not overwrite unsaved Focus Tags edits. Saving locks competing quick actions, pins the original profile, and never relabels a newly focused page. Unconfirmed phrase drafts close on a page/profile change or Escape. Undo stays visible while hovered/focused; category letters retain neutral-at-rest, colored-on-hover, and selected-outline behavior. The picker scrolls into view on smaller windows.
+- **True Last focused state.** Quick saves account for today-only overrides instead of pinning a future-rule preview over the tracker. Rule changes and today corrections refresh the existing ephemeral Last focused context while sydtrack is foreground, rather than erasing it. Refreshing that category does not capture a new window, write a title diary, or rewrite time. Destructive invalidation still clears the context.
+- **Quiet GitHub release checking.** Settings → Tracking → Updates shows the installed version, Check now, and an automatic-check toggle that defaults off. Opt-in checks run at most daily and wait until onboarding is complete. Stable semantic versions are compared numerically across the bounded public release list, ignoring draft/prerelease/malformed tags and publication order. A newer release adds a small Settings marker and a View release button; there is no OS notification, automatic asset download, or installer execution. The opener constructs a fixed sydtrack GitHub release URL rather than trusting remote links or renderer URLs.
+- **Network bounds and privacy.** The main-process GET sends only fixed public API headers, not activity/titles/profiles/credentials/cookies. Redirects are not followed; responses are size-bounded and checks time out after eight seconds. Concurrent requests are deduplicated, manual clicks have a cooldown, and offline/rate-limit failures back off without claiming the installed version is current. `update-check.json` stores only version/check timestamps/backoff metadata and is removed by Delete all my data. README/build privacy wording now discloses the optional GitHub request. Tracking remains offline-capable.
+
+### Verification and handoff
+
+- `npm test` covers literal phrase validation, source-specific exceptions, atomic Ignore changes, target-only Undo, unrelated edits, newly earned seconds, previous override restoration, restart persistence, stale profiles, expiry, failures, and IPC sender/payload guards. Syntax checking now includes renderer scripts too.
+- Updater fixtures cover semantic ordering (including 2.10 versus 2.3), stable-only selection, constructed safe links, defaults, cached daily scheduling, manual deduplication/cooldown, opt-out, onboarding, offline/rate-limit backoff, redirects, malformed/oversized/interrupted responses, timeouts, and cancellation. The real public endpoint was checked once and selected v2.2.1; no personal data or settings were used.
+- Isolated `npm run test:profiles-ui` exercises title selection and confirmation, cancellation, unsaved-tag protection, Home and Analytics Undo, opt-in settings, and layouts at 800/1040/1600px. `npm run test:ui` samples the new controls across all eight themes at 4.5:1 or better and verifies existing layouts. Preview screenshots are temporary test artifacts, not repository/user activity data.
+- Still unreleased: no version bump, installer rebuild, commit, or publication in this pass. Before release, smoke-test the installed setup and portable builds with real foreground tracking and a manual update check. Title-only classification still cannot determine intent, and the checker intentionally does not provide automatic installation.
+
+## v2.3.0 release preparation — 2026-09-30
+
+- Bumped package and lockfile root versions to 2.3.0 without changing dependency versions. Promoted the classification/correction/theme/update work into README's release summary and finalized [v2.3.0 release notes](docs/release-notes-2.3.0.md), with publication explicitly pending.
+- Built unsigned Windows x64 setup and portable executables. Existing versioned artifacts were preserved. Native-build `.DELETE.*` leftovers are excluded from the final packages; no dependency or personal files were deleted.
+- Core, renderer, and real-preload profile tests passed. Added `npm run test:packaged` (Windows, Node 22+) to compare the archived source and smoke-test both extracted executable payloads with temporary data and startup writes intercepted before application code runs.
+- Packaged checks passed for fresh onboarding, sandbox/preload IPC, Home rules/Undo, Analytics correction/Undo, preserved seeded history, restart settings, and manual GitHub release checking. The setup/portable app archives are identical. No personal activity was used, and the checker made no downloads or installation attempts.
+- Recorded sizes, SHA-256 hashes, exact verification scope, and pending manual checks in [release validation](docs/release-validation-2.3.0.md); distribution hashes are in `dist/SHA256SUMS-2.3.0.txt`.
+- Publication, tagging, and committing have not happened. The diagnostic launches extracted app payloads, not the installer/portable wrappers. Manual setup/upgrade, tray/login, real browser-title, and lock/sleep/resume acceptance remain before publishing. Feature work is frozen for this release; the next product step is regular-user observation rather than additional controls.

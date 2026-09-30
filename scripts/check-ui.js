@@ -14,6 +14,7 @@ const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { THEME_IDS } = require('../src/theme');
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-ui-')));
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
@@ -30,7 +31,9 @@ app.whenReady().then(async () => {
   const contrastChecks = await win.webContents.executeJavaScript(`(() => {
     const parse = value => {
       const parts = String(value).match(/[\\d.]+/g) || [];
-      return [Number(parts[0] || 0), Number(parts[1] || 0), Number(parts[2] || 0), parts[3] == null ? 1 : Number(parts[3])];
+      // Chromium returns color-mix() as color(srgb ...) with channels in 0–1.
+      const scale = String(value).startsWith('color(srgb ') ? 255 : 1;
+      return [Number(parts[0] || 0) * scale, Number(parts[1] || 0) * scale, Number(parts[2] || 0) * scale, parts[3] == null ? 1 : Number(parts[3])];
     };
     const composite = (fg, bg) => {
       const alpha = fg[3] + bg[3] * (1 - fg[3]);
@@ -65,11 +68,23 @@ app.whenReady().then(async () => {
     const profileMenu = document.getElementById('focus-profile-menu');
     profileMenu.innerHTML = '<button class="profile-choice" aria-pressed="true">Coding</button>';
     const profileInput = document.getElementById('profile-name');
+    const categoryProbe = document.createElement('div');
+    categoryProbe.className = 'last-focused';
+    categoryProbe.innerHTML = ['prod', 'unprod', 'other', 'ignore'].map(kind => '<button class="btn-mini selected ' + kind + '">P</button>').join('');
+    document.querySelector('.card').append(categoryProbe);
     const checks = [];
-    for (const theme of ['midnight', 'graphite', 'coral', 'starlight', 'dusk']) {
+    for (const theme of ${JSON.stringify(THEME_IDS)}) {
       applyTheme(theme);
       const samples = [
         ['body', document.body, document.body],
+        ['phrase title', document.getElementById('quick-rule-title'), document.getElementById('last-focused')],
+        ['phrase input', document.getElementById('quick-rule-keyword'), document.getElementById('quick-rule-keyword')],
+        ['phrase save', document.getElementById('quick-rule-save'), document.getElementById('quick-rule-save')],
+        ['Undo message', document.getElementById('correction-undo-message'), document.getElementById('correction-undo')],
+        ['Undo action', document.getElementById('correction-undo-action'), document.getElementById('correction-undo-action')],
+        ['Undo dismiss', document.getElementById('correction-undo-dismiss'), document.getElementById('correction-undo-dismiss')],
+        ['update status', document.getElementById('updates-status'), document.getElementById('settings-updates-card')],
+        ['update action', document.getElementById('updates-open'), document.getElementById('updates-open')],
         ['tooltip name', tip.querySelector('.pt-name'), tip],
         ['tooltip time', tip.querySelector('.pt-secs'), tip],
         ['tooltip category', tip.querySelector('.pt-cat'), tip],
@@ -83,6 +98,20 @@ app.whenReady().then(async () => {
         ['data disclosure', document.querySelector('.storage-details summary'), document.querySelector('.storage-details summary')],
         ['data explanation', document.querySelector('.storage-details-body p'), document.querySelector('.storage-details-body')]
       ];
+      if (['tide', 'linen', 'plum'].includes(theme)) {
+        const selected = document.querySelector('[data-theme-id="' + theme + '"]');
+        samples.push(
+          ['selected theme', selected, selected],
+          ['primary button', document.getElementById('rules-save'), document.getElementById('rules-save')],
+          ['danger button', document.getElementById('data-clear-all'), document.getElementById('data-clear-all')],
+          ['privacy warning', document.querySelector('.privacy-warning strong'), document.querySelector('.privacy-warning')],
+          ['privacy explanation', document.querySelector('.privacy-warning p'), document.querySelector('.privacy-warning')]
+        );
+        for (const kind of ['prod', 'unprod', 'other', 'ignore']) {
+          const button = categoryProbe.querySelector('.' + kind);
+          samples.push(['selected ' + kind, button, button]);
+        }
+      }
       for (const [name, foreground, background] of samples) {
         const fg = getComputedStyle(foreground).color;
         const bg = effectiveBackground(background);
@@ -90,11 +119,17 @@ app.whenReady().then(async () => {
       }
     }
     applyTheme('midnight');
+    categoryProbe.remove();
     tip.classList.add('hidden');
     profileMenu.innerHTML = '';
     return checks;
   })()`);
-  console.log('Theme contrast checks:', JSON.stringify(contrastChecks));
+  console.log('Theme contrast checks:', JSON.stringify(THEME_IDS.map(theme => ({ theme,
+    samples: contrastChecks.filter(check => check.theme === theme).length,
+    minRatio: Math.min(...contrastChecks.filter(check => check.theme === theme).map(check => check.ratio)) }))));
+  if (contrastChecks.some(check => check.ratio < 4.5)) {
+    console.error('Low-contrast samples:', JSON.stringify(contrastChecks.filter(check => check.ratio < 4.5)));
+  }
   const timelineChecks = await win.webContents.executeJavaScript(`(() => {
     const date = document.getElementById('timeline-date').value;
     const [y, m, d] = date.split('-').map(Number);
@@ -203,11 +238,15 @@ app.whenReady().then(async () => {
         const mobile = innerWidth <= 900;
         const rail = rect('.rail');
         const sidebarAligned = mobile || !${collapsed} || ['.logo-mark', '#nav-toggle', '.nav-btn', '#notif-btn', '#pause-btn', '#source-pill'].every(s => Math.abs(center(s) - center('.rail')) <= 1);
+        const footer = ['#notif-btn', '#pause-btn', '#source-pill'].map(rect);
+        const footerRhythm = mobile || !${collapsed} || (footer.every(r => r.width === 44 && r.height === 44) &&
+          footer.slice(1).every((r, i) => Math.abs(r.top - footer[i].bottom - 8) <= 1));
+        const footerInside = footer.every(r => r.top >= rail.top && r.bottom <= rail.bottom && r.left >= rail.left && r.right <= rail.right);
         const mobileRail = !mobile || (rail.width >= rect('.shell').width - 1 && rect('#nav-toggle').width === 0);
         const customAligned = Math.abs(center('#session-custom-min') - center('#session-start-btn')) <= 1;
         const card = rect('#session-timer-card');
         const controlsInside = ['#session-custom-min', '#session-start-btn', '.session-mode-control'].every(s => { const r = rect(s); return r.left >= card.left && r.right <= card.right; });
-        return { width: innerWidth, collapsed: ${collapsed}, sidebarAligned, mobileRail, customAligned, controlsInside };
+        return { width: innerWidth, collapsed: ${collapsed}, sidebarAligned, footerRhythm, footerInside, mobileRail, customAligned, controlsInside };
       })()`));
       if (width === 1040 && collapsed) {
         await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
@@ -216,6 +255,54 @@ app.whenReady().then(async () => {
     }
   }
   console.log('Layout checks:', JSON.stringify(layoutChecks));
+  if (layoutChecks.some(check => !check.footerRhythm || !check.footerInside)) throw new Error('Sidebar footer spacing or containment failed');
+  const footerStateChecks = [];
+  for (const height of [600, 760]) {
+    win.setSize(1040, height);
+    footerStateChecks.push(await win.webContents.executeJavaScript(`(async () => {
+      document.body.classList.add('nav-collapsed');
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const rect = el => el.getBoundingClientRect();
+      const rail = rect(document.querySelector('.rail'));
+      const before = rect(document.querySelector('.rail-foot'));
+      const checks = [];
+      for (const source of ['real', 'demo', 'paused', 'idle', 'fallback-demo']) {
+        updateSourcePill({ source });
+        syncNotifUi({ notificationsEnabled: source !== 'paused' });
+        syncPauseUi({ trackingPaused: source === 'paused' });
+        const pill = document.getElementById('source-pill');
+        const footer = rect(document.querySelector('.rail-foot'));
+        const controls = ['notif-btn', 'pause-btn', 'source-pill'].map(id => rect(document.getElementById(id)));
+        const dot = getComputedStyle(pill, '::before');
+        checks.push({ source, height: innerHeight,
+          stable: footer.top === before.top && footer.height === before.height,
+          contained: controls.every(r => r.top >= rail.top && r.bottom <= rail.bottom),
+          dot: dot.width === '8px' && dot.height === '8px' && getComputedStyle(pill).backgroundColor === 'rgba(0, 0, 0, 0)',
+          labeled: pill.title === pill.textContent && !!pill.title });
+      }
+      syncNotifUi({ notificationsEnabled: true }); syncPauseUi({ trackingPaused: false }); updateSourcePill({ source: 'real' });
+      return checks;
+    })()`));
+  }
+  console.log('Footer state checks:', JSON.stringify(footerStateChecks.flat()));
+  if (footerStateChecks.flat().some(check => !check.stable || !check.contained || !check.dot || !check.labeled)) throw new Error('Sidebar footer state layout failed');
+  const themePickerChecks = [];
+  win.setSize(1040, 760);
+  for (const theme of ['tide', 'linen', 'plum']) {
+    themePickerChecks.push(await win.webContents.executeJavaScript(`(async () => {
+      document.querySelector('[data-tab="home"]').click();
+      document.body.classList.add('nav-collapsed');
+      document.querySelector('[data-theme-id="${theme}"]').click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const selected = [...document.querySelectorAll('[data-theme-id][aria-pressed="true"]')];
+      return { theme: '${theme}', applied: document.documentElement.dataset.theme === '${theme}',
+        selected: selected.length === 1 && selected[0].dataset.themeId === '${theme}' };
+    })()`));
+    fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-theme-' + theme + '.png'), (await win.webContents.capturePage()).toPNG());
+  }
+  console.log('Theme picker checks:', JSON.stringify(themePickerChecks));
+  if (themePickerChecks.some(check => !check.applied || !check.selected)) throw new Error('Theme picker failed');
+  await win.webContents.executeJavaScript("applyTheme('midnight')");
   await win.webContents.executeJavaScript("document.body.classList.remove('nav-collapsed')");
   for (const width of [800, 1040, 1600]) {
     win.setSize(width, 760);
@@ -268,7 +355,7 @@ app.whenReady().then(async () => {
     const nativeIdentity = defaultCategoryFromRules({ app: 'Code', title: 'Project r/jhu notes' }) === 'productive';
     const ignoreBoundary = defaultCategoryFromRules({ app: 'discord-helper', title: '' }, {}, ['cord']) === 'other';
     renderLastFocused({ app: 'chrome', title: 'Google - Google Chrome', category: 'other' });
-    const unknownSafe = ['lf-prod', 'lf-unprod', 'lf-other'].every(id => document.getElementById(id).disabled) &&
+    const unknownSafe = ['lf-prod', 'lf-unprod', 'lf-other'].every(id => !document.getElementById(id).disabled && document.getElementById(id).title.includes('Choose a title phrase')) &&
       !document.getElementById('lf-ignore').disabled && document.getElementById('lf-cat').textContent === 'other';
     renderLastFocused(subreddit);
     const recognizedEnabled = !document.getElementById('lf-prod').disabled && document.getElementById('lf-prod').title.includes('r/jhu');
@@ -547,6 +634,7 @@ app.whenReady().then(async () => {
       document.getElementById('profile-shortcut').options.length === 4 &&
       document.querySelector('#profile-shortcut-settings .settings-block-title').textContent === 'Focus profile hotswap' &&
       document.getElementById('profile-shortcut-status').classList.contains('hidden') &&
+      getComputedStyle(document.querySelector('.profile-shortcut-row')).borderBottomWidth === '0px' &&
       !document.getElementById('profile-shortcut-settings').textContent.includes('Cycles through');
     const storage = document.getElementById('settings-storage-details');
     storage.open = true;

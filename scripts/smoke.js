@@ -1123,7 +1123,7 @@ async function focusProfileChecks() {
       backend: { getActiveWindow: () => pending ? new Promise(resolve => { resolveProbe = resolve; }) : Promise.resolve(sample) } });
     const context = vm.createContext({ appliedProfile: '', tracker, sessionManager: sessions, rulesHolder, ignoreHolder,
       rulesFilePath: '', ignoreFilePath: '', rulesIsCustom: false, ignoreIsCustom: false,
-      attachAppIdentities: value => ({ ...value, identities }), focusProfiles: null });
+      attachAppIdentities: value => ({ ...value, identities }), focusProfiles: null, lastPayload: { lastFocused: null } });
     const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
     vm.runInContext(main.slice(main.indexOf('function applyFocusProfile('), main.indexOf('function ensureTrackerStarted(')), context);
     fs.writeFileSync(path.join(root, 'rules.json'), JSON.stringify(rules));

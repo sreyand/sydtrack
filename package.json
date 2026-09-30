@@ -1,6 +1,6 @@
 {
   "name": "sydtrack",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "Desktop productivity tracker — active window time, classification, and focus reminders",
   "main": "src/main.js",
   "author": "sydtrack",
@@ -11,7 +11,7 @@
     "start:demo": "node scripts/start.js --demo",
     "postinstall": "node scripts/ensure-install-scripts.js",
     "check": "node scripts/check-syntax.js",
-    "test": "node scripts/check-syntax.js && node scripts/test-classification.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js && node scripts/test-storage.js && node scripts/test-start.js && node scripts/test-startup.js && node scripts/test-profile-shortcut.js && node scripts/test-live-ticker.js && node scripts/test-timed-pause.js && node scripts/test-break-reminder.js && node scripts/test-timeline.js && node scripts/test-other-inbox.js && node scripts/test-apps-analytics.js && node scripts/test-session-intention.js",
+    "test": "node scripts/check-syntax.js && node scripts/test-classification.js && node scripts/smoke.js && node scripts/test-hardening.js && node scripts/test-main-security.js && node scripts/test-storage.js && node scripts/test-start.js && node scripts/test-startup.js && node scripts/test-profile-shortcut.js && node scripts/test-live-ticker.js && node scripts/test-timed-pause.js && node scripts/test-break-reminder.js && node scripts/test-timeline.js && node scripts/test-other-inbox.js && node scripts/test-apps-analytics.js && node scripts/test-session-intention.js && node scripts/test-quick-corrections.js && node scripts/test-updates.js",
     "test:start": "node scripts/test-start.js",
     "test:hardening": "node scripts/test-hardening.js",
     "generate:activity": "node scripts/generate-activity.js",
@@ -20,6 +20,7 @@
     "benchmark:classification": "node scripts/benchmark-classification.js",
     "test:ui": "node scripts/check-ui.js",
     "test:profiles-ui": "node scripts/check-profiles-ui.js",
+    "test:packaged": "node scripts/check-packaged.js",
     "test:windows-backend": "node scripts/test-win.js",
     "pack": "node scripts/dist.js dir",
     "dist": "node scripts/dist.js win",
@@ -54,7 +55,8 @@
     "files": [
       "src/**/*",
       "renderer/**/*",
-      "package.json"
+      "package.json",
+      "!**/*.DELETE.*"
     ],
     "asar": true,
     "publish": null,

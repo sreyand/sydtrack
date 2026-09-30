@@ -3,12 +3,16 @@
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme, globalShortcut, shell } = require('electron');
 const { bindTrackingLifecycle } = require('./tracking-lifecycle');
 const { createErrorLog, installErrorLogging } = require('./error-log');
 let errorLog;
 const { createFocusProfiles } = require('./focus-profiles');
 const { createProfileShortcut } = require('./profile-shortcut');
+const { createQuickCorrections } = require('./quick-corrections');
+const { createUpdateChecker } = require('./updates');
+let quickCorrections;
+let updateChecker;
 let focusProfiles;
 let appliedProfile = '';
 const { createAppTray } = require('./tray');
@@ -409,6 +413,13 @@ function startServices() {
     defaults: require('./default-focus-profiles.json'),
     onChange: applyFocusProfile, onRecovery: reportRecovery });
   applyFocusProfile(focusProfiles.active());
+  quickCorrections = createQuickCorrections({ profiles: focusProfiles, store,
+    getIdentities: () => identitiesHolder.identities, getRules: () => rulesHolder.rules });
+  updateChecker = createUpdateChecker({ currentVersion: require('../package.json').version, dataDir: dataDir(),
+    getSettings: () => store.getSettings(), onStatus: status => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('updates:status', status);
+    } });
+  updateChecker.sync();
   timedPause = createTimedPause({
     getSettings: () => store.getSettings(),
     onExpire: () => {
@@ -450,7 +461,8 @@ function applyFocusProfile(profile) {
   ignoreHolder.ignore = profile.ignore;
   rulesFilePath = ignoreFilePath = focusProfiles.filePath;
   rulesIsCustom = ignoreIsCustom = true;
-  if (tracker) tracker.invalidateClassification();
+  if (tracker) tracker.invalidateClassification({ preserveLastFocused: true });
+  if (tracker && tracker.getLastFocused) lastPayload.lastFocused = tracker.getLastFocused();
   if (sessionManager) sessionManager.resetClassification();
 }
 
@@ -575,6 +587,8 @@ app.on('before-quit', () => {
   isQuitting = true;
   profileShortcut.dispose();
   if (timedPause) timedPause.dispose();
+  if (updateChecker) updateChecker.dispose();
+  if (quickCorrections) quickCorrections.clear();
 });
 
 ipcMain.handle('state:get', async (event, payload) => {
@@ -593,9 +607,48 @@ ipcMain.handle('state:get', async (event, payload) => {
 ipcMain.handle('apps:correctActivityToday', async (event, payload) => {
   const { id, category } = guardIpc(event, 'apps:correctActivityToday', payload);
   const stats = store.correctActivityToday(id, category, identitiesHolder.identities);
-  if (tracker) tracker.invalidateClassification();
+  if (tracker) tracker.invalidateClassification({ preserveLastFocused: true });
+  if (tracker && tracker.getLastFocused) lastPayload.lastFocused = tracker.getLastFocused();
   if (sessionManager) sessionManager.resetClassification();
   return stats;
+});
+
+ipcMain.handle('apps:correctWithUndo', async (event, payload) => {
+  const { id, category } = guardIpc(event, 'apps:correctWithUndo', payload);
+  const result = quickCorrections.correctActivity(id, category);
+  if (tracker) tracker.invalidateClassification({ preserveLastFocused: true });
+  if (tracker && tracker.getLastFocused) lastPayload.lastFocused = tracker.getLastFocused();
+  if (sessionManager) sessionManager.resetClassification();
+  return result;
+});
+
+ipcMain.handle('rules:quickSet', async (event, payload) => {
+  const next = guardIpc(event, 'rules:quickSet', payload);
+  const result = quickCorrections.quickSet(next);
+  return { ...result, rules: rulesPayload(), ignoreList: ignorePayload(), lastFocused: lastPayload.lastFocused };
+});
+
+ipcMain.handle('corrections:undo', async (event, payload) => {
+  const token = guardIpc(event, 'corrections:undo', payload);
+  const result = quickCorrections.undo(token);
+  if (tracker) tracker.invalidateClassification({ preserveLastFocused: true });
+  if (tracker && tracker.getLastFocused) lastPayload.lastFocused = tracker.getLastFocused();
+  if (sessionManager) sessionManager.resetClassification();
+  return result.kind === 'rule' ? { ...result, rules: rulesPayload(), ignoreList: ignorePayload(), lastFocused: lastPayload.lastFocused } : result;
+});
+
+ipcMain.handle('updates:get', async (event, payload) => {
+  guardIpc(event, 'updates:get', payload);
+  return updateChecker.snapshot();
+});
+ipcMain.handle('updates:check', async (event, payload) => {
+  guardIpc(event, 'updates:check', payload);
+  return updateChecker.check();
+});
+ipcMain.handle('updates:openRelease', async (event, payload) => {
+  guardIpc(event, 'updates:openRelease', payload);
+  await shell.openExternal(updateChecker.availableUrl());
+  return { ok: true };
 });
 
 ipcMain.handle('apps:correctToday', async (event, payload) => {
@@ -795,6 +848,7 @@ function applySettings(partial) {
     ensureTrackerStarted();
   }
   if (timedPause) timedPause.sync();
+  if (updateChecker) updateChecker.sync();
   return next;
 }
 
@@ -883,6 +937,8 @@ ipcMain.handle('data:import', async (event, payload) => {
           focusProfiles.save('default', { ignore: list });
         }
       });
+      if (quickCorrections) quickCorrections.clear();
+      if (updateChecker) updateChecker.sync();
       return { ...imported, path: chosen };
     } catch (err) {
       return { ok: false, error: err.message || 'Failed to import CSV' };
@@ -927,6 +983,8 @@ ipcMain.handle('data:import', async (event, payload) => {
       if (!obj.profiles) focusProfiles.save('default', { ignore: list });
     }
   });
+  if (quickCorrections) quickCorrections.clear();
+  if (updateChecker) updateChecker.sync();
   return { ...imported, path: result.filePaths[0] };
 });
 
@@ -1014,6 +1072,7 @@ ipcMain.handle('data:clearToday', async (event, payload) => {
   guardIpc(event, 'data:clearToday', payload);
   if (!store) return { ok: false };
   store.clearToday();
+  quickCorrections.clear();
   return { ok: true, stats: store.snapshot() };
 });
 
@@ -1021,6 +1080,7 @@ ipcMain.handle('data:clearAll', async (event, payload) => {
   guardIpc(event, 'data:clearAll', payload);
   if (!store) return { ok: false };
   store.clearAllHistory();
+  quickCorrections.clear();
   return { ok: true, stats: store.snapshot() };
 });
 
@@ -1045,6 +1105,8 @@ ipcMain.handle('data:deleteAll', async (event, payload) => {
   });
   loadAppIdentities();
   loadBrowserKeywordFile();
+  quickCorrections.clear();
+  updateChecker.reset();
   if (tracker) tracker.invalidateClassification();
   return {
     ...deleted,

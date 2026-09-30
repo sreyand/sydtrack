@@ -12,7 +12,10 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('fs'), os = require('os'), path = require('path');
 const { createFocusProfiles } = require('../src/focus-profiles');
 const { createStore } = require('../src/store');
+const { createQuickCorrections } = require('../src/quick-corrections');
+const { createUpdateChecker } = require('../src/updates');
 const { createSessionManager } = require('../src/sessions');
+const { validateIpcPayload } = require('../src/ipc-validate');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-profile-ui-'));
 app.setPath('userData', root); app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
@@ -26,8 +29,13 @@ app.whenReady().then(async () => {
     if (id != null && id !== profiles.snapshot().activeId) throw new Error('Focus profile changed. Reload tags before saving.');
   };
   const sessions = createSessionManager({ dataDir: root, getSettings: () => store.getSettings() });
+  const corrections = createQuickCorrections({ store, profiles });
+  const profilePayload = result => ({ ...result, rules: { ...profiles.active(), profileId: profiles.snapshot().activeId },
+    ignoreList: { ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId } });
+  const updates = createUpdateChecker({ currentVersion: require('../package.json').version, dataDir: root,
+    getSettings: () => store.getSettings(), fetch: async () => [{ tag_name: 'v99.0.0', draft: false, prerelease: false }] });
   const handlers = {
-    'state:get': () => ({ stats: store.snapshot(), now: null, session: null }),
+    'state:get': () => ({ stats: store.snapshot(), settings: store.getSettings(), now: null, session: null }),
     'profiles:get': () => profiles.snapshot(),
     'profiles:save': (_e, { id, fields }) => profiles.save(id, fields),
     'profiles:activate': (_e, id) => profiles.activate(id),
@@ -40,6 +48,18 @@ app.whenReady().then(async () => {
       other: fields.other === undefined ? profiles.active().other : fields.other,
       ...(fields.ignore === undefined ? {} : { ignore: fields.ignore }) }); return { ...profiles.active(), profileId: profiles.snapshot().activeId }; },
     'ignore:set': (_e, fields) => { assertActiveProfile(fields.profileId); profiles.save(profiles.snapshot().activeId, { ignore: fields.ignore }); return { ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId }; },
+    'rules:quickSet': (_e, payload) => profilePayload(corrections.quickSet(validateIpcPayload('rules:quickSet', payload))),
+    'corrections:undo': (_e, payload) => {
+      const result = corrections.undo(validateIpcPayload('corrections:undo', payload));
+      return result.kind === 'rule' ? profilePayload(result) : result;
+    },
+    'apps:correctWithUndo': (_e, payload) => {
+      const { id, category } = validateIpcPayload('apps:correctWithUndo', payload);
+      return corrections.correctActivity(id, category);
+    },
+    'updates:get': () => updates.snapshot(),
+    'updates:check': () => updates.check(),
+    'updates:openRelease': () => ({ ok: true, url: updates.availableUrl() }),
     'profiles:delete': (_e, id) => profiles.remove(id),
     'rules:get': () => ({ ...profiles.active(), profileId: profiles.snapshot().activeId }),
     'ignore:get': () => ({ ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId }),
@@ -48,7 +68,7 @@ app.whenReady().then(async () => {
     'session:getActive': () => sessions.getActiveSession(),
     'session:getForDay': (_e, date) => ({ date: date || require('../src/store').todayKey(),
       sessions: sessions.getSessionsForDay(date), recentDays: sessions.getRecentSessionDays(14), historyEnabled: true }),
-    'settings:update': (_e, partial) => store.updateSettings(partial),
+    'settings:update': (_e, partial) => store.updateSettings(validateIpcPayload('settings:update', partial)),
     'keywords:get': () => ({ productive: [], unproductive: [] }),
     'keywords:set': (_e, keywords) => keywords,
     'keywords:reset': () => ({ productive: [], unproductive: [] }),
@@ -65,6 +85,12 @@ app.whenReady().then(async () => {
     await loadRulesAndIgnore();
     const check = (condition, message) => { if (!condition) throw new Error(message); };
     const wait = async predicate => { for (let i = 0; i < 100; i++) { if (await predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('UI wait timed out'); };
+    for (const theme of ['tide', 'linen', 'plum']) {
+      document.querySelector('[data-theme-id="' + theme + '"]').click();
+      await wait(async () => (await window.sydtrack.getState()).settings.theme === theme);
+      check(document.documentElement.dataset.theme === theme, 'Theme click updates the renderer');
+      check(document.querySelector('[data-theme-id="' + theme + '"]').getAttribute('aria-pressed') === 'true', 'Theme click updates selection');
+    }
     document.getElementById('focus-profile-btn').click();
     await wait(() => !document.getElementById('focus-profile-menu').classList.contains('hidden'));
     check(document.querySelectorAll('.profile-choice').length === 5, 'Expected five Home options');
@@ -135,12 +161,113 @@ app.whenReady().then(async () => {
     const restored = (await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default');
     check(restored.productive.includes('r/gaming') && !restored.ignore.includes('chrome'), 'Moving from Ignore to P saves both changes atomically');
     renderLastFocused({ app: 'chrome', title: 'Google - Google Chrome', category: 'other' });
-    check(document.getElementById('lf-prod').disabled && document.getElementById('lf-cat').textContent === 'other', 'Unknown browser pages stay Other without a guessed quick rule');
+    check(!document.getElementById('lf-prod').disabled && document.getElementById('lf-cat').textContent === 'other', 'Unknown browser pages stay Other until a specific phrase is confirmed');
+    document.getElementById('lf-prod').click();
+    check(!document.getElementById('quick-rule-picker').classList.contains('hidden') && document.getElementById('quick-rule-keyword').value === '', 'Unrecognized page opens a blank phrase picker, never a guessed rule');
+    document.getElementById('quick-rule-keyword').value = 'Google Chrome';
+    document.getElementById('quick-rule-picker').requestSubmit();
+    check(document.getElementById('quick-rule-status').textContent.includes('whole words'), 'Browser suffix is not offered as a blanket rule');
+    document.getElementById('quick-rule-keyword').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    check(document.getElementById('quick-rule-picker').classList.contains('hidden') && document.activeElement.id === 'lf-prod', 'Escape closes the phrase picker and restores focus');
+    renderLastFocused({ app: 'chrome', title: 'A guide to linear algebra - Google Chrome', category: 'other' });
+    document.getElementById('lf-prod').click();
+    const preview = document.getElementById('quick-rule-title');
+    check(preview.textContent === 'A guide to linear algebra', 'Picker removes the browser suffix');
+    const range = document.createRange(); range.setStart(preview.firstChild, 11); range.setEnd(preview.firstChild, 25);
+    const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    preview.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    check(document.getElementById('quick-rule-keyword').value === 'linear algebra', 'Selecting literal title words fills the phrase field');
+    selection.removeAllRanges();
+    document.getElementById('quick-rule-picker').requestSubmit();
+    await wait(() => !lfClassifySaving && document.getElementById('quick-rule-picker').classList.contains('hidden'));
+    check(cachedRules.productive.includes('linear algebra') && lastFocusedCache.category === 'productive', 'Confirmed phrase saves a future rule and updates the actual outline');
+    check(!document.getElementById('correction-undo').classList.contains('hidden'), 'Rule change exposes a transient Undo');
+    document.getElementById('correction-undo-action').click();
+    await wait(() => !lfClassifySaving && document.getElementById('correction-undo').classList.contains('hidden'));
+    check(!cachedRules.productive.includes('linear algebra') && lastFocusedCache.category === 'other', 'Home Undo removes only the newly saved phrase');
+    document.getElementById('lf-prod').click();
+    renderLastFocused({ app: 'chrome', title: 'Another unknown page - Google Chrome', category: 'other' });
+    check(document.getElementById('quick-rule-picker').classList.contains('hidden'), 'A new page cancels an unconfirmed phrase draft');
+    document.getElementById('rules-prod-edit').value += '\\nunsaved';
+    document.getElementById('lf-prod').click();
+    check(document.getElementById('quick-rule-picker').classList.contains('hidden') && document.getElementById('home-profile-status').textContent.includes('Save your Focus Tags'), 'Home corrections do not overwrite unsaved tags');
+    await loadRulesAndIgnore();
+
+    document.querySelector('.nav-btn[data-tab="analytics"]').click();
+    document.querySelector('.analytics-apps-tab').click();
+    setAppsRange('day');
+    const initialStats = (await window.sydtrack.getState()).stats;
+    renderStats(initialStats);
+    const github = initialStats.activityRows.find(row => row.reason === 'github');
+    const rowSelector = '.app-activity[data-row-id="' + encodeURIComponent(github.id) + '"]';
+    document.querySelector('.app-group[data-group-name="Chrome"] summary').click();
+    const choice = document.querySelector(rowSelector + ' [data-category="unproductive"]');
+    check(!!choice && !choice.disabled, 'A recognized match remains correctable');
+    choice.click();
+    await wait(() => !appCorrectionBusy);
+    check((await window.sydtrack.getState()).stats.byCategory.unproductive === 30, 'Analytics button changes only the match for today');
+    document.getElementById('correction-undo-action').click();
+    await wait(() => !appCorrectionBusy && document.getElementById('correction-undo').classList.contains('hidden'));
+    check((await window.sydtrack.getState()).stats.byCategory.productive === initialStats.byCategory.productive, 'Analytics Undo restores today’s totals');
+
+    document.querySelector('.nav-btn[data-tab="settings"]').click();
+    check(!document.getElementById('updates-auto').checked, 'Automatic network checks start off');
+    document.getElementById('updates-check').click();
+    await wait(() => document.getElementById('updates-status').textContent.includes('v99.0.0'));
+    check(!document.getElementById('updates-open').classList.contains('hidden') && document.querySelector('.nav-btn[data-tab="settings"]').classList.contains('update-available'), 'Available version gets a release action and quiet Settings marker');
+    check(!document.getElementById('updates-auto').checked, 'Manual check does not silently opt in');
+    document.getElementById('updates-auto').checked = true;
+    document.getElementById('updates-auto').dispatchEvent(new Event('change'));
+    await wait(async () => (await window.sydtrack.getState()).settings.updateChecksEnabled === true);
+    document.getElementById('updates-auto').checked = false;
+    document.getElementById('updates-auto').dispatchEvent(new Event('change'));
+    await wait(async () => (await window.sydtrack.getState()).settings.updateChecksEnabled === false);
     fillRulesEditors(await window.sydtrack.setRules({ productive: ['code'], unproductive: [], other: [] }));
     document.querySelector('.nav-btn[data-tab="tags"]').click();
     check(!document.getElementById('tags-other-card') && document.getElementById('rules-other-edit').value === '', 'Redundant inbox is gone and neutral overrides remain editable');
     document.querySelector('.nav-btn[data-tab="home"]').click();
   })()`);
+  if (createStore(root).getSettings().theme !== 'plum') throw new Error('New theme did not survive a settings reload');
+  for (const width of [800, 1040, 1600]) {
+    win.setSize(width, 850);
+    const pickerLayout = await win.webContents.executeJavaScript(`(async () => {
+      document.querySelector('.nav-btn[data-tab="home"]').click();
+      applyTheme('midnight');
+      renderLastFocused({ app: 'chrome', title: 'A guide to linear algebra - Google Chrome', category: 'other' });
+      document.getElementById('lf-prod').click();
+      document.getElementById('quick-rule-keyword').value = 'linear algebra';
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const picker = document.getElementById('quick-rule-picker');
+      const card = document.getElementById('last-focused').getBoundingClientRect();
+      const save = document.getElementById('quick-rule-save').getBoundingClientRect();
+      const input = document.getElementById('quick-rule-keyword').getBoundingClientRect();
+      return { shown: !picker.classList.contains('hidden'), inputInside: input.left >= card.left && input.right <= card.right,
+        saveInside: save.left >= card.left && save.right <= card.right && save.bottom <= innerHeight,
+        noPageOverflow: document.querySelector('.main').scrollWidth <= document.querySelector('.main').clientWidth };
+    })()`);
+    if (!Object.values(pickerLayout).every(Boolean)) throw new Error('Quick picker layout failed: ' + JSON.stringify({ width, ...pickerLayout }));
+    console.log('Quick picker layout', width, pickerLayout);
+    if (width === 1040) fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-quick-rule-picker.png'), (await win.webContents.capturePage()).toPNG());
+    await win.webContents.executeJavaScript(`document.getElementById('quick-rule-cancel').click()`);
+  }
+  win.setSize(1040, 900);
+  await win.webContents.executeJavaScript(`(async () => {
+    renderLastFocused({ app: 'Code', title: 'Project', category: 'productive' });
+    await quickClassifyLastFocused('other');
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  })()`);
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-correction-undo.png'), (await win.webContents.capturePage()).toPNG());
+  await win.webContents.executeJavaScript(`(async () => {
+    document.getElementById('correction-undo-action').click();
+    for (let i = 0; i < 100 && lfClassifySaving; i++) await new Promise(resolve => setTimeout(resolve, 20));
+    document.querySelector('.nav-btn[data-tab="settings"]').click();
+    document.getElementById('settings-updates-card').scrollIntoView({ block: 'center' });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  })()`);
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-update-checker.png'), (await win.webContents.capturePage()).toPNG());
+  await win.webContents.executeJavaScript(`document.querySelector('.nav-btn[data-tab="home"]').click();`);
+  console.log('Theme persistence UI checks passed: three new picker choices, validated preload saves, settings reload.');
+  console.log('Correction and update UI checks passed: literal selection, explicit confirmation, cancellation, unsaved edits, Home/Analytics Undo and opt-in checks.');
   win.webContents.send('profiles:cycle-requested');
   await win.webContents.executeJavaScript(`(async () => {
     for (let i = 0; i < 100 && document.getElementById('focus-profile-label').textContent !== 'Development'; i++)

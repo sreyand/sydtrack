@@ -1,10 +1,13 @@
 'use strict';
 
 const { PROFILE_SHORTCUTS } = require('./profile-shortcut');
+const { THEME_IDS } = require('./theme');
 
 const CHANNELS = [
   'state:get',
   'apps:correctActivityToday',
+  'apps:correctWithUndo',
+  'corrections:undo',
   'apps:correctToday',
   'apps:correctOtherToday',
   'history:summary',
@@ -12,6 +15,7 @@ const CHANNELS = [
   'history:timelineDay',
   'rules:get',
   'rules:set',
+  'rules:quickSet',
   'rules:reset',
   'ignore:get',
   'ignore:set',
@@ -23,6 +27,9 @@ const CHANNELS = [
   'profiles:delete',
   'profiles:import',
   'settings:update',
+  'updates:get',
+  'updates:check',
+  'updates:openRelease',
   'tracking:pause15',
   'classification:preview',
   'data:export',
@@ -154,6 +161,20 @@ function activityCorrection(payload) {
   return { id: activityId(obj.id), category: category(obj.category) };
 }
 
+function undoToken(payload) {
+  if (typeof payload !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(payload)) invalid();
+  return payload;
+}
+
+function quickRule(payload) {
+  const obj = plainObject(payload);
+  assertKeys(obj, ['profileId', 'app', 'title', 'keyword', 'category', 'toggle']);
+  if (typeof obj.title !== 'string' || obj.title.length > 4096 || obj.title.includes('\0')) invalid();
+  if (typeof obj.keyword !== 'string' || obj.keyword.length > 200 || obj.keyword.includes('\0')) invalid();
+  return { profileId: requiredProfileId(obj.profileId), app: appName(obj.app), title: obj.title,
+    keyword: obj.keyword, category: category(obj.category), toggle: bool(obj.toggle) };
+}
+
 function appCorrection(payload) {
   const obj = plainObject(payload);
   assertKeys(obj, ['name', 'category']);
@@ -248,6 +269,7 @@ const SETTINGS = {
   },
   trackingPaused: bool,
   notificationsEnabled: bool,
+  updateChecksEnabled: bool,
   focusBoostScheduleEnabled: bool,
   focusBoostScheduleStart: clock,
   focusBoostScheduleEnd: clock,
@@ -258,7 +280,7 @@ const SETTINGS = {
   screenTimeLimitEnabled: bool,
   screenTimeLimitSec: (value) => finiteInt(value, 15 * 60, 16 * 3600),
   theme: (value) => {
-    if (value !== 'graphite' && value !== 'coral' && value !== 'midnight' && value !== 'starlight' && value !== 'dusk') invalid();
+    if (!THEME_IDS.includes(value)) invalid();
     return value;
   }
 };
@@ -368,6 +390,8 @@ function sessionDelete(payload) {
 const VALIDATORS = {
   'state:get': noPayload,
   'apps:correctActivityToday': activityCorrection,
+  'apps:correctWithUndo': activityCorrection,
+  'corrections:undo': undoToken,
   'apps:correctToday': appCorrection,
   'apps:correctOtherToday': otherAppCorrection,
   'history:summary': historyDays,
@@ -375,6 +399,7 @@ const VALIDATORS = {
   'history:timelineDay': optionalDate,
   'rules:get': noPayload,
   'rules:set': rulesSet,
+  'rules:quickSet': quickRule,
   'rules:reset': resetProfile,
   'ignore:get': noPayload,
   'ignore:set': ignoreSet,
@@ -386,6 +411,9 @@ const VALIDATORS = {
   'profiles:delete': requiredProfileId,
   'profiles:import': noPayload,
   'settings:update': settingsUpdate,
+  'updates:get': noPayload,
+  'updates:check': noPayload,
+  'updates:openRelease': noPayload,
   'tracking:pause15': noPayload,
   'classification:preview': classificationPreview,
   'data:export': dataExport,

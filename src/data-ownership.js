@@ -80,7 +80,7 @@ function deleteAllMyData({
     const erased = store.eraseActivityAndSettings();
     if (erased && Array.isArray(erased.failed)) failed.push(...erased.failed);
   }
-  for (const name of ['rules.json', 'ignore.json', 'browser-keywords.json']) removePath(path.join(dataDir, name), failed);
+  for (const name of ['rules.json', 'ignore.json', 'browser-keywords.json', 'update-check.json']) removePath(path.join(dataDir, name), failed);
   for (const dir of [dataDir, path.join(dataDir, 'history'), path.join(dataDir, 'sessions'), path.join(dataDir, 'logs')]) {
     removeMatchingFiles(dir, (name) => name.includes('.recovery-'), failed);
   }

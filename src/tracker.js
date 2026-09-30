@@ -456,13 +456,24 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     else setSystemPresence({ sleeping: false, locked: false });
   }
 
-  function invalidateClassification() {
+  function invalidateClassification({ preserveLastFocused = false } = {}) {
     idleTimelineEnd = null;
     generation++;
     lastTick = clock();
     lastHeartbeat = lastTick;
     current.since = lastTick;
-    lastFocused = null;
+    if (lastFocused && preserveLastFocused) {
+      // Keep the ephemeral context while sydtrack itself is foreground. This
+      // is a metadata refresh, never a new sample or a retroactive time edit.
+      try {
+        const win = { owner: { name: lastFocused.app }, title: lastFocused.title, url: lastFocused.url };
+        const activity = classifyWithReason(win, rHolder.rules);
+        const correction = (store.getActivityCorrection && store.getActivityCorrection(appLabel(win), activity)) ||
+          (store.getAppCorrection && store.getAppCorrection(appLabel(win)));
+        const category = correction || (isIgnored(win, iHolder.ignore || [], rHolder.rules && rHolder.rules.identities) ? 'ignored' : activity.category);
+        lastFocused = { ...lastFocused, category };
+      } catch (_) { lastFocused = null; }
+    } else lastFocused = null;
     resetStreakSafely();
   }
 

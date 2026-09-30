@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('sydtrack', {
     return () => ipcRenderer.removeListener('profiles:cycle-requested', handler);
   },
   getState: () => ipcRenderer.invoke('state:get'),
+  onUpdates: (cb) => {
+    const listener = asFunction(cb);
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on('updates:status', handler);
+    return () => ipcRenderer.removeListener('updates:status', handler);
+  },
   getProfiles: () => ipcRenderer.invoke('profiles:get').then(rememberProfile),
   saveProfile: (id, fields) => ipcRenderer.invoke('profiles:save', { id, fields }),
   activateProfile: (id) => ipcRenderer.invoke('profiles:activate', id).then(rememberProfile),
@@ -41,6 +47,12 @@ contextBridge.exposeInMainWorld('sydtrack', {
   deleteProfile: (id) => ipcRenderer.invoke('profiles:delete', id),
   importNamedProfile: () => ipcRenderer.invoke('profiles:import'),
   correctActivityToday: (id, category) => ipcRenderer.invoke('apps:correctActivityToday', { id, category }),
+  correctWithUndo: (id, category) => ipcRenderer.invoke('apps:correctWithUndo', { id, category }),
+  undoCorrection: (token) => ipcRenderer.invoke('corrections:undo', token),
+  quickSetRule: (rule) => ipcRenderer.invoke('rules:quickSet', rule),
+  getUpdates: () => ipcRenderer.invoke('updates:get'),
+  checkUpdates: () => ipcRenderer.invoke('updates:check'),
+  openUpdateRelease: () => ipcRenderer.invoke('updates:openRelease'),
   correctOtherToday: (name, category) => ipcRenderer.invoke('apps:correctOtherToday', { name, category }),
   getHistorySummary: (days) => ipcRenderer.invoke('history:summary', days),
   getLifetimeSummary: () => ipcRenderer.invoke('history:lifetime'),

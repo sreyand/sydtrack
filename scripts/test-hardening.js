@@ -17,7 +17,7 @@ const {
   windowBackgroundColor
 } = require('../src/window-security');
 const { electronLaunchArgs } = require('./launch-args');
-const { DEFAULT_THEME, normalizeTheme, titleBarOverlayForTheme } = require('../src/theme');
+const { THEME_IDS, THEMES, DEFAULT_THEME, normalizeTheme, titleBarOverlayForTheme, isDarkTheme } = require('../src/theme');
 const { defaultSettings } = require('../src/store');
 
 let failed = 0;
@@ -130,6 +130,10 @@ assert(!html.includes('id="app-drill"') && !html.includes('app-hours-btn'), 'app
 const wellbeingUi = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'wellbeing-ui.js'), 'utf8');
 assert(!wellbeingUi.includes('of active tracked time today'), 'app hour-breakdown copy is not rendered');
 const rendererJs = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'renderer.js'), 'utf8');
+const rendererThemeIds = JSON.parse(rendererJs.match(/const THEME_IDS = (\[[^;]+\])/)[1].replace(/'/g, '"'));
+const pickerThemeIds = [...html.matchAll(/data-theme-id="([^"]+)"/g)].map(match => match[1]);
+assert(JSON.stringify([...rendererThemeIds].sort()) === JSON.stringify([...THEME_IDS].sort()), 'renderer recognizes every supported theme');
+assert(JSON.stringify([...pickerThemeIds].sort()) === JSON.stringify([...THEME_IDS].sort()), 'Appearance exposes each supported theme exactly once');
 assert(!rendererJs.includes('app-hours-btn') && !rendererJs.includes('>Hours</button>'), 'Apps Hours control is fully gone');
 assert(/#view-analytics \.analytics-toolbar \.segment-btn\.active[\s\S]{0,160}font-weight:\s*700/.test(homeCss), 'Analytics active tab is Satoshi 700');
 assert(/#view-analytics \.analytics-toolbar \.segment-btn\.active[\s\S]{0,200}var\(--color-accent\)/.test(homeCss), 'Analytics active tab uses the accent token');
@@ -145,6 +149,22 @@ for (const cut of ['Light', 'Regular', 'Medium', 'Bold', 'Black']) {
 }
 assert(fs.existsSync(path.join(satoshiDir, 'FFL.txt')), 'Satoshi FFL attribution is bundled');
 const themeCss = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'theme.css'), 'utf8');
+const themeTokens = { canvas: 'canvas', surface: 'surface', surfaceSunken: 'surface-sunken',
+  border: 'border', borderStrong: 'border-strong', ink: 'ink', accent: 'accent',
+  accentTint: 'accent-tint', accentHover: 'accent-hover', prod: 'data-productive',
+  prodTint: 'data-productive-tint', unprod: 'data-unproductive', unprodTint: 'data-unproductive-tint',
+  other: 'data-other', otherTint: 'data-other-tint' };
+for (const id of THEME_IDS) {
+  const block = themeCss.match(new RegExp('\\[data-theme="' + id + '"\\]\\s*\\{([^}]+)\\}'))[1];
+  for (const [field, token] of Object.entries(themeTokens)) {
+    assert(block.includes('--color-' + token + ': ' + THEMES[id][field] + ';'), id + ' ' + field + ' matches native palette');
+  }
+  assert(block.includes('color-scheme: ' + (isDarkTheme(id) ? 'dark' : 'light')), id + ' native and renderer color schemes agree');
+  assert(normalizeTheme(id) === id, id + ' survives normalization');
+  assert(validateIpcPayload('settings:update', { theme: id }).theme === id, id + ' can be saved through IPC');
+  assert(titleBarOverlayForTheme(id).color === THEMES[id].canvas &&
+    titleBarOverlayForTheme(id).symbolColor === THEMES[id].ink, id + ' native window controls use its palette');
+}
 assert(!/IBM Plex|Inter/.test(themeCss), 'theme sheet does not load IBM Plex or Inter');
 const rendererCss = ['theme.css', 'styles.css', 'wellbeing.css'].map((name) =>
   fs.readFileSync(path.join(__dirname, '..', 'renderer', name), 'utf8')

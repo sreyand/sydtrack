@@ -1,6 +1,6 @@
 'use strict';
 
-const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk'];
+const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk', 'tide', 'linen', 'plum'];
 const DEFAULT_THEME = 'midnight';
 
 const THEMES = {
@@ -98,6 +98,63 @@ const THEMES = {
     unprodTint: '#3A2624',
     other: '#8D899A',
     otherTint: '#322F3A'
+  },
+  tide: {
+    canvas: '#0F181E',
+    surface: '#17232B',
+    surfaceSunken: '#1E2E38',
+    border: '#2B3C47',
+    borderStrong: '#415663',
+    ink: '#E4EEF3',
+    inkMuted: '#B0C2CD',
+    inkFaint: '#8198A6',
+    accent: '#76BFD4',
+    accentTint: '#1D3540',
+    accentHover: '#94D2E3',
+    prod: '#61B98F',
+    prodTint: '#1A352A',
+    unprod: '#ED8B81',
+    unprodTint: '#40272A',
+    other: '#9AABBA',
+    otherTint: '#293641'
+  },
+  linen: {
+    canvas: '#F4F0E8',
+    surface: '#FFFCF6',
+    surfaceSunken: '#EEE8DC',
+    border: '#DDD5C8',
+    borderStrong: '#BFB4A0',
+    ink: '#302D27',
+    inkMuted: '#625C51',
+    inkFaint: '#7F7669',
+    accent: '#7A5B27',
+    accentTint: '#F0E5CF',
+    accentHover: '#65471C',
+    prod: '#346F53',
+    prodTint: '#E6EFE4',
+    unprod: '#B1433D',
+    unprodTint: '#F7E5DF',
+    other: '#6F6B62',
+    otherTint: '#EAE6DE'
+  },
+  plum: {
+    canvas: '#1B1720',
+    surface: '#251F2C',
+    surfaceSunken: '#302838',
+    border: '#3D3347',
+    borderStrong: '#574962',
+    ink: '#F0E9F4',
+    inkMuted: '#C5B8CE',
+    inkFaint: '#9C8AA8',
+    accent: '#BAA0DB',
+    accentTint: '#3A2E49',
+    accentHover: '#CFB9E9',
+    prod: '#6BB392',
+    prodTint: '#21352D',
+    unprod: '#EB8B92',
+    unprodTint: '#402730',
+    other: '#AA9CB6',
+    otherTint: '#342D3F'
   }
 };
 
@@ -125,7 +182,7 @@ function titleBarOverlayForTheme(value) {
 
 function isDarkTheme(value) {
   const id = normalizeTheme(value);
-  return id === 'midnight' || id === 'dusk';
+  return id === 'midnight' || id === 'dusk' || id === 'tide' || id === 'plum';
 }
 
 module.exports = {

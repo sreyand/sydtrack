@@ -37,7 +37,7 @@
           <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.5 12 22l-8.5-8.5a2 2 0 0 1 0-2.8L12 2l6.7 6.7a2 2 0 0 1 0 2.8z"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/></svg></span><span class="nav-label">Focus Tags</span>
         </button>
 <button class="nav-btn" data-tab="settings" type="button" title="Settings">
-          <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M4.9 6.5l1.6 1.5M17.5 16l1.6 1.5M3.5 12h2.2M18.3 12h2.2M4.9 17.5l1.6-1.5M17.5 8l1.6-1.5"/></svg></span><span class="nav-label">Settings</span>
+          <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4l.5 3c.7.3 1.3.6 1.8 1l2.8-1 2 3.5-2.3 2c.1.5.1 1 .1 1.5s0 1-.1 1.5l2.3 2-2 3.5-2.8-1c-.5.4-1.1.7-1.8 1l-.5 3h-4l-.5-3c-.7-.3-1.3-.6-1.8-1l-2.8 1-2-3.5 2.3-2c-.1-.5-.1-1-.1-1.5s0-1 .1-1.5l-2.3-2 2-3.5 2.8 1c.5-.4 1.1-.7 1.8-1z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nav-label">Settings</span>
         </button>
       </nav>
       <div class="rail-foot">
@@ -50,7 +50,7 @@
           <button type="button" id="pause-btn" class="pause-power" data-paused="off" title="Pause tracking" aria-label="Pause tracking" aria-pressed="false">
             <svg class="pause-power-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M7.5 6.2a7 7 0 1 0 9 0"/></svg>
           </button>
-          <div id="source-pill" class="status-pill idle">Idle</div>
+          <div id="source-pill" class="status-pill idle" title="Waiting">Waiting</div>
         </div>
       </div>
     </aside>
@@ -131,6 +131,22 @@
                   </span>
                 </div>
               </div>
+              <form id="quick-rule-picker" class="quick-rule-picker hidden" role="dialog" aria-labelledby="quick-rule-heading">
+                <div id="quick-rule-heading" class="quick-rule-heading">Add a title rule</div>
+                <p id="quick-rule-title" class="quick-rule-title" tabindex="0" aria-label="Select words from this page title"></p>
+                <label for="quick-rule-keyword" class="muted tiny">Select words above or type a phrase</label>
+                <input id="quick-rule-keyword" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="A specific title phrase…" />
+                <div class="quick-rule-footer">
+                  <span id="quick-rule-types" class="lf-reclass" role="group" aria-label="Rule category">
+                    <button type="button" class="btn-mini prod" data-quick-category="productive" aria-label="Productive" aria-pressed="false">P</button>
+                    <button type="button" class="btn-mini unprod" data-quick-category="unproductive" aria-label="Unproductive" aria-pressed="false">U</button>
+                    <button type="button" class="btn-mini other" data-quick-category="other" aria-label="Other" aria-pressed="false">O</button>
+                  </span>
+                  <span class="quick-rule-actions"><button type="button" id="quick-rule-cancel" class="btn ghost">Cancel</button><button type="submit" id="quick-rule-save" class="btn primary">Save rule</button></span>
+                </div>
+                <p class="muted tiny quick-rule-note">This profile · future tracking only</p>
+                <p id="quick-rule-status" class="muted tiny" role="status"></p>
+              </form>
             </article>
           </div>
         </div>
@@ -590,7 +606,15 @@
             <button type="button" class="theme-swatch" data-theme-id="dusk" aria-pressed="false">Dusk</button>
             <button type="button" class="theme-swatch" data-theme-id="coral" aria-pressed="false">Coral</button>
             <button type="button" class="theme-swatch" data-theme-id="starlight" aria-pressed="false">Starlight</button>
+            <button type="button" class="theme-swatch" data-theme-id="tide" aria-pressed="false">Tide</button>
+            <button type="button" class="theme-swatch" data-theme-id="linen" aria-pressed="false">Linen</button>
+            <button type="button" class="theme-swatch" data-theme-id="plum" aria-pressed="false">Plum</button>
           </div>
+        </article>
+        <article class="card" id="settings-updates-card">
+          <h3>Updates <span id="updates-version" class="muted tiny"></span></h3>
+          <label class="switch-row"><div><div class="switch-title">Check automatically</div><div class="muted tiny">Once a day. No activity data is sent to GitHub.</div></div><input type="checkbox" id="updates-auto" /></label>
+          <div class="updates-actions"><span id="updates-status" class="muted tiny" role="status">Check GitHub for a newer release.</span><span class="updates-buttons"><button type="button" id="updates-check" class="btn ghost">Check now</button><button type="button" id="updates-open" class="btn primary hidden">View release</button></span></div>
         </article>
         <article class="card" id="settings-tracker-card">
           <h3>Tracker</h3>
@@ -830,6 +854,11 @@
     </div>
   </section>
   <div id="name-tip" class="name-tip pie-tip hidden" role="tooltip"></div>
+  <div id="correction-undo" class="correction-undo hidden" aria-label="Recent category change">
+    <span id="correction-undo-message" role="status"></span>
+    <button type="button" id="correction-undo-action" class="btn ghost">Undo</button>
+    <button type="button" id="correction-undo-dismiss" class="btn ghost" aria-label="Dismiss Undo">×</button>
+  </div>
   <script src="../src/browser-rules.js"></script>
   <script src="lib/live-ticker.js"></script>
   <script src="lib/goals.js"></script>
@@ -838,6 +867,8 @@
   <script src="lib/apps-analytics.js"></script>
   <script src="wellbeing-ui.js"></script>
   <script src="renderer.js"></script>
+  <script src="quick-corrections-ui.js"></script>
+  <script src="updates-ui.js"></script>
   <script src="focus-profiles-ui.js"></script>
 </body>
 </html>

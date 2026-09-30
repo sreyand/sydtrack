@@ -5,12 +5,12 @@
     <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
-    <a href="docs/release-notes-2.2.1.md">What’s new in v2.2.1</a>
+    <a href="docs/release-notes-2.3.0.md">What’s new in v2.3.0</a>
   </p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
-    <img alt="Version 2.2.1" src="https://img.shields.io/badge/version-2.2.1-8B7CF6?style=flat-square">
+    <img alt="Version 2.3.0" src="https://img.shields.io/badge/version-2.3.0-8B7CF6?style=flat-square">
     <img alt="GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-EF6A6A?style=flat-square">
   </p>
 </div>
@@ -52,6 +52,7 @@ There is no sydtrack account and no analytics server.
 - Tracking uses the foreground process and window title; no browser extension is required.
 - The production tracker does not read typed-but-unsubmitted browser addresses.
 - Backups are files you explicitly save. Nothing uploads automatically.
+- sydtrack can check public GitHub releases from **Settings → Tracking → Updates**. Automatic checks are off by default; enabling them makes at most one scheduled check per day. No activity, titles, or profiles are sent. GitHub receives a normal web request, including your IP address. Downloads and installation remain manual.
 - Local exports can contain app names, matched title words, and session labels, so treat them like a private diary.
 
 ## A clearer loop
@@ -68,8 +69,10 @@ Changing profiles affects future tracking; it does not rewrite history. Analytic
 
 sydtrack currently targets **Windows 10/11 x64**.
 
-- `sydtrack-2.2.1-setup.exe` — standard installer
-- `sydtrack-2.2.1-portable.exe` — run without installation
+- `sydtrack-2.3.0-setup.exe` — standard installer
+- `sydtrack-2.3.0-portable.exe` — run without installation
+
+Version 2.3.0 is prepared locally; its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds.
 
 Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
 
@@ -84,25 +87,27 @@ Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/r
 
 On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memory** and an estimated **~1% total CPU** with the 3-second tracking cadence. The short Windows foreground probe accounts for most of that CPU time; results will vary with the machine and other activity.
 
-## What’s new in v2.2.1
+## What’s new in v2.3.0
+
+- Recognizable page-source labels take precedence over topic words. A specific `r/learnpython` rule can override a broad `r/` rule.
+- Browser names such as `google chrome` no longer classify every page through the window-title suffix.
+- Home uses recognizable sources or existing matched keywords for quick rules. For an unfamiliar page, P/U/O opens a small picker: select literal words from the title and confirm a future rule. There are no guessed keywords or blanket browser rules. Analytics keeps unrecognized browser pages together without a blanket P/U/I correction.
+- A brief **Undo** action follows Home rule changes and Analytics today-only corrections. It restores the affected rule or match without overwriting other edits or discarding newly tracked seconds. Unsaved Focus Tags edits are protected.
+- A quiet GitHub update checker supports **Check now** and opt-in daily checks. It compares stable version numbers rather than release-list ordering, handles offline/rate-limited checks, and opens the release page only when you choose. Nothing is downloaded or installed automatically.
+- Focus Share shows how much tracked time it is based on. When most time is Other, excluded-Other goals and daily scores have no verdict.
+- Cached rule patterns and source metadata reduce repeated classification work without retaining titles or searches.
+- Tide, Linen, and Plum add three palettes using the existing layout and typography. The collapsed sidebar has evenly spaced bottom controls and a compact tracking-status light.
+- Last focused stays visible after corrections and reflects the current category. Settings has a recognizable gear icon and no redundant hotswap divider.
+
+Read the [v2.3.0 release notes](docs/release-notes-2.3.0.md) for upgrade details and [ITERATION.md](ITERATION.md) for the implementation handoff and remaining limitations.
+
+## What changed in v2.2.1
 
 - Tracking retries the Windows foreground probe after a transient failure instead of remaining on the fallback until restart.
 - A stalled fallback has a time limit, allowing subsequent tracking samples to continue.
 - Browser titles with an `r/<subreddit>` marker now match the `r/` unproductive rule even when the title also contains a productive topic keyword.
 
-Read the [v2.2.1 release notes](docs/release-notes-2.2.1.md) for upgrade details.
-
-## In development: more precise classification
-
-These source changes are unreleased; existing v2.2.1 installers are unchanged.
-
-- Recognizable page-source labels take precedence over topic words. A specific `r/learnpython` rule can override a broad `r/` rule.
-- Browser names such as `google chrome` no longer classify every page through the window-title suffix.
-- Home uses recognizable sources or existing matched keywords for quick rules, without guessing a word from an unfamiliar page. Analytics keeps unrecognized browser pages together without a blanket P/U/I correction.
-- Focus Share shows how much tracked time it is based on. When most time is Other, excluded-Other goals and daily scores have no verdict.
-- Cached rule patterns and source metadata reduce repeated classification work without retaining titles or searches.
-
-See [ITERATION.md](ITERATION.md) for the implementation handoff and remaining limitations.
+Read the [v2.2.1 release notes](docs/release-notes-2.2.1.md) for details.
 
 ## What changed in v2.2.0
 
@@ -158,11 +163,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup details.
 
 sydtrack checks ignored process identities first. For native apps, explicit app tags and productive app identities take precedence over unrelated words in a document or project title. Explicit Other keywords provide neutral exceptions.
 
-In the development matcher, browsers use the page title without the trailing browser label. A recognizable source such as `- YouTube`, `- GitHub`, or `- r/jhu` takes precedence over a topic word. A more specific source rule, such as `r/learnpython` or `youtube lecture`, can override a broad source rule. Without a recognized source, explicit Other wins, then unproductive over productive; editable browser keywords are the fallback. No match remains Other. Title keywords are useful signals, not proof of the purpose of a visit.
+Browsers use the page title without the trailing browser label. A recognizable source such as `- YouTube`, `- GitHub`, or `- r/jhu` takes precedence over a topic word. A more specific source rule, such as `r/learnpython` or `youtube lecture`, can override a broad source rule. Without a recognized source, explicit Other wins, then unproductive over productive; editable browser keywords are the fallback. No match remains Other. Title keywords are useful signals, not proof of the purpose of a visit.
 
 The same browser can therefore contribute productive GitHub time and unproductive YouTube time without collapsing the two. Title matching is browser-independent. `site:example.com` rules remain portable, but production address capture is disabled until it can be made reliable without observing unsubmitted address-bar text.
 
-By default, Focus Share is productive ÷ (productive + unproductive). Other stays in tracked totals but outside that ratio. The development build displays the classified portion alongside the percentage, and skips goal verdicts and daily scores when less than half of tracked time is classified. Including Other in Settings explicitly uses all active tracked time instead. Coverage describes assigned categories, not how accurate those assignments are.
+By default, Focus Share is productive ÷ (productive + unproductive). Other stays in tracked totals but outside that ratio. sydtrack displays the classified portion alongside the percentage, and skips goal verdicts and daily scores when less than half of tracked time is classified. Including Other in Settings explicitly uses all active tracked time instead. Coverage describes assigned categories, not how accurate those assignments are.
 
 </details>
 

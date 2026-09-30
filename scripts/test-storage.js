@@ -81,6 +81,18 @@ function daysAgo(n) {
   fs.rmSync(legacyDir, { recursive: true, force: true });
 })();
 
+(function themePreferences() {
+  const dir = tmp('theme-preferences');
+  try {
+    for (const theme of ['tide', 'linen', 'plum', 'midnight']) {
+      createStore(dir).updateSettings({ theme });
+      assert(createStore(dir).getSettings().theme === theme, theme + ' preference survives restart');
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+})();
+
 (function rollupTests() {
   const day = emptyDay('2026-01-15');
   day.byApp['Code::productive'] = { seconds: 120, category: 'productive' };
