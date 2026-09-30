@@ -1,7 +1,7 @@
 'use strict';
 
 const { createDemoBackend } = require('./demo-windows');
-const { classify, classifyWithReason, appLabel, isIgnored, isBrowserProcess } = require('./classifier');
+const { classifyWithReason, appLabel, isIgnored, isBrowserProcess } = require('./classifier');
 const { decideSample, assessContinuity, toleranceMs } = require('./tracking-decision');
 const { normalizeMediaReport } = require('./media-signal');
 
@@ -227,7 +227,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     const idleTimeoutSec = Math.max(0, Number(settings.idleTimeoutSec) || 0);
     // Pause at the timeout. Never subtract accumulated idle time from earned history.
     // Show in Now viewing; do not log time or affect streaks when ignored
-    const category = !win ? 'other' : ignored ? 'ignored' : correction || classify(win, rHolder.rules);
+    const category = !win ? 'other' : ignored ? 'ignored' : correction || activity.category;
     const mediaEnabled = settings.trackMusicWhileIdle === true || settings.trackVideoWhileIdle === true;
     const media = !settings.demoMode && mediaEnabled ? normalizeMediaReport(sample && sample.media, win) : null;
     const decision = decideSample({

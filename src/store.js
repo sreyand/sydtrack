@@ -6,7 +6,8 @@ const { writeJson, validDateKey, readRecoverableJson } = require('./json-file');
 const { buildRollup, writeRollup, readRollup, listRollupDates, dayFromRollup, removeRollups } = require('./rollups');
 const { purgeExpiredRaw, clearJournal } = require('./retention');
 const { migrateStorage } = require('./storage-schema');
-const { canonicalAppName } = require('./classifier');
+const { canonicalAppName, isBrowserProcess } = require('./classifier');
+const { isUnrecognizedReason } = require('./browser-rules');
 const { migrateGoalSettings } = require('../renderer/lib/goals');
 const { appendSegment, normalizeTimeline } = require('./timeline');
 
@@ -549,11 +550,15 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
     return snapshot();
   }
 
-  function correctActivityToday(id, category) {
+  function correctActivityToday(id, category, identities) {
     rollIfNeeded();
     if (typeof id !== 'string' || !['productive', 'unproductive', 'ignored', 'other'].includes(category)) throw new Error('Invalid activity correction');
     if (!Object.entries(state.byApp).some(([key, info]) => activityId(key, info) === id)) throw new Error('Activity no longer available');
     const [name, originalCategory, reason] = JSON.parse(id);
+    if (category !== 'other' && isBrowserProcess({ owner: { name } }, identities) &&
+        isUnrecognizedReason(reason)) {
+      throw new Error('Unrecognized browser pages cannot be changed as one group. Add a specific title keyword in Focus Tags.');
+    }
     const next = structuredClone(state);
     for (const bucket of [next, ...next.byHour]) {
       const totals = bucket === next ? next.byCategory : bucket;

@@ -129,22 +129,31 @@ let cachedIgnore = [];
 let tagsQuickSaving = false;
 /** Last focused window for Home quick-classify (P/U/O). */
 let lastFocusedCache = null;
+let lfClassifySaving = false;
 /** Session overrides so Last focused chip/buttons don't snap back before tracker reclassifies. */
 const lfSessionClass = Object.create(null);
 
 function lfOverrideKey(entry) {
   if (!entry || !entry.app) return '';
   const kw = keywordForQuickClassify(entry);
-  return (kw || entry.app).toLowerCase();
+  return entry.app.toLowerCase() + '\u0000' + (kw || '').toLowerCase();
 }
 
 function applyLfButtonOutlines(category) {
+  const keyword = keywordForQuickClassify(lastFocusedCache);
   for (const [id, value] of [['lf-prod', 'productive'], ['lf-unprod', 'unproductive'], ['lf-other', 'other'], ['lf-ignore', 'ignored']]) {
     const button = $(id);
     if (!button) continue;
     const active = category === value;
     button.classList.toggle('selected', active);
     button.setAttribute('aria-pressed', String(active));
+    button.dataset.saving = String(lfClassifySaving);
+    button.disabled = lfClassifySaving || !lastFocusedCache || (value !== 'ignored' && !keyword);
+    const label = value === 'ignored' ? 'Ignore' : value[0].toUpperCase() + value.slice(1);
+    button.title = !lastFocusedCache ? 'Waiting for an app' : value === 'ignored'
+      ? 'Ignore the whole app: ' + lastFocusedCache.app
+      : keyword ? label + ' rule for “' + keyword + '” in this profile'
+      : 'Unrecognized page. Add a specific title keyword in Focus Tags.';
   }
 }
 
@@ -464,6 +473,13 @@ function describeFocus(byCategory) {
   if (typeof sydtrackGoals === 'undefined') return null;
   return sydtrackGoals.focusShareStatus(byCategory, { includeOther, goalPct });
 }
+
+function focusBasis(focus) {
+  if (!focus || !focus.trackedSec) return 'No tracked time yet';
+  const duration = seconds => seconds < 60 ? Math.floor(seconds) + 's' : fmtDuration(seconds);
+  if (focus.includeOther) return 'Of all ' + duration(focus.trackedSec) + ' tracked';
+  return 'Based on ' + duration(focus.classifiedSec) + ' of ' + duration(focus.trackedSec) + ' tracked';
+}
 let historyRequest = 0;
 let historicalWeek = null;
 let fullHistoryCache = null;
@@ -541,6 +557,7 @@ function monthMarkup(days) {
   const classified = totals.productive + totals.unproductive;
   const includeOther = typeof latestGoalSettings !== 'undefined' && latestGoalSettings && !!latestGoalSettings.focusShareIncludeOther;
   const focusDenom = includeOther ? total : classified;
+  const focus = describeFocus(totals);
   const share = focusDenom ? Math.round(totals.productive / focusDenom * 100) + '%' : '—';
   const p = total ? totals.productive / total * 360 : 0;
   const u = total ? (totals.productive + totals.unproductive) / total * 360 : 0;
@@ -548,7 +565,7 @@ function monthMarkup(days) {
   const top = [...apps.values()].sort((a, b) => b.seconds - a.seconds).slice(0, 5);
   return '<article class="card month-pie-card"><div class="month-pie-wrap"><div class="pie-chart" role="img" aria-label="Last 30 days: ' + share + ' focus share" style="background:' + gradient + '"></div>' +
     '<div class="pie-center"><div id="month-focus-share" class="pie-total">' + share + '</div><div class="muted tiny">focus share</div></div></div>' +
-    '<p class="muted tiny">' + (includeOther ? 'Of active tracked time, including Other' : 'Of productive + unproductive time') + '</p><div class="month-legend">' +
+    '<p class="muted tiny">' + esc(focusBasis(focus)) + '</p><div class="month-legend">' +
     [['productive', 'Productive'], ['unproductive', 'Unproductive'], ['other', 'Other']].map(([key, label]) => '<span><i class="month-dot ' + key + '"></i>' + label + ' <strong>' + esc(fmtFriendly(totals[key])) + '</strong></span>').join('') +
     '</div></article><div class="month-summary"><article class="card"><h3>Last 30 days</h3><div class="month-stat"><span class="muted">Total tracked</span><strong>' + esc(fmtFriendly(total)) + '</strong></div>' +
     '<div class="month-stat"><span class="muted">Days with activity</span><strong>' + activeDays + '</strong></div>' +
@@ -749,16 +766,9 @@ function isBrowserApp(app) {
   return window.sydtrackBrowserRules.isBrowserName(app, cachedBrowserApps);
 }
 
-/**
- * Display label/class for category chips.
- * Historical bare-browser "other" entries → yellow "browser" chip.
- */
+/** Category labels agree with Analytics, including unrecognized browser pages. */
 function chipDisplay(category, app, browserFlag) {
   const cat = category || 'other';
-  const isBrowser = browserFlag === true || isBrowserApp(app);
-  if (cat === 'other' && isBrowser) {
-    return { className: 'chip browser', label: 'browser' };
-  }
   return { className: 'chip ' + cat, label: cat };
 }
 
@@ -769,103 +779,12 @@ function applyCategoryChip(el, category, app, browserFlag) {
   el.className = d.className;
 }
 
-const KNOWN_SITE_KEYWORDS = [
-  'github',
-  'gitlab',
-  'bitbucket',
-  'stackoverflow',
-  'stack overflow',
-  'youtube',
-  'reddit',
-  'twitter',
-  'facebook',
-  'instagram',
-  'tiktok',
-  'netflix',
-  'twitch',
-  'discord',
-  'notion',
-  'obsidian',
-  'figma',
-  'linkedin',
-  'gmail',
-  'chatgpt',
-  'openai',
-  'slack',
-  'zoom',
-  'wikipedia',
-  'medium',
-  'hacker news',
-  'x.com',
-  'docs.google',
-  'docs.microsoft',
-  'learn.microsoft'
-];
-
-function stripBrowserSuffix(title) {
-  return String(title || '')
-    .replace(
-      /\s*[-–—|]\s*(Google Chrome|Microsoft Edge|Mozilla Firefox|Brave|Opera|Chromium)\s*$/i,
-      ''
-    )
-    .replace(/\s*[-–—]\s*(Chrome|Edge|Firefox|Brave|Opera)\s*$/i, '')
-    .trim();
-}
-
-/** Extract a title keyword for browser quick-classify — never the process name. */
-function extractBrowserKeyword(title) {
-  const cleaned = stripBrowserSuffix(title);
-  if (!cleaned) return null;
-  const lower = cleaned.toLowerCase();
-
-  for (const site of KNOWN_SITE_KEYWORDS) {
-    if (lower.includes(site)) {
-      if (site === 'stack overflow') return 'stackoverflow';
-      if (site === 'hacker news') return 'hacker news';
-      return site;
-    }
-  }
-
-  const domainMatch = cleaned.match(
-    /\b(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|dev|co|app|ai|edu|gov)(?:\.[a-z]{2})?)\b/i
-  );
-  if (domainMatch) {
-    const host = domainMatch[1].toLowerCase().replace(/^www\./, '');
-    const parts = host.split('.');
-    if (parts.length >= 2) {
-      // github.com → github; docs.microsoft.com → microsoft (penultimate)
-      return parts[parts.length - 2];
-    }
-    return host;
-  }
-
-  const segments = cleaned
-    .split(/\s*[-–—|]\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (segments.length) {
-    const last = segments[segments.length - 1];
-    const token = last
-      .toLowerCase()
-      .replace(/[^a-z0-9.\s-]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (token) {
-      const words = token.split(' ').filter(Boolean);
-      if (words.length === 1) return words[0];
-      if (words.length === 2) return token;
-      return words[words.length - 1];
-    }
-  }
-  return null;
-}
-
 function keywordForQuickClassify(entry) {
   if (!entry || !entry.app) return null;
   if (isBrowserApp(entry.app)) {
     const host = window.sydtrackBrowserRules.hostname(entry.url || '');
     if (host) return `site:${host}`;
-    return extractBrowserKeyword(entry.title || '');
+    return window.sydtrackBrowserRules.quickKeyword(entry, cachedRules);
   }
   return String(entry.app)
     .replace(/\.exe$/i, '')
@@ -895,21 +814,18 @@ function defaultCategoryFromRules(entry, rules, ignore) {
     for (const x of ign) {
       const k = String(x || '').toLowerCase();
       if (!k) continue;
-      if (pk === k || pk.includes(k) || k.includes(pk)) return 'ignored';
+      if (window.sydtrackBrowserRules.exactKeyword(pk, k)) return 'ignored';
     }
   }
   if (isBrowserApp(entry.app)) return window.sydtrackBrowserRules.classifyBrowser(entry, r);
-  const kw = keywordForQuickClassify(entry);
-  if (kw) {
-    const key = kw.toLowerCase();
-    if ((r.other || []).some((x) => String(x).toLowerCase() === key)) return 'other';
-    if ((r.unproductive || []).some((x) => String(x).toLowerCase() === key)) {
-      return 'unproductive';
-    }
-    if ((r.productive || []).some((x) => String(x).toLowerCase() === key)) {
-      return 'productive';
-    }
-  }
+  const key = (pname || '').toLowerCase();
+  const text = (key + ' ' + (entry.title || '')).toLowerCase();
+  const matches = type => (r[type] || []).some(tag => !tag.startsWith('site:') && window.sydtrackBrowserRules.exactKeyword(text, tag));
+  if (matches('other')) return 'other';
+  if (listHasKey(r.unproductive, key)) return 'unproductive';
+  if (listHasKey(r.identities && r.identities.productiveApps, key)) return 'productive';
+  if (matches('unproductive')) return 'unproductive';
+  if (matches('productive')) return 'productive';
   return 'other';
 }
 
@@ -970,7 +886,8 @@ function renderLastFocused(lf, now) {
   };
   const oKey = lfOverrideKey(lastFocusedCache);
   if (oKey && lfSessionClass[oKey]) {
-    lastFocusedCache.category = lfSessionClass[oKey];
+    if (lfSessionClass[oKey] === lastFocusedCache.category) delete lfSessionClass[oKey];
+    else lastFocusedCache.category = lfSessionClass[oKey];
   }
   setAppTrunc(appEl, use.app);
   if (titleEl) setAppTrunc(titleEl, use.title || '');
@@ -1027,8 +944,12 @@ function renderMood(stats) {
   const block = $('mood-block');
   if (!block) return;
   const mood = (stats && stats.mood) || { id: 'meh', ratio: null };
-  const copy = moodDisplay(mood);
-  block.setAttribute('data-mood', mood.id || 'meh');
+  const focus = describeFocus(stats && stats.byCategory);
+  const partial = focus && focus.coverage != null && focus.coverage < sydtrackGoals.MIN_CLASSIFIED_COVERAGE;
+  const copy = partial
+    ? { label: 'Partial picture: most time is Other', title: 'Most tracked time has no P/U classification. Other is not counted as productive or unproductive.' }
+    : moodDisplay(mood);
+  block.setAttribute('data-mood', partial ? 'meh' : mood.id || 'meh');
   block.title = copy.title;
   const em = $('mood-emoji');
   const lab = $('mood-label');
@@ -1479,6 +1400,7 @@ function renderWeek(stats) {
     focusSub = fmtFriendly(prodSum) + ' productive · ' + fmtFriendly(unpSum) + ' unproductive' +
       (weekFocus && weekFocus.includeOther ? ' · ' + fmtFriendly(othSum) + ' other' : '');
   }
+  if (weekFocus && weekFocus.trackedSec > 0) focusSub = focusBasis(weekFocus);
   setMetrics(
     bestVal,
     bestSub,
@@ -1967,6 +1889,7 @@ function renderDay(stats) {
     focusSub = fmtFriendly(prodSum) + ' productive · ' + fmtFriendly(unpSum) + ' unproductive' +
       (dayFocus && dayFocus.includeOther ? ' · ' + fmtFriendly(othSum) + ' other' : '');
   }
+  if (dayFocus && dayFocus.trackedSec > 0) focusSub = focusBasis(dayFocus);
   const shareEl = $('day-focus-share');
   if (shareEl) shareEl.textContent = focusShare;
   const shareSub = $('day-focus-sub');
@@ -1981,7 +1904,8 @@ function formatRoundupDate(dateKey) {
   return formatPageDate(new Date(parts[0], parts[1] - 1, parts[2]));
 }
 
-function roundupHeadlines(moodId, hit, thin) {
+function roundupHeadlines(moodId, hit, thin, limited) {
+  if (limited) return { headline: 'Partial picture', sub: 'Most tracked time is Other.' };
   if (thin) {
     return {
       headline: 'Today so far',
@@ -2017,16 +1941,17 @@ function renderRoundup(stats) {
   })());
 
   const hero = $('roundup-hero');
-  if (hero) hero.setAttribute('data-mood', mood.id || 'meh');
-  if ($('roundup-emoji')) $('roundup-emoji').textContent = mood.emoji || '😐';
-  const copy = roundupHeadlines(mood.id || 'meh', hit, thin);
+  if (hero) hero.setAttribute('data-mood', focus && focus.limited ? 'meh' : mood.id || 'meh');
+  if ($('roundup-emoji')) $('roundup-emoji').textContent = focus && focus.limited ? '😐' : mood.emoji || '😐';
+  const copy = roundupHeadlines(mood.id || 'meh', hit, thin || !!(focus && focus.thin), focus && focus.limited);
   if ($('roundup-headline')) $('roundup-headline').textContent = copy.headline;
   if ($('roundup-sub')) $('roundup-sub').textContent = copy.sub;
 
   const goalCard = $('roundup-goal-card');
   const focusPct = focus && focus.percent != null ? focus.percent : null;
   const actualPct = focusPct == null ? 0 : Math.min(100, Math.max(0, focusPct));
-  if (goalCard) goalCard.setAttribute('data-hit', !focus || focus.thin ? 'na' : hit ? 'yes' : 'no');
+  if (goalCard) goalCard.setAttribute('data-hit', !focus || focus.thin || focus.limited ? 'na' : hit ? 'yes' : 'no');
+  if ($('roundup-goal-basis')) $('roundup-goal-basis').textContent = focusBasis(focus);
   const goalKicker = goalCard && goalCard.querySelector('.lf-kicker');
   if (goalKicker) goalKicker.textContent = 'Daily focus share';
   if ($('roundup-goal-value')) {
@@ -2040,7 +1965,7 @@ function renderRoundup(stats) {
       'data-full',
       focus && focus.includeOther
         ? 'Productive time as a share of all active tracked time, versus your goal. Other is included.'
-        : 'Productive time as a share of productive + unproductive, versus your goal. Other is excluded.'
+        : 'Productive time as a share of productive + unproductive, versus your goal. Other is excluded. Goals are not scored when most tracked time is Other.'
     );
   }
   const fill = $('roundup-goal-fill');
@@ -2049,7 +1974,8 @@ function renderRoundup(stats) {
   if (fill) fill.style.width = actualPct + '%';
   if (bar) {
     bar.setAttribute('aria-valuenow', String(actualPct));
-    bar.setAttribute('aria-valuetext', (focusPct == null ? 'No focus share yet' : focusPct + '%') + ', ' + goalPct + '% goal');
+    bar.setAttribute('aria-valuetext', (focusPct == null ? 'No focus share yet' : focusPct + '%') + ', ' + goalPct + '% goal. ' +
+      focusBasis(focus) + (focus && focus.limited ? '. Partial picture; goal not scored.' : ''));
   }
   if (mark) {
     const showMark = focusPct != null && goalPct > 0 && goalPct < 100;
@@ -2190,10 +2116,12 @@ function renderAppsOverview(entries) {
   $('apps-period-label').textContent = appsPeriodLabel() + ' · active app time';
 }
 
-function appReason(reason) {
+function appReason(reason, app) {
+  if (isBrowserApp(app) && window.sydtrackBrowserRules.isUnrecognizedReason(reason)) return 'Unrecognized pages';
   if (!reason || reason === 'Keyword not recorded') return 'Reason unavailable';
   if (reason === 'No matching rule' || reason === 'No matching keyword') return 'Default ruleset';
   if (reason === 'App identity') return 'App rule';
+  if (/^r\/[a-z0-9_]{1,21}$/i.test(reason)) return reason;
   return 'Matched “' + reason + '”';
 }
 
@@ -2260,12 +2188,15 @@ function renderAppList(stats) {
       activeTypes.map(([value]) => {
         const typeRows = group.rows.filter(row => row.category === value).sort((a, b) => b.seconds - a.seconds);
         return '<div class="app-activity-type" role="group" aria-label="' + value + ' activity">' +
-          typeRows.map(row => '<div class="app-activity" data-row-id="' + encodeURIComponent(row.id || '') + '">' +
-            '<div class="app-activity-row"><span class="app-activity-reason">' + esc(appReason(row.reason)) + '</span>' +
+          typeRows.map(row => {
+            const unrecognized = isBrowserApp(row.name) && window.sydtrackBrowserRules.isUnrecognizedReason(row.reason);
+            const explanation = unrecognized ? 'These pages have no shared rule. Add a specific title keyword in Focus Tags.' : '';
+            return '<div class="app-activity" data-unrecognized="' + unrecognized + '" data-row-id="' + encodeURIComponent(row.id || '') + '">' +
+            '<div class="app-activity-row"><span class="app-activity-reason" title="' + explanation + '">' + esc(appReason(row.reason, row.name)) + '</span>' +
             '<span class="app-activity-time">' + appDuration(row.seconds) + '</span>' +
-            (row.id ? '<span class="app-activity-actions" role="group" tabindex="-1" aria-label="' + esc(group.name) + ', ' + esc(appReason(row.reason)) + ': ' + esc(row.category) + ' today">' +
-              categories.map(([category, letter, name]) => '<button type="button" class="app-activity-category" data-app-command="choose" data-category="' + category + '" aria-label="' + name + '" aria-pressed="' + (row.category === category) + '" title="' + name + (row.category === category ? ' (current)' : ' for today') + '"' + (row.category === category ? ' disabled' : '') + '>' + letter + '</button>').join('') + '</span>' : '') + '</div></div>'
-          ).join('') + '</div>';
+            (row.id ? '<span class="app-activity-actions" role="group" tabindex="' + (unrecognized ? '0' : '-1') + '" aria-label="' + esc(group.name) + ', ' + esc(appReason(row.reason, row.name)) + ': ' + esc(row.category) + ' today. ' + explanation + '">' +
+              categories.map(([category, letter, name]) => '<button type="button" class="app-activity-category" data-app-command="choose" data-category="' + category + '" aria-label="' + name + '" aria-pressed="' + (row.category === category) + '" title="' + (unrecognized ? explanation : name + (row.category === category ? ' (current)' : ' for today')) + '"' + (row.category === category || (unrecognized && category !== 'other') ? ' disabled' : '') + '>' + letter + '</button>').join('') + '</span>' : '') + '</div></div>';
+          }).join('') + '</div>';
       }).join('') + '</div></details></li>';
   }).join('');
 }
@@ -2553,10 +2484,18 @@ function fillRulesEditors(rules) {
   if (Array.isArray(rules.browserApps)) cachedBrowserApps = rules.browserApps.slice();
   if (Array.isArray(rules.ignoredApps)) cachedIgnoredApps = rules.ignoredApps.slice();
   cachedRules = {
+    profileId: rules.profileId ?? cachedRules.profileId,
     productive: rules.productive || [],
     unproductive: rules.unproductive || [],
-    other: rules.other || []
+    other: rules.other || [],
+    browserKeywords: rules.browserKeywords || cachedRules.browserKeywords || {},
+    identities: {
+      browserApps: cachedBrowserApps,
+      ignoredApps: cachedIgnoredApps,
+      productiveApps: rules.productiveApps || (cachedRules.identities && cachedRules.identities.productiveApps) || []
+    }
   };
+  for (const key of Object.keys(lfSessionClass)) delete lfSessionClass[key];
   if ($('rules-prod-edit')) $('rules-prod-edit').value = (rules.productive || []).join('\n');
   if ($('rules-unprod-edit')) $('rules-unprod-edit').value = (rules.unproductive || []).join('\n');
   if ($('rules-other-edit')) $('rules-other-edit').value = (rules.other || []).join('\n');
@@ -2569,6 +2508,7 @@ function fillRulesEditors(rules) {
     $('rules-unprod-custom-label').textContent = rules.isCustom ? '(custom)' : '(defaults)';
   }
   updateTagsQuickStatus();
+  applyLfButtonOutlines(lastFocusedCache && lastFocusedCache.category);
 }
 
 function fillIgnoreEditor(payload) {
@@ -2585,6 +2525,7 @@ function fillIgnoreEditor(payload) {
 function fillKeywordEditors(keywords) {
   const prod = (keywords && keywords.productive) || [];
   const unprod = (keywords && keywords.unproductive) || [];
+  cachedRules.browserKeywords = { productive: prod, unproductive: unprod };
   if ($('kw-prod-edit')) $('kw-prod-edit').value = prod.join('\n');
   if ($('kw-unprod-edit')) $('kw-unprod-edit').value = unprod.join('\n');
 }
@@ -2765,7 +2706,19 @@ function listsContainingKeyword(keyword) {
   return found;
 }
 
+function updateBrowserRuleNotice() {
+  const notice = $('tags-rule-notice');
+  if (!notice) return;
+  const lists = currentTagLists();
+  const names = [...new Set([...lists.productive, ...lists.unproductive, ...lists.other]
+    .filter(key => window.sydtrackBrowserRules.isBrowserName(key, cachedBrowserApps)))];
+  notice.classList.toggle('hidden', !names.length);
+  notice.textContent = names.length ? 'Browser names do not classify pages: ' + names.map(name => '“' + name + '”').join(', ') +
+    '. Use a page/source keyword, or Ignore the whole browser.' : '';
+}
+
 function updateTagsQuickStatus() {
+  updateBrowserRuleNotice();
   const status = $('tags-quick-status');
   const input = $('tags-quick-input');
   if (!status || !input) return;
@@ -2795,6 +2748,10 @@ async function tagsQuickAdd(target) {
   const kw = String(input.value || '').trim();
   if (!kw) {
     if (status) status.textContent = 'Enter a keyword first.';
+    return;
+  }
+  if (target !== 'ignore' && window.sydtrackBrowserRules.isBrowserName(kw, cachedBrowserApps)) {
+    if (status) status.textContent = 'Browser names cannot classify pages. Use a specific title/source keyword instead.';
     return;
   }
   if (typeof currentPlatform !== 'undefined' && currentPlatform === 'win32' && /^site:/i.test(kw)) {
@@ -2870,7 +2827,7 @@ async function tagsQuickAdd(target) {
       if ($('rules-prod-edit')) $('rules-prod-edit').value = prod.join('\n');
       if ($('rules-unprod-edit')) $('rules-unprod-edit').value = unprod.join('\n');
       if ($('rules-other-edit')) $('rules-other-edit').value = other.join('\n');
-      cachedRules = { productive: prod.slice(), unproductive: unprod.slice(), other: other.slice() };
+      cachedRules = { ...cachedRules, productive: prod.slice(), unproductive: unprod.slice(), other: other.slice() };
     }
 
     if (ignoreChanged && api.setIgnore) {
@@ -3580,8 +3537,11 @@ if (focusBoostBtn) {
 }
 
 async function quickClassifyLastFocused(category) {
-  if (!api || !lastFocusedCache) return;
-  const kw = keywordForQuickClassify(lastFocusedCache);
+  if (!api || !lastFocusedCache || lfClassifySaving || tagsQuickSaving) return;
+  const entry = { ...lastFocusedCache };
+  const profileId = cachedRules.profileId;
+  const oKey = lfOverrideKey(entry);
+  const kw = keywordForQuickClassify(entry);
   if (!kw) return;
   const current = {
     productive: (cachedRules.productive || []).slice(),
@@ -3595,19 +3555,21 @@ async function quickClassifyLastFocused(category) {
   // Clicking an explicit tag again removes it; otherwise the chosen category
   // becomes the only direct rule for this title/app in the active profile.
   if (!already) nextRules[category].push(kw);
+  const process = processNameForIgnore(entry);
+  const remainingIgnore = process && listHasKey(cachedIgnore, process)
+    ? cachedIgnore.filter(item => String(item).toLowerCase() !== process.toLowerCase()) : null;
+  // Removing whole-app Ignore and adding a rule must be one atomic profile save.
+  if (remainingIgnore) nextRules.ignore = remainingIgnore;
+  lfClassifySaving = true;
+  applyLfButtonOutlines(lastFocusedCache.category);
   try {
-    // Ignore is process-wide. Moving from I to P/U/O first restores tracking.
-    const process = processNameForIgnore(lastFocusedCache);
-    if (process && listHasKey(cachedIgnore, process)) {
-      const remaining = cachedIgnore.filter(item => String(item).toLowerCase() !== process.toLowerCase());
-      const payload = await api.setIgnore(remaining);
-      fillIgnoreEditor(payload || { ignore: remaining, isCustom: true });
-    }
-    const next = await api.setRules(nextRules);
+    const next = await api.setRules(nextRules, profileId);
+    if (cachedRules.profileId !== profileId) return;
     fillRulesEditors(next || { ...nextRules, isCustom: true });
-    const oKey = lfOverrideKey(lastFocusedCache);
-    const nextCat = defaultCategoryFromRules(lastFocusedCache, cachedRules, cachedIgnore);
+    if (remainingIgnore) fillIgnoreEditor({ ignore: remainingIgnore, isCustom: true });
+    const nextCat = defaultCategoryFromRules(entry, cachedRules, cachedIgnore);
     if (oKey) lfSessionClass[oKey] = nextCat;
+    if (!lastFocusedCache || lfOverrideKey(lastFocusedCache) !== oKey) return;
     lastFocusedCache.category = nextCat;
     const catEl = $('lf-cat');
     applyCategoryChip(
@@ -3619,6 +3581,10 @@ async function quickClassifyLastFocused(category) {
     applyLfButtonOutlines(nextCat);
   } catch (err) {
     console.warn('quick-classify failed', err);
+    if ($('home-profile-status')) $('home-profile-status').textContent = 'Could not save the rule. Try again in the active profile.';
+  } finally {
+    lfClassifySaving = false;
+    applyLfButtonOutlines(lastFocusedCache && lastFocusedCache.category);
   }
 }
 
@@ -3636,13 +3602,15 @@ if ($('lf-ignore')) {
 }
 
 async function ignoreLastFocused() {
-  if (!api || !lastFocusedCache) return;
-  const name = processNameForIgnore(lastFocusedCache);
+  if (!api || !lastFocusedCache || lfClassifySaving || tagsQuickSaving) return;
+  const entry = { ...lastFocusedCache };
+  const profileId = cachedRules.profileId;
+  const name = processNameForIgnore(entry);
   if (!name) return;
   const prev = cachedIgnore.slice();
   const key = name.toLowerCase();
   const already =
-    lastFocusedCache.category === 'ignored' || listHasKey(prev, key);
+    entry.category === 'ignored' || listHasKey(prev, key);
   let next;
   if (already) {
     next = prev.filter((x) => String(x).toLowerCase() !== key);
@@ -3650,22 +3618,26 @@ async function ignoreLastFocused() {
     next = prev.slice();
     if (!listHasKey(next, key)) next.push(name);
   }
+  lfClassifySaving = true;
+  applyLfButtonOutlines(lastFocusedCache.category);
   try {
-    const payload = await api.setIgnore(next);
+    const payload = await api.setIgnore(next, profileId);
+    if (cachedRules.profileId !== profileId) return;
     cachedIgnore = (payload && payload.ignore) || next;
     fillIgnoreEditor({
       ignore: cachedIgnore,
       path: payload && payload.path,
       isCustom: true
     });
-    const oKey = lfOverrideKey(lastFocusedCache);
+    const oKey = lfOverrideKey(entry);
     let nextCat = 'ignored';
     if (already) {
       if (oKey) delete lfSessionClass[oKey];
-      nextCat = defaultCategoryFromRules(lastFocusedCache, cachedRules, cachedIgnore);
+      nextCat = defaultCategoryFromRules(entry, cachedRules, cachedIgnore);
     } else if (oKey) {
       lfSessionClass[oKey] = 'ignored';
     }
+    if (!lastFocusedCache || processNameForIgnore(lastFocusedCache)?.toLowerCase() !== key) return;
     lastFocusedCache.category = nextCat;
     const catEl = $('lf-cat');
     applyCategoryChip(
@@ -3677,6 +3649,10 @@ async function ignoreLastFocused() {
     applyLfButtonOutlines(nextCat);
   } catch (err) {
     console.warn('ignore last-focused failed', err);
+    if ($('home-profile-status')) $('home-profile-status').textContent = 'Could not save Ignore. Try again in the active profile.';
+  } finally {
+    lfClassifySaving = false;
+    applyLfButtonOutlines(lastFocusedCache && lastFocusedCache.category);
   }
 }
 

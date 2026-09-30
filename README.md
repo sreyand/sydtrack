@@ -24,7 +24,7 @@ sydtrack watches the app in front of you, classifies the time, and turns the res
 | **Live daily view** | Productive, unproductive, and uncategorized time update as you work. The total advances smoothly every second. |
 | **Focus profiles** | Switch between General, Coding, Writing, Study, and Creative without rebuilding your tags every time your work changes. |
 | **Useful analytics** | Inspect category trends, an activity timeline, app-by-app time for day/week/month, and lifetime totals. Older days keep compact local summaries after detailed history expires. |
-| **Focus sessions** | Run Pomodoro, Deep Work, or a custom timer with an optional intention, session history, and distraction counts. |
+| **Focus sessions** | Run Pomodoro, Deep Work, or a custom timer with session history and distraction counts. |
 | **FocusBoost** | Use a shorter reminder threshold when you want sydtrack to interrupt a distraction sooner. Optional schedules can arm it automatically. |
 | **Daily goals** | Set a productive-time share target and, if useful, a limit for total active screen time. |
 | **Optional break nudges** | A configurable notification after a long stretch of active tracking, off by default. Pausing or five idle minutes resets the stretch. |
@@ -92,6 +92,18 @@ On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memo
 
 Read the [v2.2.1 release notes](docs/release-notes-2.2.1.md) for upgrade details.
 
+## In development: more precise classification
+
+These source changes are unreleased; existing v2.2.1 installers are unchanged.
+
+- Recognizable page-source labels take precedence over topic words. A specific `r/learnpython` rule can override a broad `r/` rule.
+- Browser names such as `google chrome` no longer classify every page through the window-title suffix.
+- Home uses recognizable sources or existing matched keywords for quick rules, without guessing a word from an unfamiliar page. Analytics keeps unrecognized browser pages together without a blanket P/U/I correction.
+- Focus Share shows how much tracked time it is based on. When most time is Other, excluded-Other goals and daily scores have no verdict.
+- Cached rule patterns and source metadata reduce repeated classification work without retaining titles or searches.
+
+See [ITERATION.md](ITERATION.md) for the implementation handoff and remaining limitations.
+
 ## What changed in v2.2.0
 
 - A short privacy-first onboarding flow for fresh installs; existing installs skip it.
@@ -136,6 +148,7 @@ npm run test:ui          # isolated renderer checks
 npm run start:demo       # generated demo activity
 npm run dist:win         # installer + portable build
 npm run sync:profiles    # regenerate bundled profile packs
+npm run benchmark:classification # synthetic matcher timings
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup details.
@@ -143,9 +156,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup details.
 <details>
 <summary><strong>How classification works</strong></summary>
 
-sydtrack checks ignored process identities first. For native apps, explicit app tags and productive app identities take precedence over unrelated words in a document or project title. For browsers, the active profile’s unproductive keywords win over productive keywords, followed by the editable browser fallback list. Browsers with no match and unknown applications remain Other.
+sydtrack checks ignored process identities first. For native apps, explicit app tags and productive app identities take precedence over unrelated words in a document or project title. Explicit Other keywords provide neutral exceptions.
+
+In the development matcher, browsers use the page title without the trailing browser label. A recognizable source such as `- YouTube`, `- GitHub`, or `- r/jhu` takes precedence over a topic word. A more specific source rule, such as `r/learnpython` or `youtube lecture`, can override a broad source rule. Without a recognized source, explicit Other wins, then unproductive over productive; editable browser keywords are the fallback. No match remains Other. Title keywords are useful signals, not proof of the purpose of a visit.
 
 The same browser can therefore contribute productive GitHub time and unproductive YouTube time without collapsing the two. Title matching is browser-independent. `site:example.com` rules remain portable, but production address capture is disabled until it can be made reliable without observing unsubmitted address-bar text.
+
+By default, Focus Share is productive ÷ (productive + unproductive). Other stays in tracked totals but outside that ratio. The development build displays the classified portion alongside the percentage, and skips goal verdicts and daily scores when less than half of tracked time is classified. Including Other in Settings explicitly uses all active tracked time instead. Coverage describes assigned categories, not how accurate those assignments are.
 
 </details>
 

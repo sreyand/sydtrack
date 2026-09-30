@@ -259,7 +259,26 @@ app.whenReady().then(async () => {
       isBrowserApp(app) && defaultCategoryFromRules({ app, title: 'YouTube video' }, cachedRules, []) === 'unproductive');
     const nativeEditor = !isBrowserApp('chrome-helper.exe') && !isBrowserApp('Code');
     if (!genericBrowsers || !nativeEditor) throw new Error('Browser identity/classification mismatch in renderer');
-    return { loaded, removed, siteKey, siteCategory, genericBrowsers, nativeEditor };
+    const noGuess = keywordForQuickClassify({ app: 'chrome', title: 'How to do it - Google Chrome' }) === null;
+    fillRulesEditors({ productive: ['jhu', 'r/learnpython'], unproductive: ['r/'], productiveApps: ['code'] });
+    const subreddit = { app: 'chrome', title: 'Discussion - r/jhu - Google Chrome', category: 'unproductive' };
+    const preciseKey = keywordForQuickClassify(subreddit) === 'r/jhu';
+    const sourceWins = defaultCategoryFromRules(subreddit) === 'unproductive';
+    const preciseException = defaultCategoryFromRules({ app: 'chrome', title: 'Question - r/learnpython' }) === 'productive';
+    const nativeIdentity = defaultCategoryFromRules({ app: 'Code', title: 'Project r/jhu notes' }) === 'productive';
+    const ignoreBoundary = defaultCategoryFromRules({ app: 'discord-helper', title: '' }, {}, ['cord']) === 'other';
+    renderLastFocused({ app: 'chrome', title: 'Google - Google Chrome', category: 'other' });
+    const unknownSafe = ['lf-prod', 'lf-unprod', 'lf-other'].every(id => document.getElementById(id).disabled) &&
+      !document.getElementById('lf-ignore').disabled && document.getElementById('lf-cat').textContent === 'other';
+    renderLastFocused(subreddit);
+    const recognizedEnabled = !document.getElementById('lf-prod').disabled && document.getElementById('lf-prod').title.includes('r/jhu');
+    fillRulesEditors({ productive: ['google chrome'], unproductive: [] });
+    const ruleNotice = !document.getElementById('tags-rule-notice').classList.contains('hidden');
+    fillRulesEditors({ productive: ['github'], unproductive: ['youtube'] });
+    const quietWhenSafe = document.getElementById('tags-rule-notice').classList.contains('hidden');
+    if (![noGuess, preciseKey, sourceWins, preciseException, nativeIdentity, ignoreBoundary, unknownSafe, recognizedEnabled, ruleNotice, quietWhenSafe].every(Boolean))
+      throw new Error('Safe quick rules, source exceptions, native identities, or browser-name notice failed');
+    return { loaded, removed, siteKey, siteCategory, genericBrowsers, nativeEditor, noGuess, preciseKey, sourceWins, preciseException, unknownSafe, recognizedEnabled, ruleNotice };
   })()`);
   console.log('Tag input checks:', JSON.stringify(tagChecks));
   const titleOnlyCheck = await win.webContents.executeJavaScript(`(async () => {
@@ -359,16 +378,18 @@ app.whenReady().then(async () => {
     const groups = [...list.querySelectorAll('.app-activity-type')].map(node => node.getAttribute('aria-label'));
     if (groups.join(',') !== 'productive activity,unproductive activity,other activity,ignored activity' ||
       /productive|unproductive/i.test(list.querySelector('.app-group-mix').textContent) ||
-      !list.querySelector('.app-activity[data-row-id="d"] .app-activity-reason')?.textContent.includes('Default ruleset') ||
+      !list.querySelector('.app-activity[data-row-id="d"] .app-activity-reason')?.textContent.includes('Unrecognized pages') ||
       !list.querySelector('.app-group-duration.productive') || !list.querySelector('.app-group-duration.unproductive') ||
       list.querySelector('.app-group-head > span'))
       throw new Error('Category groups, colored durations, or compact Day summary failed');
-    const current = id => list.querySelector('.app-activity[data-row-id="' + id + '"] .app-activity-category:disabled');
+    const current = id => list.querySelector('.app-activity[data-row-id="' + id + '"] .app-activity-category:disabled[aria-pressed="true"]');
     if (list.querySelectorAll('.app-activity-category').length !== 16 ||
       current('a')?.dataset.category !== 'unproductive' || current('b')?.dataset.category !== 'productive' ||
       current('c')?.dataset.category !== 'ignored' || current('d')?.dataset.category !== 'other' ||
       list.querySelector('.app-activity-change'))
       throw new Error('P/U/O/I buttons do not reflect each activity’s current category');
+    if ([...list.querySelectorAll('.app-activity[data-row-id="d"] button')].some(button => !button.disabled))
+      throw new Error('Unrecognized browser pages must not be reclassified as one rule');
     const active = current('b');
     const available = list.querySelector('.app-activity[data-row-id="a"] .app-activity-category[data-category="productive"]');
     if (getComputedStyle(active).color === getComputedStyle(available).color ||
@@ -472,6 +493,42 @@ app.whenReady().then(async () => {
       redundantCardRemoved: !document.getElementById('tags-other-card') };
   })()`);
   console.log('Roundup evidence checks:', JSON.stringify(roundupEvidence));
+  const coverageChecks = await win.webContents.executeJavaScript(`(() => {
+    const stats = { date: '2026-09-25', byCategory: { productive: 3600, unproductive: 0, other: 25200 },
+      settings: { focusShareIncludeOther: false }, mood: { id: 'thriving', ratio: 1 }, topApps: [] };
+    renderRoundup(stats);
+    renderMood(stats);
+    const partial = document.getElementById('roundup-headline').textContent === 'Partial picture' &&
+      document.getElementById('roundup-goal-card').dataset.hit === 'na' &&
+      document.getElementById('roundup-goal-value').textContent === '100%' &&
+      document.getElementById('roundup-goal-basis').textContent === 'Based on 1h of 8h tracked' &&
+      document.getElementById('mood-label').textContent.includes('Partial picture') &&
+      document.getElementById('mood-block').dataset.mood === 'meh' &&
+      getComputedStyle(document.getElementById('roundup-goal-fill')).backgroundColor ===
+        getComputedStyle(document.querySelector('.month-dot.other')).backgroundColor;
+    stats.byCategory = { productive: 3600, unproductive: 900, other: 900 };
+    renderRoundup(stats);
+    const scored = document.getElementById('roundup-goal-card').dataset.hit === 'yes' &&
+      document.getElementById('roundup-headline').textContent === 'Goal reached';
+    stats.byCategory = { productive: 3600, unproductive: 0, other: 25200 };
+    stats.settings.focusShareIncludeOther = true;
+    renderRoundup(stats);
+    const included = document.getElementById('roundup-goal-card').dataset.hit === 'no' &&
+      document.getElementById('roundup-goal-value').textContent === '13%' &&
+      document.getElementById('roundup-goal-basis').textContent === 'Of all 8h tracked';
+    if (!partial || !scored || !included) throw new Error('Focus share coverage or goal verdict failed');
+    stats.settings.focusShareIncludeOther = false;
+    renderRoundup(stats);
+    return { partial, scored, included };
+  })()`);
+  console.log('Focus coverage checks:', JSON.stringify(coverageChecks));
+  await win.webContents.executeJavaScript(`(async () => {
+    document.querySelector('[data-tab="roundup"]').click();
+    applyTheme('midnight'); document.querySelector('.main').scrollTop = 0;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (document.getElementById('view-roundup').classList.contains('hidden')) throw new Error('Coverage preview did not reach Roundup');
+  })()`);
+  fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-focus-coverage.png'), (await win.webContents.capturePage()).toPNG());
   const settingsChecks = await win.webContents.executeJavaScript(`(() => {
     document.querySelector('[data-tab="settings"]').click();
     const visible = name => !document.getElementById('settings-panel-' + name).classList.contains('hidden');

@@ -225,6 +225,8 @@ throws(() => validateIpcPayload('history:summary', 91), 'history summary rejects
 throws(() => validateIpcPayload('history:summary', 7.5), 'history summary rejects floats');
 
 assert(validateIpcPayload('rules:set', { productive: ['github'], unproductive: ['youtube'] }).productive[0] === 'github', 'rules:set accepts lists');
+assert(validateIpcPayload('rules:set', { productive: ['github'], unproductive: [], ignore: [] }).ignore.length === 0, 'rules:set accepts an optional atomic Ignore change');
+throws(() => validateIpcPayload('rules:set', { productive: [], unproductive: [], ignore: [1] }), 'atomic Ignore changes reject non-string values');
 throws(() => validateIpcPayload('rules:set', { productive: ['x'], unproductive: ['y'], extra: true }), 'rules:set rejects extra keys');
 throws(() => validateIpcPayload('rules:set', { productive: [1], unproductive: [] }), 'rules:set rejects non-strings');
 assert(validateIpcPayload('ignore:set', { ignore: ['explorer'] }).ignore[0] === 'explorer', 'ignore:set accepts a list');

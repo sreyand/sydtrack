@@ -207,6 +207,10 @@ async function run() {
   blockedShortcut = null;
   const beforeCycle = await handlers.get('profiles:get')(goodEvent);
   const afterCycle = await handlers.get('profiles:cycle')(goodEvent);
+  await handlers.get('rules:set')(goodEvent, { profileId: afterCycle.activeId, productive: ['r/learnpython'], unproductive: ['r/'], other: [], ignore: [] });
+  const profileSaved = (await handlers.get('profiles:get')(goodEvent)).profiles.find(profile => profile.id === afterCycle.activeId);
+  assert(profileSaved.productive.includes('r/learnpython') && profileSaved.ignore.length === 0, 'rule changes can atomically restore an ignored app in the active profile');
+  await throws(() => handlers.get('rules:set')(goodEvent, { profileId: beforeCycle.activeId, productive: [], unproductive: [], ignore: [] }), 'atomic rule changes reject a stale profile guard');
   assert(beforeCycle.profiles.length < 2 || afterCycle.activeId !== beforeCycle.activeId, 'profile cycle advances to an available profile');
   await handlers.get('settings:update')(goodEvent, { profileShortcut: '' });
   assert(!registeredShortcuts.has('Alt+B'), 'turning the shortcut off unregisters it');
@@ -242,6 +246,17 @@ async function run() {
   assert(exposed.sydtrack && typeof exposed.sydtrack.getState === 'function', 'preload exposes window.sydtrack');
   assert(!Object.prototype.hasOwnProperty.call(exposed.sydtrack, 'ipcRenderer'), 'preload does not expose ipcRenderer');
   assert(!Object.values(exposed.sydtrack).includes(ipcRenderer), 'preload does not leak the raw ipcRenderer object');
+  const requests = [];
+  ipcRenderer.invoke = async (channel, payload) => {
+    requests.push({ channel, payload });
+    return channel === 'profiles:activate' ? { activeId: payload } : {};
+  };
+  await exposed.sydtrack.activateProfile('new-profile');
+  await exposed.sydtrack.setRules({ productive: [], unproductive: [], other: [] }, 'default');
+  await exposed.sydtrack.setIgnore([], 'default');
+  assert(requests.slice(-2).every(request => request.payload.profileId === 'default'), 'an in-flight rule/Ignore save retains its original profile guard');
+  await exposed.sydtrack.setRules({ productive: [], unproductive: [] });
+  assert(requests.at(-1).payload.profileId === 'new-profile', 'ordinary rule saves still use the current profile');
 
   const builder = require('../build/electron-builder.config.js');
   assert(builder.appId === APP_ID, 'builder and runtime application identities match');

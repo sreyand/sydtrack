@@ -167,13 +167,14 @@ function historyDays(payload) {
 
 function rulesSet(payload) {
   const obj = plainObject(payload);
-  assertKeys(obj, ['productive', 'unproductive', 'other', 'profileId']);
+  assertKeys(obj, ['productive', 'unproductive', 'other', 'ignore', 'profileId']);
   if (!Object.hasOwn(obj, 'productive') || !Object.hasOwn(obj, 'unproductive')) invalid();
   const out = {
     productive: stringList(obj.productive),
     unproductive: stringList(obj.unproductive)
   };
   if (Object.hasOwn(obj, 'other')) out.other = stringList(obj.other);
+  if (Object.hasOwn(obj, 'ignore')) out.ignore = stringList(obj.ignore);
   if (Object.hasOwn(obj, 'profileId')) out.profileId = optionalProfileId(obj.profileId);
   return out;
 }

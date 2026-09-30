@@ -22,6 +22,9 @@ app.whenReady().then(async () => {
   store.addSeconds('Code', 'other', 20);
   store.addSeconds('Spotify', 'other', 15);
   const profiles = createFocusProfiles({ dataDir: root, rules: { productive: [], unproductive: [] }, ignore: [] });
+  const assertActiveProfile = id => {
+    if (id != null && id !== profiles.snapshot().activeId) throw new Error('Focus profile changed. Reload tags before saving.');
+  };
   const sessions = createSessionManager({ dataDir: root, getSettings: () => store.getSettings() });
   const handlers = {
     'state:get': () => ({ stats: store.snapshot(), now: null, session: null }),
@@ -33,9 +36,10 @@ app.whenReady().then(async () => {
       const index = current.profiles.findIndex(profile => profile.id === current.activeId);
       return profiles.activate(current.profiles[(index + 1) % current.profiles.length].id);
     },
-    'rules:set': (_e, fields) => { profiles.save(profiles.snapshot().activeId, { productive: fields.productive, unproductive: fields.unproductive,
-      other: fields.other === undefined ? profiles.active().other : fields.other }); return { ...profiles.active(), profileId: profiles.snapshot().activeId }; },
-    'ignore:set': (_e, fields) => { profiles.save(profiles.snapshot().activeId, { ignore: fields.ignore }); return { ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId }; },
+    'rules:set': (_e, fields) => { assertActiveProfile(fields.profileId); profiles.save(profiles.snapshot().activeId, { productive: fields.productive, unproductive: fields.unproductive,
+      other: fields.other === undefined ? profiles.active().other : fields.other,
+      ...(fields.ignore === undefined ? {} : { ignore: fields.ignore }) }); return { ...profiles.active(), profileId: profiles.snapshot().activeId }; },
+    'ignore:set': (_e, fields) => { assertActiveProfile(fields.profileId); profiles.save(profiles.snapshot().activeId, { ignore: fields.ignore }); return { ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId }; },
     'profiles:delete': (_e, id) => profiles.remove(id),
     'rules:get': () => ({ ...profiles.active(), profileId: profiles.snapshot().activeId }),
     'ignore:get': () => ({ ignore: profiles.active().ignore, profileId: profiles.snapshot().activeId }),
@@ -114,6 +118,25 @@ app.whenReady().then(async () => {
     document.getElementById('lf-prod').click();
     await wait(async () => { const p = (await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default'); return p.productive.includes('code') && !p.other.includes('code'); });
     check(lastFocusedCache.category === 'productive', 'Home P replaces an Other override');
+    fillRulesEditors(await window.sydtrack.setRules({ productive: ['jhu'], unproductive: ['r/'], other: [] }));
+    renderLastFocused({ app: 'chrome', title: 'Discussion - r/jhu', category: 'unproductive' });
+    const saveSource = quickClassifyLastFocused('productive');
+    check(document.getElementById('lf-prod').disabled && document.getElementById('lf-ignore').disabled, 'Quick rules lock during a save');
+    await quickClassifyLastFocused('unproductive');
+    renderLastFocused({ app: 'chrome', title: 'Another page - r/gaming', category: 'unproductive' });
+    await saveSource;
+    const saved = (await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default');
+    check(saved.productive.includes('r/jhu') && saved.unproductive.includes('r/'), 'Home saves a precise subreddit exception, not a topic rule');
+    check(lastFocusedCache.title.includes('r/gaming') && lastFocusedCache.category === 'unproductive', 'A late save must not relabel a newly focused page');
+    check(!document.getElementById('lf-prod').disabled, 'Quick rules unlock after saving');
+    await ignoreLastFocused();
+    check(lastFocusedCache.category === 'ignored', 'Home I saves a whole-browser Ignore rule');
+    await quickClassifyLastFocused('productive');
+    const restored = (await window.sydtrack.getProfiles()).profiles.find(p => p.id === 'default');
+    check(restored.productive.includes('r/gaming') && !restored.ignore.includes('chrome'), 'Moving from Ignore to P saves both changes atomically');
+    renderLastFocused({ app: 'chrome', title: 'Google - Google Chrome', category: 'other' });
+    check(document.getElementById('lf-prod').disabled && document.getElementById('lf-cat').textContent === 'other', 'Unknown browser pages stay Other without a guessed quick rule');
+    fillRulesEditors(await window.sydtrack.setRules({ productive: ['code'], unproductive: [], other: [] }));
     document.querySelector('.nav-btn[data-tab="tags"]').click();
     check(!document.getElementById('tags-other-card') && document.getElementById('rules-other-edit').value === '', 'Redundant inbox is gone and neutral overrides remain editable');
     document.querySelector('.nav-btn[data-tab="home"]').click();

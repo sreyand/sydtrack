@@ -146,7 +146,7 @@ function renderScoreList(target, days, windowSize) {
     const date = String(day.date || '');
     const label = date.length >= 10 ? date.slice(5, 7) + '/' + date.slice(8, 10) : date;
     return '<div class="week-score-day" data-hit="' + (day.scored ? (day.hit ? 'yes' : 'no') : 'na') +
-      '" title="' + wellbeingEsc(date + ': ' + (day.scored ? day.percent + '% focus' : 'no score')) +
+      '" title="' + wellbeingEsc(date + ': ' + (day.scored ? day.percent + '% focus' : day.limited ? 'most tracked time is Other; no score' : 'no score')) +
       '"><span>' + wellbeingEsc(label) + '</span><strong>' + (day.scored ? day.percent + '%' : '—') + '</strong></div>';
   }).join('') + '</div>';
 }
@@ -178,7 +178,7 @@ function renderMonthFocusScores(days) {
     const date = String(day.date || '');
     const label = date.length >= 10 ? date.slice(5, 7) + '/' + date.slice(8, 10) : date;
     const score = day.scored ? day.percent + '%' : '—';
-    const title = date + ': ' + (day.scored ? day.percent + '% focus share' : 'no scored activity') +
+    const title = date + ': ' + (day.scored ? day.percent + '% focus share' : day.limited ? 'most tracked time is Other; no score' : 'no scored activity') +
       (avg && avg.percent != null ? '; 30-day average ' + avg.percent + '%' : '');
     return '<div class="month-score-day" data-hit="' + (day.scored ? (day.hit ? 'yes' : 'no') : 'na') +
       '" title="' + wellbeingEsc(title) + '"><span class="month-score-date">' + wellbeingEsc(label) +

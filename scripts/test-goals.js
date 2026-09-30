@@ -14,6 +14,14 @@ function run(assert) {
   const withOther = goals.focusParts({ productive: 80, unproductive: 20, other: 90 }, true);
   assert(goals.sharePercent(withOther.share) === 42 && withOther.denominator === 190, 'optional focus share includes other');
   assert(goals.focusShareStatus({ productive: 80, unproductive: 20 }, { goalPct: 80 }).hit, '80% meets an 80% goal');
+  const partial = goals.focusShareStatus({ productive: 3600, unproductive: 0, other: 7 * 3600 }, { goalPct: 80 });
+  assert(partial.percent === 100 && partial.coverage === 0.125 && partial.limited && !partial.hit,
+    'a 100% ratio over a small classified portion does not meet the goal');
+  assert(partial.classifiedSec === 3600 && partial.trackedSec === 8 * 3600, 'coverage uses all active tracked time');
+  assert(!goals.focusShareStatus({ productive: 3600, other: 3600 }).limited, 'half classified is sufficient for a verdict');
+  assert(!goals.focusShareStatus({}).limited, 'an empty day is thin, not misleadingly partial');
+  const conservative = goals.focusShareStatus({ productive: 3600, other: 7 * 3600 }, { includeOther: true });
+  assert(!conservative.limited && conservative.percent === 13 && !conservative.hit, 'explicitly including Other uses all time without a coverage gate');
 
   const screen = goals.screenTimeStatus({ productive: 1000, unproductive: 1000, other: 1000 }, { enabled: true, limitSec: 2400 });
   assert(screen.trackedSec === 3000 && screen.over && screen.overBySec === 600, 'screen limit uses active tracked time');
@@ -25,6 +33,16 @@ function run(assert) {
   ];
   const rolling = goals.rollingAverage(days, { window: 3, goalPct: 80 });
   assert(rolling.latest.percent === 65 && rolling.latest.samples === 2, 'rolling average skips empty days');
+  const withPartial = [...days, { date: '2026-09-04', byCategory: { productive: 3600, other: 7 * 3600 } }];
+  const guarded = goals.rollingAverage(withPartial, { window: 4 });
+  assert(guarded.latest.percent === 65 && guarded.latest.samples === 2 && !guarded.days[3].scored,
+    'rolling averages do not treat a partial picture as a full-day focus score');
+  const compare = insights.compareWeeks(Array.from({ length: 14 }, (_, index) => ({
+    date: '2026-09-' + String(index + 1).padStart(2, '0'),
+    byCategory: index < 7 ? { productive: 80, unproductive: 20 } : { productive: 3600, other: 7 * 3600 }
+  })));
+  assert(!compare.comparable && compare.deltaPoints === null && /Most tracked time/.test(compare.sentences[0]),
+    'weekly comparisons do not imply improvement from mostly Other time');
   assert(WEEK_HISTORY_DAYS === 14, 'weekly comparison uses 14 days');
   assert(goalPrefs({}).goalPct === 80 && !goalPrefs({}).screenEnabled, 'renderer goal preferences use quiet defaults');
   assert(drillSharePercent(700, 100) === 100 && drillSharePercent(50, 0) === null, 'app share stays bounded');

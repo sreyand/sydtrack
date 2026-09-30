@@ -13,6 +13,8 @@
 // Displayed percent is Math.round(share * 100). A day meets the goal when that
 // integer is >= focusShareGoalPct, so the label and the hit state match.
 // Days with a denominator under MIN_DISPLAY_SEC (60) are too thin to score.
+// When Other is excluded, days with less than half their tracked time classified
+// show the measured ratio, but do not receive a goal verdict or enter averages.
 // Rolling averages skip unscored days. They are not treated as zero.
 
 (function (root) {
@@ -20,6 +22,7 @@
   const DEFAULT_SCREEN_TIME_LIMIT_SEC = 8 * 3600;
   const DEFAULT_DAILY_GOAL_SEC = 7200;
   const MIN_DISPLAY_SEC = 60;
+  const MIN_CLASSIFIED_COVERAGE = 0.5;
   const MIN_STREAK_SEC = 15 * 60;
   const GOALS_SCHEMA = 2;
 
@@ -51,14 +54,19 @@
   function focusParts(byCategory, includeOther) {
     const t = totals(byCategory);
     const include = !!includeOther;
-    const denominator = include
-      ? t.productive + t.unproductive + t.other
-      : t.productive + t.unproductive;
+    const classifiedSec = t.productive + t.unproductive;
+    const trackedSec = classifiedSec + t.other;
+    const coverage = trackedSec > 0 ? classifiedSec / trackedSec : null;
+    const denominator = include ? trackedSec : classifiedSec;
     const share = denominator > 0 ? t.productive / denominator : null;
     return {
       productive: t.productive,
       unproductive: t.unproductive,
       other: t.other,
+      classifiedSec,
+      trackedSec,
+      coverage,
+      limited: !include && coverage != null && coverage < MIN_CLASSIFIED_COVERAGE,
       denominator,
       share,
       includeOther: include
@@ -88,7 +96,7 @@
       goalPct,
       percent,
       thin,
-      hit: !thin && meetsGoal(parts.share, goalPct)
+      hit: !thin && !parts.limited && meetsGoal(parts.share, goalPct)
     };
   }
 
@@ -120,8 +128,10 @@
       date: day && day.date,
       percent: status.percent,
       share: status.share,
-      scored: !status.thin && status.share != null,
+      scored: !status.thin && !status.limited && status.share != null,
       thin: status.thin,
+      limited: status.limited,
+      coverage: status.coverage,
       hit: status.hit,
       productive: status.productive,
       denominator: status.denominator,
@@ -225,6 +235,7 @@
     DEFAULT_SCREEN_TIME_LIMIT_SEC,
     DEFAULT_DAILY_GOAL_SEC,
     MIN_DISPLAY_SEC,
+    MIN_CLASSIFIED_COVERAGE,
     MIN_STREAK_SEC,
     GOALS_SCHEMA,
     totals,

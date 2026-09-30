@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { writeJson } = require('./json-file');
-const { classifyBrowser, browserNames, isBrowserName, exactKeyword } = require('./browser-rules');
+const { browserNames, isBrowserName, exactKeyword, browserMatch } = require('./browser-rules');
 
 const DEFAULT_RULES_PATH = path.join(__dirname, 'rules.json');
 const DEFAULT_IGNORE_PATH = path.join(__dirname, 'ignore.json');
@@ -189,43 +189,26 @@ function isIgnored(win, ignoreList, identities) {
  * keywords use whole-term matching. Browsers without a match remain Other.
  */
 function classify(win, rules) {
-  rules = rules || { productive: [], unproductive: [], other: [] };
-  const browser = isBrowserProcess(win, rules.identities);
-  if (browser) return classifyBrowser(win, rules);
-  const hay = haystack(win);
-  if (normalizeKeywords(rules.other).some(keyword => !keyword.startsWith('site:') && exactKeyword(hay, keyword))) return 'other';
-  // Explicit app tags remain editable; project/title words cannot override an identity.
-  if (matchesProcess(win, rules.unproductive)) return 'unproductive';
-  if (appMatchesIdentity(win, rules.identities) === 'productive') return 'productive';
-  if (!hay.trim()) return 'other';
-
-  for (const keyword of normalizeKeywords(rules.unproductive)) {
-    if (!keyword.startsWith('site:') && exactKeyword(hay, keyword)) {
-      return 'unproductive';
-    }
-  }
-  if (matchesProcess(win, rules.productive)) return 'productive';
-  for (const keyword of normalizeKeywords(rules.productive)) {
-    if (!keyword.startsWith('site:') && exactKeyword(hay, keyword)) {
-      return 'productive';
-    }
-  }
-  return 'other';
+  return classifyWithReason(win, rules).category;
 }
 
 function classifyWithReason(win, rules = {}) {
-  if (isBrowserProcess(win, rules.identities)) return require('./browser-rules').browserMatch(win, rules);
-  const category = classify(win, rules);
-  const neutralTag = normalizeKeywords(rules.other).find(tag => !tag.startsWith('site:') && exactKeyword(haystack(win), tag));
-  if (neutralTag) return { category, reason: neutralTag, source: 'profile keyword' };
+  rules = rules || {};
+  if (isBrowserProcess(win, rules.identities)) return browserMatch(win, rules);
+  const hay = haystack(win);
+  const titleMatch = tags => normalizeKeywords(tags).find(tag => !tag.startsWith('site:') && exactKeyword(hay, tag));
+  const neutralTag = titleMatch(rules.other);
+  if (neutralTag) return { category: 'other', reason: neutralTag, source: 'profile keyword' };
   const processTag = normalizeKeywords(rules.unproductive).find(tag => matchesProcess(win, [tag]));
-  if (processTag) return { category, reason: processTag, source: 'app identity' };
-  if (appMatchesIdentity(win, rules.identities) === 'productive') return { category, reason: 'App identity', source: 'app identity' };
-  const productiveProcessTag = category === 'productive' &&
-    normalizeKeywords(rules.productive).find(tag => matchesProcess(win, [tag]));
-  if (productiveProcessTag) return { category, reason: productiveProcessTag, source: 'app identity' };
-  const reason = normalizeKeywords(rules[category]).find(tag => !tag.startsWith('site:') && exactKeyword(haystack(win), tag));
-  return { category, reason: reason || 'No matching rule', source: reason ? 'profile keyword' : 'none' };
+  if (processTag) return { category: 'unproductive', reason: processTag, source: 'app identity' };
+  if (appMatchesIdentity(win, rules.identities) === 'productive') return { category: 'productive', reason: 'App identity', source: 'app identity' };
+  const unproductiveTag = titleMatch(rules.unproductive);
+  if (unproductiveTag) return { category: 'unproductive', reason: unproductiveTag, source: 'profile keyword' };
+  const productiveProcessTag = normalizeKeywords(rules.productive).find(tag => matchesProcess(win, [tag]));
+  if (productiveProcessTag) return { category: 'productive', reason: productiveProcessTag, source: 'app identity' };
+  const productiveTag = titleMatch(rules.productive);
+  return productiveTag ? { category: 'productive', reason: productiveTag, source: 'profile keyword' }
+    : { category: 'other', reason: 'No matching rule', source: 'none' };
 }
 
 const APP_NAME_ALIASES = {

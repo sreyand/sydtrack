@@ -104,7 +104,7 @@
     state = await api.getProfiles(); drawMenu(); if (draw) drawEditor(); if (discardDraft) closeName();
   }
   async function run(action, message) {
-    if (busy) return;
+    if (busy || tagsQuickSaving || lfClassifySaving) return;
     busy = true; closeMenu();
     let succeeded = false;
     document.querySelectorAll('#view-tags button, #view-tags input, #view-tags textarea, #view-tags select').forEach(el => { el.disabled = true; });
@@ -134,7 +134,7 @@
     else $('focus-profile-btn').focus();
   }
   async function cycleProfile() {
-    if (busy || tagsQuickSaving) return;
+    if (busy || tagsQuickSaving || lfClassifySaving) return;
     await reload(false);
     if (!mayDiscard()) return;
     if (state.profiles.length < 2) { status('Add another Focus profile to use the shortcut.'); return; }
@@ -143,7 +143,7 @@
     await run(() => api.cycleProfile(), 'Profile switched to ' + displayName(next) + '.');
   }
   $('focus-profile-btn').addEventListener('click', async () => {
-    if (busy) return;
+    if (busy || tagsQuickSaving || lfClassifySaving) return;
     if (!$('focus-profile-menu').classList.contains('hidden')) { closeMenu(); return; }
     const request = ++menuRequest;
     try {

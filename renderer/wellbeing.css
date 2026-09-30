@@ -78,6 +78,7 @@
 #view-roundup .roundup-goal[data-hit="na"] .roundup-goal-fill {
   background: var(--color-accent);
 }
+#view-roundup .roundup-goal[data-hit="na"] .roundup-goal-fill { background: var(--color-data-other); }
 
 #view-roundup .roundup-goal-mark {
   position: absolute;

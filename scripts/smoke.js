@@ -513,7 +513,9 @@ async function regressionChecks() {
   const tagContext = vm.createContext({
     $: (id) => elements[id] || null,
     document: { querySelectorAll: () => ids.filter((id) => !['tags-quick-input', 'tags-quick-status'].includes(id)).map((id) => elements[id]) },
-    cachedRules: { productive: [], unproductive: [] }, cachedIgnore: [], tagsQuickSaving: false,
+    cachedRules: { productive: [], unproductive: [] }, cachedIgnore: [], cachedBrowserApps: [], cachedIgnoredApps: [],
+    lfSessionClass: {}, lastFocusedCache: null, applyLfButtonOutlines() {}, tagsQuickSaving: false,
+    window: { sydtrackBrowserRules: require('../src/browser-rules') },
     console: { warn() {} },
     api: { setRules(next) { saveCount++; return new Promise((resolve) => { releaseSave = () => resolve(next); }); }, async setIgnore(ignore) { return { ignore }; } }
   });
@@ -1076,8 +1078,10 @@ async function historyLoadingChecks() {
     historyRequest: 0, historicalWeek: null, analyticsSegment: 'week',
     fullHistoryCache: null, fullHistoryPromise: null,
     $: id => targets[id], renderWeek: () => rendered++, esc: value => String(value).replaceAll('<', '&lt;'), fmtFriendly: String,
+    latestGoalSettings: {}, sydtrackGoals: require('../renderer/lib/goals'), fmtDuration: String,
     api: { getHistorySummary: days => new Promise((resolve, reject) => requests.push({ days, resolve, reject })) }
   });
+  vm.runInContext(source.slice(source.indexOf('function describeFocus'), source.indexOf('let historyRequest')), context);
   vm.runInContext(source.slice(source.indexOf('function setHistoryLoading'), source.indexOf('const ANALYTICS_SUBTITLES')), context);
   const first = context.loadAnalyticsHistory();
   assert(targets['week-chart'].textContent === 'Loading history…' && requests[0].days === 90, '#9 Analytics loads the 90-day window once');
@@ -1238,7 +1242,7 @@ async function activityReasonChecks() {
   const subredditRules = { productive: ['jhu'], unproductive: ['r/'], other: [] };
   const subredditTitle = 'Losing Hope in dreams of attending JHU - r/jhu';
   const subredditMatch = classifyWithReason({ owner: { name: 'Google Chrome' }, title: subredditTitle }, subredditRules);
-  assert(subredditMatch.category === 'unproductive' && subredditMatch.reason === 'r/',
+  assert(subredditMatch.category === 'unproductive' && subredditMatch.reason === 'r/jhu',
     'Subreddit title marker beats a productive topic keyword without reading a URL');
   assert(classifyWithReason({ owner: { name: 'Google Chrome' }, title: 'JHU admissions' }, subredditRules).category === 'productive' &&
     classifyWithReason({ owner: { name: 'Google Chrome' }, title: 'Library r/ reference' }, subredditRules).category === 'other' &&

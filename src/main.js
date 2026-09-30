@@ -193,6 +193,8 @@ function rulesPayload() {
     profileId: focusProfiles && focusProfiles.snapshot().activeId,
     browserApps: (identitiesHolder.identities && identitiesHolder.identities.browserApps) || [],
     ignoredApps: (identitiesHolder.identities && identitiesHolder.identities.ignoredApps) || [],
+    productiveApps: (identitiesHolder.identities && identitiesHolder.identities.productiveApps) || [],
+    browserKeywords: (rulesHolder.rules && rulesHolder.rules.browserKeywords) || {},
     productive: (rulesHolder.rules && rulesHolder.rules.productive) || [],
     unproductive: (rulesHolder.rules && rulesHolder.rules.unproductive) || [],
     other: (rulesHolder.rules && rulesHolder.rules.other) || [],
@@ -590,7 +592,7 @@ ipcMain.handle('state:get', async (event, payload) => {
 
 ipcMain.handle('apps:correctActivityToday', async (event, payload) => {
   const { id, category } = guardIpc(event, 'apps:correctActivityToday', payload);
-  const stats = store.correctActivityToday(id, category);
+  const stats = store.correctActivityToday(id, category, identitiesHolder.identities);
   if (tracker) tracker.invalidateClassification();
   if (sessionManager) sessionManager.resetClassification();
   return stats;
@@ -637,7 +639,8 @@ ipcMain.handle('rules:set', async (event, payload) => {
   assertActiveProfile(next.profileId);
   validateSiteTags(next);
   focusProfiles.save(focusProfiles.snapshot().activeId, { productive: next.productive, unproductive: next.unproductive,
-    other: next.other === undefined ? focusProfiles.active().other : next.other });
+    other: next.other === undefined ? focusProfiles.active().other : next.other,
+    ...(next.ignore === undefined ? {} : { ignore: next.ignore }) });
   return rulesPayload();
 });
 

@@ -64,7 +64,8 @@
     const lastSum = sumDays(previous);
     const thisFocus = goals.focusShareStatus(thisSum.totals, opts);
     const lastFocus = goals.focusShareStatus(lastSum.totals, opts);
-    const comparable = !thisFocus.thin && !lastFocus.thin && thisFocus.percent != null && lastFocus.percent != null;
+    const comparable = !thisFocus.thin && !lastFocus.thin && !thisFocus.limited && !lastFocus.limited &&
+      thisFocus.percent != null && lastFocus.percent != null;
     const deltaPoints = comparable ? thisFocus.percent - lastFocus.percent : null;
     const thisTracked = goals.activeTrackedSec(thisSum.totals);
     const lastTracked = goals.activeTrackedSec(lastSum.totals);
@@ -97,12 +98,17 @@
 
   function weekSentences(info) {
     const lines = [];
+    if (info.thisFocus && info.thisFocus.limited) {
+      lines.push('Most tracked time this week is Other. Focus share shows only the classified portion.');
+      return lines;
+    }
     if (!info.thisFocus || info.thisFocus.percent == null || info.thisFocus.thin) {
       lines.push('Not enough activity to compare yet.');
       return lines;
     }
     if (!info.hasPrevious || !info.comparable) {
-      lines.push(info.thisFocus.percent + '% focus this week. Not enough activity last week to compare.');
+      lines.push(info.thisFocus.percent + '% focus this week. ' +
+        (info.lastFocus && info.lastFocus.limited ? 'Most tracked time last week was Other.' : 'Not enough activity last week to compare.'));
     } else if (info.deltaPoints === 0) {
       lines.push('Unchanged from last week at ' + info.thisFocus.percent + '%.');
     } else {

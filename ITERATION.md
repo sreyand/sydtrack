@@ -73,7 +73,7 @@ The trust model is stronger when the product has no incentive to collect more be
 
 ## Current stopping point
 
-Version 2.2.0 has been published. It adds first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 is a local hotfix candidate that includes the `r/` classification fix described below and recovery from transient Windows foreground-probe failures; it has not been published.
+The repository version is 2.2.1. Version 2.2.0 added first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 adds the `r/` classification fix and recovery from transient Windows foreground-probe failures. Release history belongs in the release-note files; the source refinements below are unreleased and do not replace existing installers.
 
 Windows x64 is the supported release target. macOS and Linux packaging are best-effort CI targets. Builds are unsigned. The app is ready for observation and user testing; it does not need another feature wave before people try it.
 
@@ -282,7 +282,7 @@ Other means the available foreground app and window title do not justify a produ
 
 The `r/jhu` case exposed two distinct issues. A literal `r/` keyword previously failed to match `r/jhu` because the whole-term matcher required a boundary after the slash; the matcher and bundled presets now recognize `r/<subreddit>` as an unproductive title marker. More generally, a recognizable page/source marker is stronger evidence about context than a topical word such as `jhu`. This does not imply that every Reddit visit is wasted, nor that an ambiguous title can be classified reliably. Keep the Windows tracker title-only; do not inspect addresses or add an extension to solve this.
 
-Future work should make corrections precise without storing a title-by-title browsing diary:
+The refinement should make corrections precise without storing a title-by-title browsing diary:
 
 1. Use a small, tested set of high-confidence title signatures. Allow an explicit, more-specific user rule (for example `r/learnpython`) to override a broad source marker (`r/`); broad topical words alone must not override a clear source marker. Fall back to Other when no reliable signature exists.
 2. Store only the minimal local source identifier needed to distinguish a recognizable group (for example `r/jhu`), under the existing 90-day detailed-data retention. Do not persist full unmatched titles, URLs, searches, or source identifiers in lifetime rollups just to make the UI more granular.
@@ -290,3 +290,32 @@ Future work should make corrections precise without storing a title-by-title bro
 4. Preserve existing records. Older activity without a source identifier stays aggregated and cannot be split or retroactively assigned to invented pages. Test mixed-use browsers, marker/topic conflicts, specific exceptions, false-positive lookalikes, and the no-marker fallback across themes and keyboard access.
 
 Judge this work by whether someone can understand and correct a real mistake in one place, without being asked to review their entire browsing day. Do not broaden the UI merely to make the Other percentage look smaller.
+
+## Classification and coverage implementation — 2026-09-30 (unreleased)
+
+This pass implements the bounded classification refinement above, not a new tracking mechanism or a UI overhaul. The package version remains 2.2.1; no release, installer, or personal saved profile was changed.
+
+### Implemented
+
+- **Source before topic.** Shared browser matching recognizes a small set of explicit source labels, strips browser-shell suffixes, and normalizes full-width characters and whitespace. `r/jhu` follows its source rule rather than the `jhu` topic tag. A specific `r/learnpython` exception or source-containing phrase can override a broad rule. Equal-length specific conflicts retain Other > Unproductive > Productive precedence. Generic `r/` matching does not mistake a search query or a reference in prose for a subreddit visit.
+- **No browser-name catchall.** Exact browser names are ignored as P/U/O keywords, including custom browser identities. A conditional notice in Focus Tags explains existing browser-name rules without deleting them; Quick Add rejects new ones. Whole-app Ignore remains available.
+- **Precise local groups.** New recognized subreddit activity records only the short `r/community` identifier as its reason, allowing a same-day correction to one community without changing another. Existing records stay untouched; detailed identifiers expire with raw history and are absent from lifetime rollups. Full unmatched titles, searches, and URLs are not added to storage.
+- **Safer correction scope.** Expanded Apps labels generic browser no-match activity “Unrecognized pages.” P/U/I are unavailable for that aggregate, with a backend guard including custom browsers. Older miscorrected aggregates can still be restored to Other. Home derives quick rules from known sources or existing matched keywords rather than inventing a last-word tag; an unfamiliar title stays Other. The Other chip is consistent between Home and Analytics.
+- **Reliable quick saves.** Home disables competing actions while saving, pins the original profile guard, and does not apply a late response to a newly focused page. Moving from Ignore to P/U/O is a single atomic profile save, so a failed rule write cannot leave the app unexpectedly unignored. Profile switching waits for an ongoing tag/Home save. Optimistic outlines are cleared when tracking confirms the state or rules reload. Native app identities and browser fallback lists are included in the renderer's preview context.
+- **Coverage-aware Focus Share.** The ratio remains P/(P+U) by default and displays “Based on X of Y tracked.” If less than half of active tracked time is classified, the ratio remains visible but receives no goal verdict or daily score, and does not enter rolling daily averages. Week comparisons also avoid claims from mostly-Other data. Home shows a neutral partial-picture status. The optional include-Other calculation uses all active tracked time; this is a chosen metric, not a guess that Other is unproductive.
+- **Lower matcher overhead.** Patterns, normalized rule metadata, and source-rule candidates are cached; arrays are checked for replacement and in-place edits. Pattern/source caches are bounded, rule-list caches are weakly held, and no page titles are cached. Tracking now uses one classification result for category and reason instead of classifying twice per sample.
+
+### Verification and performance
+
+The automated classification fixtures cover suffixes across browsers, custom identities, source/topic conflicts, specific P/O exceptions, marker lookalikes, regex metacharacters, live rule edits, native identity precedence, precise corrections, restart persistence, and rollup privacy. Goal tests cover mostly-Other days, the half-classified boundary, include-Other calculations, and comparisons/averages. Isolated renderer and real-preload profile checks cover selected/hover behavior, disabled unknown controls, late saves, precise source exceptions, coverage presentation, themes, and responsive layouts.
+
+Run `npm test`, `npm run test:ui`, and `npm run test:profiles-ui`. `npm run benchmark:classification -- --compare-head` compares synthetic browser fixtures against the committed matcher without reading user activity. In a local three-run median measurement, General improved from about 178 to 26 µs/classification (~6.8×), and a synthetic 1,500-term list from about 1,469 to 93 µs (~15.8×). These are matcher measurements, not whole-app CPU improvements or classification-accuracy claims.
+
+### Remaining boundaries and next validation
+
+- Titles cannot reveal intent. Research on a distraction site can still be valuable, and a work-labeled page can still be a distraction. Known source labels are heuristics, not verified browser addresses.
+- Unknown titles stay Other; ordinary topic keywords can still be imperfect. Do not add broad productive browser rules merely to make coverage larger.
+- Source recognition is deliberately finite. Add signatures only from representative, sanitized examples with positive and lookalike tests; do not persist a browsing diary to discover them.
+- Older activity cannot be split into communities or pages after the fact. A label recorded as “google chrome” remains historical evidence, not a reason to rewrite the day.
+- The majority-classified threshold is a guard against a visibly partial picture, not statistical confidence or a guarantee that P/U assignments are right.
+- Before the next release, run the manual profile/classification checks on Windows with real titles and observe regular users for several days. Prioritize wrong-source matches and correction scope over maximizing the percentage classified. Packaged lifecycle validation remains required before distributing new installers.
