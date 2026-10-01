@@ -1,7 +1,5 @@
 # sydtrack v2.3.0
 
-Prepared release notes. Publication is pending.
-
 This release makes the daily picture more trustworthy and mistakes easier to fix, while keeping sydtrack simple, local, and extension-free.
 
 ## Better classification
