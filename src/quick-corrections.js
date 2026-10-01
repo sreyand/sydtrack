@@ -3,6 +3,7 @@
 const { randomUUID } = require('crypto');
 const { isBrowserProcess, classifyWithReason, isIgnored, appLabel } = require('./classifier');
 const { contentTitle, exactKeyword, isBrowserName, quickKeyword } = require('./browser-rules');
+const { createExplanation } = require('./classification-explanation');
 
 const TYPES = ['productive', 'unproductive', 'other'];
 const normalize = value => String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -29,13 +30,18 @@ function createQuickCorrections({ profiles, store, getIdentities = () => null, g
   function membership(profile, keyword, app) {
     return { ...Object.fromEntries(TYPES.map(type => [type, has(profile[type], keyword)])), ignored: has(profile.ignore, app) };
   }
-  function previewCategory(entry) {
+  function preview(entry) {
     const win = { owner: { name: entry.app }, title: entry.title || '' };
     const profile = profiles.active();
     const rules = { ...getRules(), ...profile, identities: getIdentities() };
     const activity = classifyWithReason(win, rules);
     const correction = store.getActivityCorrection(appLabel(win), activity) || store.getAppCorrection(appLabel(win));
-    return correction || (isIgnored(win, profile.ignore, rules.identities) ? 'ignored' : activity.category);
+    const selfIgnored = isIgnored(win, [], {});
+    const ignored = selfIgnored || (correction ? correction === 'ignored' : isIgnored(win, profile.ignore, rules.identities));
+    const category = ignored ? 'ignored' : correction || activity.category;
+    return { previewCategory: category, previewExplanation: createExplanation({ activity, category,
+      correction: selfIgnored ? null : correction, correctionDate: store.getState && store.getState().date,
+      ignored, rules: { ...rules, profileId: profile.id, profileName: profile.name } }) };
   }
   function quickSet({ profileId, app, title, keyword, category, toggle = true }) {
     const profile = active(profileId);
@@ -66,12 +72,12 @@ function createQuickCorrections({ profiles, store, getIdentities = () => null, g
     }
     profiles.save(profileId, fields); // One atomic save, including whole-app Ignore.
     const after = membership(profiles.active(), key, appKey);
-    let effectiveCategory = null;
+    let effective = { previewCategory: null, previewExplanation: null };
     // The rule is committed. A read/rollover failure in its preview must never
     // misreport a successful save as a failure or invite an accidental toggle.
-    try { effectiveCategory = previewCategory({ app, title }); } catch (_) {}
+    try { effective = preview({ app, title }); } catch (_) {}
     return { ...remember({ kind: 'rule', profileId, keyword: key, app: appKey, before, after, ignoreOnly: category === 'ignored' }),
-      previewCategory: effectiveCategory };
+      profileName: profile.name, ...effective };
   }
   function correctActivity(id, category) {
     const previous = store.activityUndoState(id);

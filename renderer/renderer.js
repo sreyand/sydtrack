@@ -847,6 +847,9 @@ function refreshLastFocusedAfterToggle(key) {
     cachedRules,
     cachedIgnore
   );
+  // A renderer preview cannot explain the main process's current correction.
+  // Clear stale evidence until the authoritative metadata arrives.
+  lastFocusedCache.explanation = null;
   applyCategoryChip(
     $('lf-cat'),
     lastFocusedCache.category,
@@ -854,6 +857,7 @@ function refreshLastFocusedAfterToggle(key) {
     lastFocusedCache.browser
   );
   applyLfButtonOutlines(lastFocusedCache.category);
+  window.sydtrackCategoryUI?.update(lastFocusedCache);
   window.sydtrackQuickUI?.focusChanged();
 }
 
@@ -880,6 +884,7 @@ function renderLastFocused(lf, now) {
       catEl.className = 'chip other';
     }
     applyLfButtonOutlines(null);
+    window.sydtrackCategoryUI?.update(null);
     window.sydtrackQuickUI?.focusChanged();
     return;
   }
@@ -888,12 +893,14 @@ function renderLastFocused(lf, now) {
     title: use.title || '',
     url: use.url || '',
     category: use.category || 'other',
+    explanation: use.explanation || null,
+    source: use.source,
     browser: use.browser === true || isBrowserApp(use.app)
   };
   const oKey = lfOverrideKey(lastFocusedCache);
   if (oKey && lfSessionClass[oKey]) {
     if (lfSessionClass[oKey] === lastFocusedCache.category) delete lfSessionClass[oKey];
-    else lastFocusedCache.category = lfSessionClass[oKey];
+    else { lastFocusedCache.category = lfSessionClass[oKey]; lastFocusedCache.explanation = null; }
   }
   setAppTrunc(appEl, use.app);
   if (titleEl) setAppTrunc(titleEl, use.title || '');
@@ -906,6 +913,7 @@ function renderLastFocused(lf, now) {
     );
   }
   applyLfButtonOutlines(lastFocusedCache.category);
+  window.sydtrackCategoryUI?.update(lastFocusedCache);
   window.sydtrackQuickUI?.focusChanged();
 }
 

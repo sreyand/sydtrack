@@ -458,6 +458,7 @@ function applyFocusProfile(profile) {
   appliedProfile = signature;
   rulesHolder.rules = attachAppIdentities({ productive: profile.productive, unproductive: profile.unproductive, other: profile.other || [] });
   rulesHolder.rules.profileId = profile.id;
+  rulesHolder.rules.profileName = profile.name;
   ignoreHolder.ignore = profile.ignore;
   rulesFilePath = ignoreFilePath = focusProfiles.filePath;
   rulesIsCustom = ignoreIsCustom = true;
@@ -520,7 +521,6 @@ function createTray() {
   appTray = createAppTray({
     getMainWindow: () => mainWindow,
     getStore: () => store,
-    getActiveProfile: () => focusProfiles && focusProfiles.active(),
     updateSettings: applySettings,
     getSessionManager: () => sessionManager,
     getLastPayload: () => lastPayload,

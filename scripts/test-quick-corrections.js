@@ -21,6 +21,9 @@ try {
   const request = { profileId: 'default', app: 'chrome', title: 'Discussion - r/jhu - Google Chrome',
     keyword: 'r/jhu', category: 'productive', toggle: true };
   let result = changes.quickSet(validateIpcPayload('rules:quickSet', request));
+  assert.equal(result.profileName, 'Default', 'confirmation identifies the profile actually saved');
+  profiles.save('default', { name: 'Coding' });
+  assert.equal(result.profileName, 'Default', 'a later rename does not relabel an earlier save');
   assert(profiles.active().productive.includes('r/jhu'));
   assert(!profiles.active().ignore.includes('chrome'));
   assert(profiles.active().unproductive.includes('r/'), 'precise exception retains broad source rule');
@@ -34,6 +37,7 @@ try {
 
   const phrase = { ...request, title: 'A guide to linear algebra - Google Chrome', keyword: 'linear algebra', toggle: false };
   result = changes.quickSet(phrase);
+  assert.equal(result.profileName, 'Coding', 'named-profile saves return their exact display name');
   assert(profiles.active().productive.includes('linear algebra'));
   assert(!profiles.active().productive.includes('algebra'), 'no guessed last-word keyword');
   const again = changes.quickSet(phrase);

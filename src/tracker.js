@@ -4,6 +4,7 @@ const { createDemoBackend } = require('./demo-windows');
 const { classifyWithReason, appLabel, isIgnored, isBrowserProcess } = require('./classifier');
 const { decideSample, assessContinuity, toleranceMs } = require('./tracking-decision');
 const { normalizeMediaReport } = require('./media-signal');
+const { createExplanation } = require('./classification-explanation');
 
 function createActiveWinBackend() {
   let impl = null;
@@ -235,6 +236,8 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     // Pause at the timeout. Never subtract accumulated idle time from earned history.
     // Show in Now viewing; do not log time or affect streaks when ignored
     const category = !win ? 'other' : ignored ? 'ignored' : correction || activity.category;
+    const explanation = createExplanation({ activity, category, correction: selfIgnored ? null : correction,
+      correctionDate: store.getState && store.getState().date, ignored, rules: rHolder.rules });
     const mediaEnabled = settings.trackMusicWhileIdle === true || settings.trackVideoWhileIdle === true;
     const media = !settings.demoMode && mediaEnabled ? normalizeMediaReport(sample && sample.media, win) : null;
     const decision = decideSample({
@@ -340,6 +343,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
         title,
         url: win.url || '',
         category,
+        explanation,
         browser,
         source,
         at: now
@@ -374,6 +378,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
           app,
           title,
           category,
+          explanation,
           browser,
           source,
           ignored,
@@ -482,8 +487,12 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
         const activity = classifyWithReason(win, rHolder.rules);
         const correction = (store.getActivityCorrection && store.getActivityCorrection(appLabel(win), activity)) ||
           (store.getAppCorrection && store.getAppCorrection(appLabel(win)));
-        const category = correction || (isIgnored(win, iHolder.ignore || [], rHolder.rules && rHolder.rules.identities) ? 'ignored' : activity.category);
-        lastFocused = { ...lastFocused, category };
+        const selfIgnored = isIgnored(win, [], {});
+        const ignored = selfIgnored || (correction ? correction === 'ignored' : isIgnored(win, iHolder.ignore || [], rHolder.rules && rHolder.rules.identities));
+        const category = ignored ? 'ignored' : correction || activity.category;
+        const explanation = createExplanation({ activity, category, correction: selfIgnored ? null : correction,
+          correctionDate: store.getState && store.getState().date, ignored, rules: rHolder.rules });
+        lastFocused = { ...lastFocused, category, explanation };
       } catch (_) { lastFocused = null; }
     } else lastFocused = null;
     resetStreakSafely();

@@ -149,7 +149,7 @@ function lexicalInside(root, full) {
 }
 
 function isServableRelative(portable) {
-  return portable === 'src/browser-rules.js' || portable.startsWith('renderer/');
+  return portable === 'src/browser-rules.js' || portable === 'src/classification-explanation.js' || portable.startsWith('renderer/');
 }
 
 function resolveAppFile(requestUrl, appRoot) {

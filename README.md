@@ -5,12 +5,12 @@
     <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
-    <a href="docs/release-notes-2.3.0.md">What’s new in v2.3.0</a>
+    <a href="docs/release-notes-2.4.0.md">What’s new in v2.4.0</a>
   </p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
-    <img alt="Version 2.3.0" src="https://img.shields.io/badge/version-2.3.0-8B7CF6?style=flat-square">
+    <img alt="Version 2.4.0" src="https://img.shields.io/badge/version-2.4.0-8B7CF6?style=flat-square">
     <img alt="GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-EF6A6A?style=flat-square">
   </p>
 </div>
@@ -69,12 +69,12 @@ Changing profiles affects future tracking; it does not rewrite history. Analytic
 
 sydtrack currently targets **Windows 10/11 x64**.
 
-- `sydtrack-2.3.0-setup.exe` — standard installer
-- `sydtrack-2.3.0-portable.exe` — run without installation
+- `sydtrack-2.4.0-setup.exe` — standard installer
+- `sydtrack-2.4.0-portable.exe` — run without installation
 
-Version 2.3.0 is prepared locally; its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds.
+Version 2.4.0 is prepared locally; publication is pending. Its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds.
 
-**Next release, in development:** the tray logo reflects the live category—green for Productive, red for Unproductive, gray for Other, and the standard black logo when tracking is inactive. Hover for the status. This does not change classification or add data collection; the prepared v2.3.0 files do not include it.
+**In v2.4.0:** a colored tray logo shows the live category, a simpler tray menu and compact Home controls keep routine actions close, and **Why this category?** explains the rule behind Last focused. These changes use existing tracking decisions without adding data collection.
 
 Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
 
@@ -89,7 +89,17 @@ Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/r
 
 On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memory** and an estimated **~1% total CPU** with the 3-second tracking cadence. The short Windows foreground probe accounts for most of that CPU time; results will vary with the machine and other activity.
 
-## What’s new in v2.3.0
+## What’s new in v2.4.0
+
+- The tray logo is green for Productive, red for Unproductive, and gray for Other. It returns to the standard black logo for paused, idle, ignored, or unavailable activity and other inactive states. Hover shows a short status and, during a focus session, its countdown.
+- A simpler tray menu keeps Open, Pause/Resume, Pause for 15 minutes, Notifications, and Quit together. FocusBoost remains available on Home and in Settings.
+- Home places FocusBoost and the profile selector on one compact row. Its columns account for their gap to stay inside the content area.
+- **Create a rule** has cleaner copy, a roomier phrase field, and compact actions. Save confirmations identify the profile actually changed; rules still affect future tracking.
+- Hover, focus, or click the Last focused category chip for **Why this category?** It explains the actual winning rule, unmatched Other, Ignore, or a dated today-only correction. Subreddit grouping labels are distinguished from matching rules, and demo activity is identified explicitly.
+
+Read the [v2.4.0 release notes](docs/release-notes-2.4.0.md) for upgrade details and [ITERATION.md](ITERATION.md) for the implementation handoff and remaining limitations.
+
+## What changed in v2.3.0
 
 - Recognizable page-source labels take precedence over topic words. A specific `r/learnpython` rule can override a broad `r/` rule.
 - Browser names such as `google chrome` no longer classify every page through the window-title suffix.
@@ -154,6 +164,7 @@ npm test                 # core test suite
 npm run test:ui          # isolated renderer checks
 npm run test:tray        # tray state and tracker regression checks
 npm run test:tray-native # isolated Electron icon/API check (no real tracking)
+npm run test:packaged    # extracted setup/portable checks (Windows, Node 22+)
 npm run start:demo       # generated demo activity
 npm run dist:win         # installer + portable build
 npm run sync:profiles    # regenerate bundled profile packs

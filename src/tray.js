@@ -27,12 +27,6 @@ function loadTrayImage(filePath) {
   }
 }
 
-function focusBoostSecFromSettings(settings) {
-  const n = Number(settings && settings.focusBoostSec);
-  if (Number.isFinite(n) && n >= 5) return Math.round(n);
-  return 180;
-}
-
 function formatRemaining(sec) {
   const s = Math.max(0, Math.ceil(Number(sec) || 0));
   const m = Math.floor(s / 60);
@@ -133,39 +127,13 @@ function createAppTray(deps) {
 
   function togglePause() {
     const s = settings();
-    pushSettings({ trackingPaused: !s.trackingPaused });
+    pushSettings({ trackingPaused: !s.trackingPaused, trackingPauseUntil: 0 });
     refresh();
     pushFreshSnapshot();
   }
 
   function startTimedPause() {
     pushSettings(pauseFor15Minutes());
-    refresh();
-    pushFreshSnapshot();
-  }
-
-  function toggleFocusBoost() {
-    const s = settings();
-    const on = !!s.focusBoost;
-    const boostSec = focusBoostSecFromSettings(s);
-    if (!on) {
-      const restore =
-        Number(s.thresholdSec) && Number(s.thresholdSec) !== boostSec
-          ? Number(s.thresholdSec)
-          : Number(s.focusBoostRestoreSec) || 600;
-      pushSettings({
-        focusBoost: true,
-        thresholdSec: boostSec,
-        focusBoostRestoreSec: restore,
-        focusBoostSec: boostSec
-      });
-    } else {
-      const restore = Number(s.focusBoostRestoreSec) || 600;
-      pushSettings({
-        focusBoost: false,
-        thresholdSec: restore
-      });
-    }
     refresh();
     pushFreshSnapshot();
   }
@@ -179,24 +147,15 @@ function createAppTray(deps) {
   }
 
   function buildTooltip(state) {
-    const s = settings();
-    const parts = [];
-    parts.push(state.label);
-    const profile = deps.getActiveProfile && deps.getActiveProfile();
-    if (profile) parts.push('Profile: ' + profile.name);
-    parts.push(s.focusBoost ? 'focusboost' : 'boost off');
-    parts.push(s.notificationsEnabled === false ? 'DND' : 'ALERTS ON');
+    const parts = [state.label];
     const session = activeSession();
     if (session && (session.status === 'running' || session.active)) {
       const rem =
         session.remainingSec != null
           ? session.remainingSec
           : session.tray && session.tray.remainingSec;
-      const label = session.modeLabel || (session.tray && session.tray.modeLabel) || 'Session';
-      if (rem != null) {
-        parts.push(label + ' ' + formatRemaining(rem));
-      } else {
-        parts.push(label);
+      if (rem != null && rem !== '' && Number.isFinite(Number(rem))) {
+        parts.push('Session ' + formatRemaining(rem));
       }
     }
     return 'sydtrack — ' + parts.join(' · ');
@@ -205,30 +164,25 @@ function createAppTray(deps) {
   function buildMenu() {
     const s = settings();
     const alertsOn = s.notificationsEnabled !== false;
+    const ready = s.onboardingComplete !== false;
     return Menu.buildFromTemplate([
       {
-        label: 'open sydtrack',
+        label: 'Open sydtrack',
         click: () => showWindow()
       },
       { type: 'separator' },
       {
-        label: 'Pause tracking',
-        type: 'checkbox',
-        checked: !!s.trackingPaused,
+        label: s.trackingPaused ? 'Resume tracking' : 'Pause tracking',
+        enabled: ready,
         click: () => togglePause()
       },
       {
         label: 'Pause for 15 minutes',
+        enabled: ready,
         click: () => startTimedPause()
       },
       {
-        label: 'focusboost',
-        type: 'checkbox',
-        checked: !!s.focusBoost,
-        click: () => toggleFocusBoost()
-      },
-      {
-        label: alertsOn ? 'ALERTS ON' : 'DND',
+        label: 'Notifications',
         type: 'checkbox',
         checked: alertsOn,
         click: () => toggleAlerts()

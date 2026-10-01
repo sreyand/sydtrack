@@ -643,18 +643,17 @@ async function regressionChecks() {
   trayContext.module.exports.createAppTray({ getMainWindow: () => null, getStore: () => settingsStore,
     getSessionManager: () => null, getLastPayload: () => ({ sessionCompleted: { id: 'already-delivered' } }),
     sendTrackerUpdate: (payload) => { trayPayload = payload; } });
-  trayMenu.find(item => item.label === 'Pause tracking').click();
+  trayMenu.find(item => item.label === 'Pause tracking' || item.label === 'Resume tracking').click();
   assert(trayPayload.sessionCompleted === null, 'tray settings refresh does not replay a session completion event');
   trayMenu.find(item => item.label === 'Pause for 15 minutes').click();
   assert(trayPayload.stats.settings.trackingPaused === true && trayPayload.stats.settings.trackingPauseUntil > Date.now(),
     'tray timed pause stores a resume deadline and refreshes the window');
-  settingsStore.updateSettings({ focusBoost: false, thresholdSec: 600, focusBoostSec: 180 });
-  trayMenu.find(item => item.label === 'focusboost').click();
-  assert(trayPayload.stats.settings.focusBoost === true && trayMenu.find(item => item.label === 'focusboost').checked === true,
-    'tray focusboost toggle sends the enabled state to the window');
-  trayMenu.find(item => item.label === 'focusboost').click();
-  assert(trayPayload.stats.settings.focusBoost === false && trayMenu.find(item => item.label === 'focusboost').checked === false,
-    'tray focusboost toggle sends the disabled state to the window');
+  const previousBoost = settingsStore.getSettings().focusBoost;
+  trayMenu.find(item => item.label === 'Notifications').click();
+  assert(trayPayload.stats.settings.notificationsEnabled === trayMenu.find(item => item.label === 'Notifications').checked,
+    'tray Notifications checkbox sends its actual state to the window');
+  assert(!trayMenu.some(item => item.label === 'focusboost') && settingsStore.getSettings().focusBoost === previousBoost,
+    'simplified tray leaves focusboost unchanged and available elsewhere');
   const sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-session-regression-'));
   const manager = createSessionManager({ dataDir: sessionDir });
   manager.startSession({ mode: 'custom', customMin: 1 });

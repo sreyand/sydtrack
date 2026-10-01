@@ -53,7 +53,7 @@ app.whenReady().then(() => {
     Module._load = originalLoad;
     controller = createAppTray({ getMainWindow: () => null,
       getStore: () => ({ getSettings: () => prefs }), getSessionManager: () => null,
-      getActiveProfile: () => ({ name: 'Synthetic test profile' }), getLastPayload: () => payload });
+      getLastPayload: () => payload });
     const size = process.platform === 'linux' ? 24 : 16;
     function expectImage(name) {
       assert.equal(selected.isEmpty(), false);

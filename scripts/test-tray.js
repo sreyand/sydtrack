@@ -18,6 +18,7 @@ function activity(category = 'productive', extra = {}) {
 function makeHarness({ platform = 'win32', missing = [], broken = [] } = {}) {
   let prefs = { ...activeSettings };
   let payload = null;
+  let session = null;
   const reads = [], changes = [], tooltips = [], warnings = [];
   const timers = new Map();
   let timerId = 0;
@@ -59,14 +60,15 @@ function makeHarness({ platform = 'win32', missing = [], broken = [] } = {}) {
   vm.runInContext(fs.readFileSync(path.join(sourceRoot, 'tray.js'), 'utf8'), context);
   let shown = 0;
   const api = context.module.exports.createAppTray({
-    getStore: () => store, getLastPayload: () => payload, getSessionManager: () => null,
-    getActiveProfile: () => ({ name: 'Coding' }),
+    getStore: () => store, getLastPayload: () => payload,
+    getSessionManager: () => ({ getActiveSession: () => session }),
     getMainWindow: () => ({ isDestroyed: () => false, isMinimized: () => true,
       restore() {}, show() { shown++; }, focus() {} }),
     sendTrackerUpdate: next => { payload = next; }
   });
   return { ...api, store, reads, changes, tooltips, warnings, timers,
     setPayload(next) { payload = next; },
+    setSession(next) { session = next; },
     setPrefs(partial) { return store.updateSettings(partial); },
     sample(next) { payload = next; api.refresh({ freshSample: true }); },
     expire() {
@@ -110,7 +112,9 @@ async function main() {
   assert.equal(h.tray.image.reps.map(rep => rep.scaleFactor + ':' + rep.size).join(','), '2:32,3:48');
   h.sample(activity());
   assert.equal(h.tray.image.name, 'productive');
-  assert.ok(h.tray.tooltip.includes('Productive') && h.tray.tooltip.includes('Profile: Coding'));
+  assert.equal(h.tray.tooltip, 'sydtrack — Productive');
+  assert.equal(h.tray.menu.filter(item => item.type !== 'separator').map(item => item.label).join('|'),
+    'Open sydtrack|Pause tracking|Pause for 15 minutes|Notifications|Quit');
   const count = h.changes.length, tipCount = h.tooltips.length;
   for (let i = 0; i < 25; i++) h.sample(activity());
   assert.equal(h.changes.length, count, 'same category never swaps its image again');
@@ -121,7 +125,22 @@ async function main() {
   h.sample(activity('unproductive')); assert.equal(h.tray.image.name, 'unproductive');
   h.sample(activity('other')); assert.equal(h.tray.image.name, 'other');
   h.setPrefs({ notificationsEnabled: false }); h.refresh();
-  assert.ok(h.tray.tooltip.includes('DND')); assert.equal(h.tray.image.name, 'other');
+  assert.equal(h.tray.tooltip, 'sydtrack — Other'); assert.equal(h.tray.image.name, 'other');
+  assert.equal(h.tray.menu.find(item => item.label === 'Notifications').checked, false);
+  h.tray.menu.find(item => item.label === 'Notifications').click();
+  assert.equal(h.store.getSettings().notificationsEnabled, true);
+  assert.equal(h.tray.menu.find(item => item.label === 'Notifications').checked, true);
+  h.setPrefs({ focusBoost: true }); h.refresh();
+  assert.equal(h.tray.tooltip, 'sydtrack — Other');
+  h.setSession({ status: 'running', modeLabel: 'An unnecessarily long mode label', remainingSec: 125 }); h.refresh();
+  assert.equal(h.tray.tooltip, 'sydtrack — Other · Session 2:05');
+  h.setSession({ status: 'completed', remainingSec: 0 }); h.refresh();
+  assert.equal(h.tray.tooltip, 'sydtrack — Other');
+  h.setSession({ status: 'running', remainingSec: Infinity }); h.refresh();
+  assert.equal(h.tray.tooltip, 'sydtrack — Other');
+  h.setSession({ active: true, tray: { remainingSec: 61 } }); h.refresh();
+  assert.equal(h.tray.tooltip, 'sydtrack — Other · Session 1:01');
+  h.setSession(null); h.refresh();
   h.tray.handlers['double-click'](); assert.equal(h.shown, 1);
   console.log('ok   cached images, high-DPI representations, existing menu and window controls');
 
@@ -129,8 +148,12 @@ async function main() {
   h.tray.menu.find(item => item.label === 'Pause tracking').click();
   assert.equal(h.tray.image.name, 'standard'); assert.ok(h.tray.tooltip.includes('Paused'));
   assert.equal(h.timers.size, 0);
-  h.tray.menu.find(item => item.label === 'Pause tracking').click();
+  h.tray.menu.find(item => item.label === 'Resume tracking').click();
   assert.equal(h.tray.image.name, 'standard', 'resume does not reuse the pre-pause sample');
+  h.tray.menu.find(item => item.label === 'Pause for 15 minutes').click();
+  assert.ok(h.store.getSettings().trackingPauseUntil > Date.now());
+  h.tray.menu.find(item => item.label === 'Resume tracking').click();
+  assert.equal(h.store.getSettings().trackingPauseUntil, 0, 'manual resume cancels the timed-pause deadline');
   h.refresh(); assert.equal(h.tray.image.name, 'standard');
   h.sample(activity('unproductive')); assert.equal(h.tray.image.name, 'unproductive');
   h.invalidate('lock'); assert.ok(h.tray.tooltip.includes('Screen locked'));
@@ -160,6 +183,10 @@ async function main() {
   assert.equal(empty.tray.image.name, 'empty'); empty.destroy();
   const linux = makeHarness({ platform: 'linux' }); assert.equal(linux.tray.image.size, 24); linux.destroy();
   const mac = makeHarness({ platform: 'darwin' }); assert.ok(mac.tray.handlers.click); mac.destroy();
+  const onboarding = makeHarness(); onboarding.setPrefs({ onboardingComplete: false }); onboarding.refresh();
+  assert.equal(onboarding.tray.menu.find(item => item.label === 'Pause tracking').enabled, false);
+  assert.equal(onboarding.tray.menu.find(item => item.label === 'Pause for 15 minutes').enabled, false);
+  assert.equal(onboarding.tray.tooltip, 'sydtrack — Ready to start'); onboarding.destroy();
   for (const name of ['standard', 'other', 'productive', 'unproductive']) {
     const bytes = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'assets', 'tray', name + '.png'));
     assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');

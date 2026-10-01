@@ -234,7 +234,8 @@
       const neutral = bestKeyword(text, { other: rules && rules.other }, extraNames);
       const fallback = sourceKeyword(text, rules && rules.browserKeywords, source, extraNames);
       const match = explicit && explicit.scope ? explicit : neutral || explicit || fallback;
-      if (match) return { category: match.category, reason: source.subreddit ? source.id : match.reason, source: match.source };
+      if (match) return { category: match.category, reason: source.subreddit ? source.id : match.reason, source: match.source,
+        matchedRule: match.reason, ruleOrigin: match === fallback ? 'browser' : 'profile' };
     }
     const profile = bestKeyword(text, rules, extraNames);
     const fallback = bestKeyword(text, rules && rules.browserKeywords, extraNames);

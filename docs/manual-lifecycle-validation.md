@@ -47,14 +47,21 @@ Allow about 10–15 minutes, plus an optional natural hour/midnight check. These
 - Repeat around midnight when convenient. Pass: yesterday's history remains available, today's totals begin separately, and neither day gains the whole interval or loses its existing history.
 - Do not change the system clock to force this test on your normal data. Exact fractional splitting, delayed samples, and clock jumps are covered by automated fixtures.
 
-## 7. Live tray category (next release)
+## 7. Live tray category (v2.4.0)
 
 - Expand Windows' tray overflow if the logo is hidden. Use a window that sydtrack reports as Productive, then Unproductive, then Other; allow the configured polling interval. Pass: the logo is green, red, then gray, and its hover text names the category. Color is the current assignment, not proof of your intent.
 - Pause from Home and from the tray. Pass: the standard black logo appears immediately and the hover text says Paused. Resume; the logo remains neutral until a fresh sample arrives, then follows that sample. Closing the main window must not stop the indicator.
 - Leave an ignored app foreground or reach the idle timeout. Pass: the logo is black, even if Home remembers a productive Last focused app. Confirm the hover text distinguishes Ignored app and Idle. Opted-in foreground media follows the same counting decision as the rest of the app.
 - Lock, sleep, wake while still locked, then unlock. Pass: the logo stays black while inactive and does not reuse the pre-lock color before a fresh decision. Switch profiles or correct a match: no old-profile color should persist before the next sample.
 - Check the logo on light and dark taskbars at 100%, 200%, and 300% display scaling when available. The supplied four PNGs intentionally retain their white backgrounds. Confirm the existing double-click-to-open and tray menu still work.
-- Repeat on the next packaged build before distributing it. `npm run test:tray-native` checks real Electron image loading, high-DPI representations, switching, and cleanup with synthetic activity; it does not validate Windows overflow placement or real lock/sleep behavior. The existing v2.3.0 packages are unchanged and do not contain this feature.
+- Repeat on the v2.4.0 packaged build before distributing it. `npm run test:tray-native` checks real Electron image loading, high-DPI representations, switching, and cleanup with synthetic activity; it does not validate Windows overflow placement or real lock/sleep behavior. Older v2.3.0 packages do not contain this feature.
+
+## 8. Home category explanations (v2.4.0)
+
+- Hover, click, or keyboard-focus the Last focused category chip. Pass: the explanation identifies the rule actually matched, its profile or Browser keywords scope, an app rule, or unmatched Other. A grouped subreddit label such as `r/jhu` must not be substituted for the winning `r/` rule.
+- Make a reversible correction to a recognized Analytics row for today, return to Home, and inspect the chip. Pass: it says the correction is for today only, not a future profile rule. Undo the correction; the explanation refreshes without changing unrelated activity. A retained correction viewed on a later date names the original date instead of calling it today.
+- Save a future rule from Home and inspect its confirmation and explanation. Pass: the saved profile is named; the explanation follows the effective category, including a higher-priority today correction. Undo restores the prior rule without leaving the saved explanation pinned to a different category.
+- Press Escape, click elsewhere, scroll, or leave Home. Pass: the explanation closes, with no permanent subtitle or extra card. Check keyboard focus and a compact window; the text must remain readable and on-screen. Do not export or share screenshots containing private titles.
 
 ## Finish and report
 

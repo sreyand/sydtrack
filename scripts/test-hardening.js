@@ -101,7 +101,7 @@ assert(/data-theme-id="midnight"[^>]+aria-pressed="true"/.test(html), 'Appearanc
 assert(html.includes('appearance-card'), 'Appearance picker is scoped for the theme chips');
 assert(html.includes('class="window-drag-region"'), 'renderer exposes a native drag surface for custom Windows chrome');
 const homeCss = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
-assert(/\.home-layout \{[\s\S]{0,80}grid-template-columns:\s*64% 36%/.test(homeCss), 'Home uses the pre-#25 64/36 layout');
+assert(/\.home-layout \{[\s\S]{0,80}grid-template-columns:\s*minmax\(0, 1\.65fr\) minmax\(280px, 1fr\)/.test(homeCss), 'Home columns account for the gap and preserve readable side controls');
 assert(!/#view-home \.home-layout[\s\S]{0,200}padding-left:\s*clamp/.test(homeCss), 'Home is not the post-#25 center-right cluster');
 assert(/\.pie-total \{[\s\S]{0,80}font:\s*var\(--display-1\)/.test(homeCss), 'Home donut time uses the pre-#25 display-1 hierarchy');
 assert(!/#view-home \.pie-legend strong[\s\S]{0,40}display:\s*none/.test(homeCss), 'Home pie legend durations are visible again');
@@ -204,6 +204,8 @@ assert(!isAllowedNavigation('sydtrack://evil/renderer/index.html'), 'other hosts
 const root = path.join(__dirname, '..');
 assert(resolveAppFile(APP_PAGE_URL, root).endsWith(path.join('renderer', 'index.html')), 'app page maps to renderer HTML');
 assert(resolveAppFile('sydtrack://app/src/browser-rules.js', root).endsWith(path.join('src', 'browser-rules.js')), 'shared browser-rules script is served');
+assert(resolveAppFile('sydtrack://app/src/classification-explanation.js', root).endsWith(path.join('src', 'classification-explanation.js')), 'shared classification explanation script is served');
+assert(resolveAppFile('sydtrack://app/src/classifier.js', root) == null, 'allowing the shared explanation does not expose other classification modules');
 assert(resolveAppFile('sydtrack://app/src/main.js', root) == null, 'main process files are not served');
 assert(resolveAppFile('sydtrack://app/package.json', root) == null, 'package.json is not served');
 assert(resolveAppFile('sydtrack://app/renderer/../src/main.js', root) == null, 'path traversal is rejected');

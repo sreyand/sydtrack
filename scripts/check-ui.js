@@ -329,6 +329,82 @@ app.whenReady().then(async () => {
     })()`));
   }
   console.log(JSON.stringify(results.flat()));
+  const explanationChecks = [];
+  for (const width of [800, 1040, 1600]) {
+    win.setSize(width, 760);
+    await new Promise(resolve => setTimeout(resolve, 80));
+    await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    const result = await win.webContents.executeJavaScript(`(async () => {
+      const check = (value, message) => { if (!value) throw new Error(message); };
+      document.querySelectorAll('.view').forEach(view => view.classList.toggle('hidden', view.id !== 'view-home'));
+      ['pie-tip', 'day-tip', 'week-tip', 'name-tip'].forEach(id => document.getElementById(id).classList.add('hidden'));
+      const chip = document.getElementById('lf-cat'), tip = document.getElementById('lf-explanation');
+      chip.blur(); window.sydtrackCategoryUI.hide();
+      const entry = { app: 'chrome', title: 'Admissions - r/jhu', category: 'unproductive', source: 'real',
+        explanation: { category: 'unproductive', kind: 'rule', rule: 'r/', origin: 'profile', profileId: 'default', profileName: 'Default' } };
+      renderLastFocused(entry);
+      check(tip.classList.contains('hidden') && !chip.disabled && chip.tagName === 'BUTTON', 'Explanation is available without a permanent subtitle: ' + JSON.stringify({ hidden: tip.classList.contains('hidden'), disabled: chip.disabled, tag: chip.tagName, cache: lastFocusedCache, module: !!window.sydtrackCategoryUI }));
+      chip.dispatchEvent(new MouseEvent('mouseenter'));
+      check(!tip.classList.contains('hidden') && tip.textContent.includes('Matched “r/” in the default profile.'), 'Hover identifies the real winning rule rather than the subreddit group');
+      renderLastFocused(entry);
+      check(!tip.classList.contains('hidden'), 'An unchanged tracking tick preserves an open explanation');
+      chip.focus();
+      check(chip.getAttribute('aria-describedby') === 'lf-explanation-text' && chip.getAttribute('aria-expanded') === 'true', 'Keyboard focus exposes the explanation accessibly');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      check(tip.classList.contains('hidden') && !chip.hasAttribute('aria-describedby') && document.activeElement === chip, 'Escape dismisses without moving keyboard focus');
+      chip.click();
+      check(!tip.classList.contains('hidden'), 'Click can pin the explanation');
+      chip.click();
+      check(tip.classList.contains('hidden'), 'A second click dismisses the explanation');
+      renderLastFocused({ ...entry, category: 'other', explanation: { category: 'other', kind: 'today' } });
+      chip.dispatchEvent(new MouseEvent('mouseenter'));
+      check(tip.textContent.includes('today only') && tip.textContent.includes('Future profile rules are unchanged'), 'Today corrections are distinct from future profile rules');
+      renderLastFocused({ ...entry, title: 'New unknown page', category: 'other', explanation: { category: 'other', kind: 'none' } });
+      check(tip.classList.contains('hidden'), 'Changing pages clears stale explanation copy');
+      chip.click();
+      check(tip.textContent.includes('No matching rule'), 'Other explains uncertainty without a productivity judgment');
+      renderLastFocused({ ...entry, explanation: { ...entry.explanation, rule: '<img src=x onerror=alert(1)>', profileName: 'A very long profile name '.repeat(4) } });
+      chip.click();
+      check(!tip.querySelector('img') && tip.textContent.includes('<img src=x'), 'Rule and profile text is rendered literally, never as HTML');
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const rect = tip.getBoundingClientRect();
+      const contained = rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight && tip.scrollWidth <= tip.clientWidth + 1;
+      check(contained, 'Long explanation remains inside the viewport');
+      for (const theme of ${JSON.stringify(THEME_IDS)}) {
+        applyTheme(theme);
+        const body = getComputedStyle(tip), heading = getComputedStyle(tip.querySelector('.lf-explanation-heading'));
+        const parse = value => (value.match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+        const lum = value => parse(value).map(n => { n /= 255; return n <= 0.04045 ? n / 12.92 : Math.pow((n + .055) / 1.055, 2.4); }).reduce((sum, n, i) => sum + n * [.2126, .7152, .0722][i], 0);
+        const contrast = (a, b) => (Math.max(lum(a), lum(b)) + .05) / (Math.min(lum(a), lum(b)) + .05);
+        check(contrast(body.color, body.backgroundColor) >= 4.5 && contrast(heading.color, body.backgroundColor) >= 4.5, 'Explanation is readable in ' + theme);
+      }
+      applyTheme('midnight');
+      renderLastFocused(entry); chip.blur(); chip.click();
+      document.querySelector('.nav-btn[data-tab="analytics"]').click();
+      check(tip.classList.contains('hidden'), 'Leaving Home closes the explanation');
+      document.querySelector('.nav-btn[data-tab="home"]').click();
+      renderLastFocused({ ...entry, source: 'demo' }); chip.click();
+      check(tip.textContent.includes('Demo activity'), 'Demo explanation is explicitly labeled');
+      renderLastFocused(null, null);
+      check(chip.disabled && tip.classList.contains('hidden'), 'Waiting state has no invented explanation');
+      renderLastFocused(entry); chip.blur(); chip.click();
+      return { width: innerWidth, contained, hoverAndKeyboard: true, scopes: true, safeText: true };
+    })()`);
+    explanationChecks.push(result);
+    if (width === 1040) {
+      await win.webContents.executeJavaScript(`(() => {
+        renderPie({ byCategory: { productive: 5400, unproductive: 1800, other: 1200 } });
+        renderLastFocused({ app: 'chrome', title: 'Admissions - r/jhu', category: 'unproductive', source: 'real',
+          explanation: { category: 'unproductive', kind: 'rule', rule: 'r/', origin: 'profile', profileId: 'default', profileName: 'Default' } });
+        document.getElementById('lf-cat').dispatchEvent(new MouseEvent('mouseenter'));
+        if (document.getElementById('lf-explanation').classList.contains('hidden')) throw new Error('Explanation preview is not visible');
+      })()`);
+      await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+      fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-category-explanation.png'), (await win.webContents.capturePage()).toPNG());
+    }
+  }
+  console.log('Category explanation UI checks:', JSON.stringify(explanationChecks));
+  await win.webContents.executeJavaScript('window.sydtrackCategoryUI.hide()');
   const tagChecks = await win.webContents.executeJavaScript(`(() => {
     const input = document.getElementById('tags-quick-input');
     input.value = 'youtube';

@@ -60,13 +60,17 @@
     // Derive the actual result. A higher-priority source rule can still win;
     // never promise a different category just because a new keyword was saved.
     if (!sameEntry(entry, lastFocusedCache)) return;
-    const category = result.previewCategory || (sameEntry(result.lastFocused, entry) && result.lastFocused.category) ||
+    const focused = sameEntry(result.lastFocused, entry) ? result.lastFocused : null;
+    const category = focused?.category || result.previewCategory ||
       defaultCategoryFromRules(entry, cachedRules, cachedIgnore);
     // Never pin a future-rule preview indefinitely over a today's correction.
     // The next tracker sample remains authoritative, including after Undo.
     lastFocusedCache.category = category;
+    const explanation = focused ? focused.explanation : result.previewExplanation;
+    lastFocusedCache.explanation = explanation?.category === category ? explanation : null;
     applyCategoryChip($('lf-cat'), category, entry.app, entry.browser);
     applyLfButtonOutlines(category);
+    window.sydtrackCategoryUI?.update(lastFocusedCache);
   }
   function armDismiss() {
     clearTimeout(dismissTimer);
@@ -100,7 +104,9 @@
       updateFocusedRule(result, entry);
       homeStatus('');
       closePicker();
-      showUndo(result, category === 'ignored' ? 'App rule changed.' : 'Rule saved for future tracking.', target);
+      const name = profileId === 'default' && result.profileName === 'Default' ? 'default' : result.profileName;
+      const profileNote = typeof name === 'string' && name.trim() ? ' (' + name + ' profile)' : '';
+      showUndo(result, (category === 'ignored' ? 'App rule changed.' : 'Rule saved for future tracking.') + profileNote, target);
       return true;
     } catch (error) {
       const message = 'Could not save this rule. ' + String(error.message || 'Try again.').replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '');

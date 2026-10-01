@@ -181,10 +181,29 @@ app.whenReady().then(async () => {
     document.getElementById('quick-rule-picker').requestSubmit();
     await wait(() => !lfClassifySaving && document.getElementById('quick-rule-picker').classList.contains('hidden'));
     check(cachedRules.productive.includes('linear algebra') && lastFocusedCache.category === 'productive', 'Confirmed phrase saves a future rule and updates the actual outline');
+    check(lastFocusedCache.explanation?.rule === 'linear algebra' && lastFocusedCache.explanation.category === 'productive', 'Saved rule updates the explanation together with its category');
+    document.getElementById('lf-cat').click();
+    check(document.getElementById('lf-explanation-text').textContent.includes('Matched “linear algebra” in the default profile.'), 'Real quick-rule response names the saved rule and profile');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     check(!document.getElementById('correction-undo').classList.contains('hidden'), 'Rule change exposes a transient Undo');
+    check(document.getElementById('correction-undo-message').textContent === 'Rule saved for future tracking. (default profile)', 'Default profile is named in the confirmation');
     document.getElementById('correction-undo-action').click();
     await wait(() => !lfClassifySaving && document.getElementById('correction-undo').classList.contains('hidden'));
     check(!cachedRules.productive.includes('linear algebra') && lastFocusedCache.category === 'other', 'Home Undo removes only the newly saved phrase');
+    check(!lastFocusedCache.explanation && document.getElementById('lf-cat').disabled, 'Undo without fresh tracker evidence clears the saved-rule explanation');
+    const namedProfile = (await window.sydtrack.getProfiles()).profiles.find(profile => profile.name === 'Development');
+    await window.sydtrack.saveProfile(namedProfile.id, { name: 'Coding' });
+    await window.sydtrack.activateProfile(namedProfile.id);
+    await window.sydtrackProfilesUI.reload(); await loadRulesAndIgnore();
+    renderLastFocused({ app: 'Code', title: 'Project', category: 'productive' });
+    await quickClassifyLastFocused('other');
+    check(document.getElementById('correction-undo-message').textContent === 'Rule saved for future tracking. (Coding profile)', 'Named profile is taken from the saved rule, not a generic label');
+    document.getElementById('correction-undo-action').click();
+    await wait(() => !lfClassifySaving && document.getElementById('correction-undo').classList.contains('hidden'));
+    await window.sydtrack.saveProfile(namedProfile.id, { name: 'Development' });
+    await window.sydtrack.activateProfile('default');
+    await window.sydtrackProfilesUI.reload(); await loadRulesAndIgnore();
+    renderLastFocused({ app: 'chrome', title: 'A guide to linear algebra - Google Chrome', category: 'other' });
     document.getElementById('lf-prod').click();
     renderLastFocused({ app: 'chrome', title: 'Another unknown page - Google Chrome', category: 'other' });
     check(document.getElementById('quick-rule-picker').classList.contains('hidden'), 'A new page cancels an unconfirmed phrase draft');
@@ -241,8 +260,15 @@ app.whenReady().then(async () => {
       const card = document.getElementById('last-focused').getBoundingClientRect();
       const save = document.getElementById('quick-rule-save').getBoundingClientRect();
       const input = document.getElementById('quick-rule-keyword').getBoundingClientRect();
+      const types = document.getElementById('quick-rule-types').getBoundingClientRect();
+      const cancel = document.getElementById('quick-rule-cancel').getBoundingClientRect();
       return { shown: !picker.classList.contains('hidden'), inputInside: input.left >= card.left && input.right <= card.right,
         saveInside: save.left >= card.left && save.right <= card.right && save.bottom <= innerHeight,
+        cancelInside: cancel.left >= card.left && cancel.right <= card.right,
+        comfortableInput: input.height >= 44 && document.getElementById('quick-rule-keyword').getAttribute('aria-label') === 'Rule phrase',
+        cleanCopy: document.getElementById('quick-rule-heading').textContent === 'Create a rule' && !picker.querySelector('label, .quick-rule-note'),
+        singleActionRow: Math.abs(save.top + save.height / 2 - types.top - types.height / 2) <= 1,
+        compact: picker.getBoundingClientRect().height <= 280,
         noPageOverflow: document.querySelector('.main').scrollWidth <= document.querySelector('.main').clientWidth };
     })()`);
     if (!Object.values(pickerLayout).every(Boolean)) throw new Error('Quick picker layout failed: ' + JSON.stringify({ width, ...pickerLayout }));
@@ -257,6 +283,26 @@ app.whenReady().then(async () => {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-correction-undo.png'), (await win.webContents.capturePage()).toPNG());
+  for (const width of [800, 1040, 1600]) {
+    win.setSize(width, 900);
+    const confirmationLayout = await win.webContents.executeJavaScript(`(async () => {
+      const toast = document.getElementById('correction-undo');
+      const message = document.getElementById('correction-undo-message');
+      const original = message.textContent;
+      message.textContent = 'Rule saved for future tracking. (A lengthy profile name for focused work profile)';
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const rect = toast.getBoundingClientRect();
+      const actions = ['correction-undo-action', 'correction-undo-dismiss'].map(id => document.getElementById(id).getBoundingClientRect());
+      const result = { inside: rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+        textFits: message.scrollWidth <= message.clientWidth + 1,
+        actionsInside: actions.every(action => action.left >= rect.left && action.right <= rect.right && action.bottom <= rect.bottom) };
+      message.textContent = original;
+      return result;
+    })()`);
+    if (!Object.values(confirmationLayout).every(Boolean)) throw new Error('Confirmation overflow: ' + JSON.stringify({ width, ...confirmationLayout }));
+    console.log('Profile confirmation layout', width, confirmationLayout);
+  }
+  win.setSize(1040, 900);
   await win.webContents.executeJavaScript(`(async () => {
     document.getElementById('correction-undo-action').click();
     for (let i = 0; i < 100 && lfClassifySaving; i++) await new Promise(resolve => setTimeout(resolve, 20));
@@ -290,13 +336,14 @@ app.whenReady().then(async () => {
       total.textContent = '23h 59m';
       const totalBox = total.getBoundingClientRect();
       const centerBox = document.querySelector('.pie-center').getBoundingClientRect();
-      return { below: trigger.top >= boost.bottom, menuInside: menu.right <= innerWidth && menu.left >= 0,
+      return { sameRow: Math.abs(trigger.top - boost.top) <= 1 && Math.abs(trigger.height - boost.height) <= 1 && trigger.left >= boost.right,
+        menuInside: menu.right <= innerWidth && menu.left >= 0,
         clickable: !!hit && !!hit.closest('.profile-choice'),
         totalInside: totalBox.left >= centerBox.left && totalBox.right <= centerBox.right,
         lastFocusedDirection: getComputedStyle(document.querySelector('.last-focused .lf-row')).flexDirection };
     })()`);
     console.log('Profile chooser layout', width, layout);
-    if (!layout.below || !layout.menuInside || !layout.clickable || !layout.totalInside) throw new Error('Profile chooser or Home total layout failed');
+    if (!layout.sameRow || !layout.menuInside || !layout.clickable || !layout.totalInside) throw new Error('Profile chooser or Home total layout failed');
     if (width === 1040 && layout.lastFocusedDirection !== 'column') throw new Error('Compact Last focused card did not stack');
     if (width === 1600 && layout.lastFocusedDirection !== 'row') throw new Error('Wide Last focused card should stay inline');
     if (width === 1040) fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-profiles-home.png'), (await win.webContents.capturePage()).toPNG());

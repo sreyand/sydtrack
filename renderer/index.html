@@ -107,7 +107,7 @@
               <button type="button" id="focusboost-btn" class="focusboost-btn" data-boost="off" title="~3 min unproductive reminder" aria-label="focusboost">
                 <span id="focusboost-label" class="fb-wordmark"><span class="fb-focus">focus</span><span class="fb-boost">boost</span></span>
               </button>
-              <button type="button" id="focus-profile-btn" class="focusboost-btn profile-trigger" data-boost="off" aria-expanded="false" aria-controls="focus-profile-menu">
+              <button type="button" id="focus-profile-btn" class="focusboost-btn profile-trigger" data-boost="off" aria-label="Choose Focus profile" title="Focus profile" aria-expanded="false" aria-controls="focus-profile-menu">
                 <span class="fb-wordmark"><span class="fb-focus">focus</span><span class="fb-boost">profile</span></span>
                 <span id="focus-profile-label">default</span><span aria-hidden="true">▾</span>
               </button>
@@ -122,7 +122,7 @@
                   <span id="lf-title" class="lf-title muted app-trunc" data-full=""></span>
                 </div>
                 <div class="lf-actions">
-                  <span id="lf-cat" class="chip other">—</span>
+                  <button type="button" id="lf-cat" class="chip other" disabled aria-label="Why this category?" aria-expanded="false" aria-controls="lf-explanation">—</button>
                   <span class="lf-reclass">
                     <button type="button" id="lf-prod" class="btn-mini prod" title="Mark productive" aria-label="Mark productive">P</button>
                     <button type="button" id="lf-unprod" class="btn-mini unprod" title="Mark unproductive" aria-label="Mark unproductive">U</button>
@@ -132,19 +132,20 @@
                 </div>
               </div>
               <form id="quick-rule-picker" class="quick-rule-picker hidden" role="dialog" aria-labelledby="quick-rule-heading">
-                <div id="quick-rule-heading" class="quick-rule-heading">Add a title rule</div>
+                <div class="quick-rule-header">
+                  <div id="quick-rule-heading" class="quick-rule-heading">Create a rule</div>
+                  <button type="button" id="quick-rule-cancel" class="btn ghost">Cancel</button>
+                </div>
                 <p id="quick-rule-title" class="quick-rule-title" tabindex="0" aria-label="Select words from this page title"></p>
-                <label for="quick-rule-keyword" class="muted tiny">Select words above or type a phrase</label>
-                <input id="quick-rule-keyword" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="A specific title phrase…" />
+                <input id="quick-rule-keyword" type="text" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Rule phrase" placeholder="A specific title phrase…" />
                 <div class="quick-rule-footer">
                   <span id="quick-rule-types" class="lf-reclass" role="group" aria-label="Rule category">
                     <button type="button" class="btn-mini prod" data-quick-category="productive" aria-label="Productive" aria-pressed="false">P</button>
                     <button type="button" class="btn-mini unprod" data-quick-category="unproductive" aria-label="Unproductive" aria-pressed="false">U</button>
                     <button type="button" class="btn-mini other" data-quick-category="other" aria-label="Other" aria-pressed="false">O</button>
                   </span>
-                  <span class="quick-rule-actions"><button type="button" id="quick-rule-cancel" class="btn ghost">Cancel</button><button type="submit" id="quick-rule-save" class="btn primary">Save rule</button></span>
+                  <span class="quick-rule-actions"><button type="submit" id="quick-rule-save" class="btn primary">Save rule</button></span>
                 </div>
-                <p class="muted tiny quick-rule-note">This profile · future tracking only</p>
                 <p id="quick-rule-status" class="muted tiny" role="status"></p>
               </form>
             </article>
@@ -854,12 +855,17 @@
     </div>
   </section>
   <div id="name-tip" class="name-tip pie-tip hidden" role="tooltip"></div>
+  <div id="lf-explanation" class="lf-explanation hidden" role="tooltip">
+    <div class="lf-explanation-heading">Why this category?</div>
+    <div id="lf-explanation-text"></div>
+  </div>
   <div id="correction-undo" class="correction-undo hidden" aria-label="Recent category change">
     <span id="correction-undo-message" role="status"></span>
     <button type="button" id="correction-undo-action" class="btn ghost">Undo</button>
     <button type="button" id="correction-undo-dismiss" class="btn ghost" aria-label="Dismiss Undo">×</button>
   </div>
   <script src="../src/browser-rules.js"></script>
+  <script src="../src/classification-explanation.js"></script>
   <script src="lib/live-ticker.js"></script>
   <script src="lib/goals.js"></script>
   <script src="lib/insights.js"></script>
@@ -867,6 +873,7 @@
   <script src="lib/apps-analytics.js"></script>
   <script src="wellbeing-ui.js"></script>
   <script src="renderer.js"></script>
+  <script src="category-explanation-ui.js"></script>
   <script src="quick-corrections-ui.js"></script>
   <script src="updates-ui.js"></script>
   <script src="focus-profiles-ui.js"></script>

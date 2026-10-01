@@ -73,7 +73,7 @@ The trust model is stronger when the product has no incentive to collect more be
 
 ## Current stopping point
 
-The repository version is 2.3.0, prepared locally with publication pending. Version 2.2.0 added first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 added the `r/` classification fix and recovery from transient Windows foreground-probe failures. Version 2.3.0 includes the source/topic classification refinement, coverage-aware Focus Share, precise corrections with Undo, optional GitHub update checks, and three additional themes. Release history belongs in the release-note files; the dated implementation records below describe the work before packaging.
+The repository version is 2.4.0, with Windows setup and portable packages prepared and automatically checked locally; manual acceptance and publication are pending. Version 2.2.0 added first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 added the `r/` classification fix and recovery from transient Windows foreground-probe failures. Version 2.3.0 added the source/topic classification refinement, coverage-aware Focus Share, precise corrections with Undo, optional GitHub update checks, and three additional themes. Version 2.4.0 adds the live-category tray logo, simpler tray menu and Home layout, profile-aware rule confirmations, and on-demand Home category explanations. Release history belongs in `docs/release-notes-*.md`; the dated records below preserve the state at each implementation step.
 
 Windows x64 is the supported release target. macOS and Linux packaging are best-effort CI targets. Builds are unsigned. The app is ready for observation and user testing; it does not need another feature wave before people try it.
 
@@ -249,7 +249,7 @@ The strongest evidence is repeated voluntary use, not time spent exploring setti
 
 ## Profile-switch shortcut
 
-An optional global shortcut now cycles through configured Focus profiles, skipping empty slots. It defaults to Off. Settings → Tracking offers Alt+B, Ctrl/⌘+Alt+B, and Ctrl/⌘+Shift+B; a conflicting shortcut is rejected without replacing the previous working choice. The new profile is confirmed in the app and, when notifications are enabled and supported, with a quiet desktop notification. The tray tooltip also names the active profile. Unsaved Focus Tags edits must not be silently discarded. Profile changes affect future classification, not past totals.
+An optional global shortcut now cycles through configured Focus profiles, skipping empty slots. It defaults to Off. Settings → Tracking offers Alt+B, Ctrl/⌘+Alt+B, and Ctrl/⌘+Shift+B; a conflicting shortcut is rejected without replacing the previous working choice. The new profile is confirmed in the app and, when notifications are enabled and supported, with a quiet desktop notification. As of v2.4.0, tray hover is reserved for current tracking state and an optional session countdown, not the profile name. Unsaved Focus Tags edits must not be silently discarded. Profile changes affect future classification, not past totals.
 
 Validate the shortcut on packaged Windows and best-effort macOS/Linux builds; operating systems may reserve combinations or decline global registration. Do not present the shortcut as necessary for basic use.
 
@@ -261,7 +261,9 @@ Run before release:
 npm test
 npm run test:ui
 npm run test:profiles-ui
+npm run test:tray-native
 npm run dist:win
+npm run test:packaged
 git diff --check
 ```
 
@@ -270,7 +272,7 @@ Inspect the packaged version and hashes. Use the manual lifecycle and Focus prof
 Supporting references:
 
 - [README](README.md)
-- [Current release notes](docs/release-notes-2.3.0.md)
+- [Current release notes](docs/release-notes-2.4.0.md)
 - [Lifecycle validation](docs/manual-lifecycle-validation.md)
 - [Focus profile validation](docs/manual-focus-profiles-validation.md)
 - [Focus profile generation guide](docs/focus-profile-generation-guide.md)
@@ -364,3 +366,32 @@ Run `npm test`, `npm run test:ui`, and `npm run test:profiles-ui`. `npm run benc
 - Added `npm run test:tray` to the core suite and `npm run test:tray-native` for an isolated real Electron Tray/NativeImage check. Synthetic fixtures cover live category, stale Last focused, onboarding, pause/resume, lock/sleep, idle, media, demo, profile changes, delayed/failed probes, missing assets, image caching, high-DPI sizes, and timer cleanup. Native tests verify all four logos preserve their supplied pixels at each scale. Manual Windows tray/overflow and lifecycle checks are documented in the existing guide.
 - The existing v2.3.0 setup, portable, release notes, and checksums are not rebuilt or replaced. Package version remains 2.3.0 pending the next release decision; the README clearly distinguishes this source-only feature from those frozen artifacts. No commit, tag, upload, or publication is part of this pass.
 - Verification passed: `npm test`, `npm run test:ui`, `npm run test:profiles-ui`, `npm run test:tray-native`, and `git diff --check`. Rechecked the frozen setup/portable SHA-256 hashes against the release-preparation values. Small-size light/dark-background previews were inspected; real Windows tray placement and lock/sleep acceptance remain manual.
+
+## Tray copy and Home layout cleanup — 2026-10-01 (next release, unreleased)
+
+- Tray hover now shows only `sydtrack — <current state>` and a short countdown when a session is running. Removed the profile name, boost state, and notification state from hover; no app/page titles are added.
+- The tray menu contains Open sydtrack, Pause/Resume tracking, Pause for 15 minutes, a checked Notifications toggle, and Quit. FocusBoost remains on Home and in Settings, not in the tray menu. Manual resume clears a timed-pause deadline; pause controls are disabled before onboarding. No profile-switching submenu or new settings were added.
+- Home keeps its chart and Last focused behavior. FocusBoost and the profile selector now share one compact row; the selector shows the current name with a descriptive hover/accessibility label. Fractional columns account for the gap instead of allocating 100% plus the gap, avoiding spill beyond the content area.
+- The inline title-rule editor has tighter spacing, a header Cancel action, and category buttons opposite Save on one row. Title selection, explicit phrase confirmation, current-profile/future-only scope, keyboard cancellation, draft protection, and Undo are preserved. Responsive checks cover 800/1040/1600px, contained inputs/actions, compact editor height, aligned Home controls, and usable profile menus.
+- Source-only follow-up: no version bump, setup/portable rebuild, commit, or publication. The v2.3.0 artifacts remain frozen.
+- Final copy refinement requested by the user: the editor heading is “Create a rule.” Removed both the phrase-selection subtitle and the current-profile/future-tracking subtitle. The phrase field is now at least 44px tall with 12px horizontal padding and an accessible name; saving still affects future rules in the current profile, not historical totals.
+- Rule-save confirmations now identify the saved profile: `Rule saved for future tracking. (default profile)` or `(Coding profile)`. The backend returns the name of the profile actually saved, rather than reading a possibly changed selector after the response. Ignore confirmations use the same context; today-only Analytics corrections do not imply a profile change. The toast expands to its content while remaining viewport-bounded, with text wrapping and usable Undo/dismiss controls on smaller windows.
+- Regression checks cover exact Default/Coding confirmation text, name snapshotting across a rename, long confirmation messages at 800/1040/1600px, Undo, the cleaned editor copy, and its 44px accessible input.
+- Verification passed: the full `npm test` suite, UI/profile UI checks, isolated native tray checks, and `git diff --check`. Updated the old percentage-column layout assertion to guard the new gap-aware Home columns.
+
+## Home category explanations — 2026-10-01 (v2.4.0 candidate, unreleased)
+
+- The existing Last focused category chip now exposes “Why this category?” on hover, keyboard focus, or click. There is no new card, permanent subtitle, or title-testing tool. Click can keep the explanation open; Escape, clicking elsewhere, scrolling, or leaving Home closes it.
+- Explanations use the actual classifier result, distinguishing profile keywords, global Browser keywords, app rules, unmatched Other, Ignore, and today-only corrections. A subreddit group such as `r/jhu` still keeps its existing activity identity, while the explanation can correctly name the winning `r/`, `reddit`, or neutral exception keyword. Demo activity is labeled explicitly.
+- Category and explanation refresh together after rules, corrections, and Undo. Matching refreshed Last focused metadata takes priority over a narrower rule-save preview. Retained today-only corrections carry their date, so an overnight or paused snapshot does not misleadingly call yesterday’s correction “today.” Missing or stale evidence disables the explanation rather than inventing a reason.
+- Explanation metadata is transient: no extra foreground probes, title storage, activity regrouping, history rewrite, IPC command, network request, or setting was added. Rule/profile strings are displayed as plain text. The tooltip is viewport-bounded and keyboard-described, with contrast checked across all eight themes.
+- Added core regression coverage for winning-rule identity, correction precedence/scope, saved profile names, day-boundary wording, refresh without earning time, demo, and private disk history. UI checks cover hover/focus/click/Escape, stale-context dismissal, safe text, save/Undo, and 800/1040/1600px layouts. Version and frozen v2.3.0 artifacts are unchanged; no release publication is part of this pass.
+- Verification passed: `npm test`, `npm run test:ui`, `npm run test:profiles-ui`, and `git diff --check`. The isolated Home preview was visually inspected; no personal tracking data was used.
+
+## v2.4.0 release preparation — 2026-10-01
+
+- Bumped package and lockfile versions to 2.4.0 without dependency upgrades. Updated README, [release notes](docs/release-notes-2.4.0.md), packaging guidance, and the manual lifecycle checklist for live tray status and Home category explanations.
+- Created local Windows x64 setup and portable files plus `dist/SHA256SUMS-2.4.0.txt`. Both executables carry 2.4.0 Windows metadata, remain unsigned, and contain identical app archives. Frozen v2.3.0 setup/portable hashes were rechecked and are unchanged.
+- The production-payload check caught the shared explanation formatter missing from the protected file allowlist. The final build permits that exact script; regression coverage still denies unrelated source modules. Packaged fixtures use the actual saved profile name rather than assuming every fresh profile is named Default.
+- Passed the full core suite, isolated UI/profile checks, native tray checks, and checks of both extracted packages. Those packages use the real main/preload/protocol/sandbox, with temporary data, tracking paused, and startup writes intercepted. Explanations, cleaned rule editor, profile confirmations, Undo, native artwork decoding, and restart/history preservation were checked. GitHub metadata checks identified published 2.3.0 below the local 2.4.0 build, with automatic checks off.
+- [Release validation](docs/release-validation-2.4.0.md) records final sizes/hashes, verification limits, and remaining manual acceptance. Installer/portable wrappers, real keyboard interaction, taskbar scaling, and real sleep/lock/tracking checks remain manual. No commit, tag, upload, installation, or publication was performed. The next step is acceptance and release, not another feature wave.
