@@ -634,7 +634,7 @@ async function regressionChecks() {
   let trayMenu;
   let trayPayload;
   const trayContext = vm.createContext({ module: { exports: {} }, __dirname: path.join(__dirname, '..', 'src'), console,
-    require: (name) => name === './timed-pause' ? require('../src/timed-pause') : name === 'electron' ? {
+    require: (name) => name.startsWith('./') ? require(path.join(__dirname, '..', 'src', name)) : name === 'electron' ? {
       Tray: class { setToolTip() {} setContextMenu(menu) { trayMenu = menu; } on() {} },
       Menu: { buildFromTemplate: (menu) => menu },
       nativeImage: { createFromPath: () => ({ isEmpty: () => true }), createEmpty: () => ({}) }

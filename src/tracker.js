@@ -115,7 +115,7 @@ function createRealBackend(options = {}) {
  * Mutable so IPC can hot-reload without restarting tracker.
  * Also accepts legacy `rules` / `ignore` plain values for smoke/tests.
  */
-function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessionManager, onTick, onReminder, backend, now: clock = Date.now, readIdleTime }) {
+function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessionManager, onTick, onReminder, onStateInvalidated, backend, now: clock = Date.now, readIdleTime }) {
   const breakReminder = require('./break-reminder').createBreakReminder();
   const rHolder = rulesHolder || { rules: rules };
   const iHolder = ignoreHolder || { ignore: ignore || [] };
@@ -147,6 +147,12 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
   /** Last non-ignored, non-sydtrack window — survives while user looks at sydtrack. */
   let lastFocused = null;
 
+  function invalidateLiveState(reason = 'waiting') {
+    if (typeof onStateInvalidated !== 'function') return;
+    try { onStateInvalidated(sleeping ? 'sleep' : locked ? 'lock' : reason); }
+    catch (err) { console.warn('[tracker] state notification failed:', err && err.message); }
+  }
+
   function resetStreakSafely() {
     try { if (store.resetStreak) store.resetStreak(); }
     catch (err) { console.error('[tracker] could not persist streak reset:', err.message); }
@@ -168,6 +174,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       lastTick = at;
       current.since = at;
       resetStreakSafely();
+      invalidateLiveState();
     }
     return result;
   }
@@ -392,6 +399,9 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     pollInFlight = true;
     try {
       await pollOnce();
+    } catch (err) {
+      invalidateLiveState('unavailable');
+      throw err;
     } finally {
       pollInFlight = false;
     }
@@ -430,6 +440,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       clearInterval(timer);
       timer = null;
     }
+    invalidateLiveState('stopped');
   }
 
   function getLastFocused() {
@@ -449,6 +460,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     lastHeartbeat = lastTick;
     current.since = lastTick;
     resetStreakSafely();
+    invalidateLiveState();
   }
 
   function setSystemInactive(inactive) {
@@ -475,6 +487,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
       } catch (_) { lastFocused = null; }
     } else lastFocused = null;
     resetStreakSafely();
+    invalidateLiveState();
   }
 
   function markPauseBoundary() {
@@ -485,6 +498,7 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     lastHeartbeat = lastTick;
     current.since = lastTick;
     resetStreakSafely();
+    invalidateLiveState();
   }
 
   return { start, stop, poll, refreshCadence, getLastFocused, setSystemInactive, setSystemPresence, invalidateClassification, markPauseBoundary };

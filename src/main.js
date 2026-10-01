@@ -483,8 +483,11 @@ function ensureTrackerStarted() {
         mainWindow.webContents.send('tracker:update', payload);
       }
       if (appTray && typeof appTray.refresh === 'function') {
-        appTray.refresh();
+        appTray.refresh({ freshSample: true });
       }
+    },
+    onStateInvalidated: (reason) => {
+      if (appTray) appTray.invalidate(reason);
     },
     onReminder: fireReminder,
     readIdleTime: () => {

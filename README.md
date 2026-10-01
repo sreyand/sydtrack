@@ -74,6 +74,8 @@ sydtrack currently targets **Windows 10/11 x64**.
 
 Version 2.3.0 is prepared locally; its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds.
 
+**Next release, in development:** the tray logo reflects the live category—green for Productive, red for Unproductive, gray for Other, and the standard black logo when tracking is inactive. Hover for the status. This does not change classification or add data collection; the prepared v2.3.0 files do not include it.
+
 Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
 
 ## System requirements
@@ -150,6 +152,8 @@ Useful commands:
 ```bash
 npm test                 # core test suite
 npm run test:ui          # isolated renderer checks
+npm run test:tray        # tray state and tracker regression checks
+npm run test:tray-native # isolated Electron icon/API check (no real tracking)
 npm run start:demo       # generated demo activity
 npm run dist:win         # installer + portable build
 npm run sync:profiles    # regenerate bundled profile packs

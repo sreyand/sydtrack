@@ -47,6 +47,15 @@ Allow about 10–15 minutes, plus an optional natural hour/midnight check. These
 - Repeat around midnight when convenient. Pass: yesterday's history remains available, today's totals begin separately, and neither day gains the whole interval or loses its existing history.
 - Do not change the system clock to force this test on your normal data. Exact fractional splitting, delayed samples, and clock jumps are covered by automated fixtures.
 
+## 7. Live tray category (next release)
+
+- Expand Windows' tray overflow if the logo is hidden. Use a window that sydtrack reports as Productive, then Unproductive, then Other; allow the configured polling interval. Pass: the logo is green, red, then gray, and its hover text names the category. Color is the current assignment, not proof of your intent.
+- Pause from Home and from the tray. Pass: the standard black logo appears immediately and the hover text says Paused. Resume; the logo remains neutral until a fresh sample arrives, then follows that sample. Closing the main window must not stop the indicator.
+- Leave an ignored app foreground or reach the idle timeout. Pass: the logo is black, even if Home remembers a productive Last focused app. Confirm the hover text distinguishes Ignored app and Idle. Opted-in foreground media follows the same counting decision as the rest of the app.
+- Lock, sleep, wake while still locked, then unlock. Pass: the logo stays black while inactive and does not reuse the pre-lock color before a fresh decision. Switch profiles or correct a match: no old-profile color should persist before the next sample.
+- Check the logo on light and dark taskbars at 100%, 200%, and 300% display scaling when available. The supplied four PNGs intentionally retain their white backgrounds. Confirm the existing double-click-to-open and tray menu still work.
+- Repeat on the next packaged build before distributing it. `npm run test:tray-native` checks real Electron image loading, high-DPI representations, switching, and cleanup with synthetic activity; it does not validate Windows overflow placement or real lock/sleep behavior. The existing v2.3.0 packages are unchanged and do not contain this feature.
+
 ## Finish and report
 
 Restore your original settings. Record the Windows version, whether the test used `npm start` or a packaged build, the failed step, times/durations, expected versus observed totals, and any terminal error. Screenshots of Home/Analytics/Sessions are useful, but redact private app titles before sharing. The same checklist can be repeated on a packaged build; this guide does not claim that validation has happened.

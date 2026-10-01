@@ -3,8 +3,29 @@
 const path = require('path');
 const { Tray, Menu, nativeImage } = require('electron');
 const { pauseFor15Minutes } = require('./timed-pause');
+const { resolveTrayState } = require('./tray-state');
+const { toleranceMs } = require('./tracking-decision');
 
 const LOGO_PATH = path.join(__dirname, '..', 'renderer', 'assets', 'sydtrack.ico');
+const TRAY_ASSETS = path.join(__dirname, '..', 'renderer', 'assets', 'tray');
+
+function loadTrayImage(filePath) {
+  try {
+    const source = nativeImage.createFromPath(filePath);
+    if (source.isEmpty()) return null;
+    const size = process.platform === 'linux' ? 24 : 16;
+    const image = source.resize({ width: size, height: size, quality: 'best' });
+    // Keep the supplied colors and provide sharp images at 200% and 300% DPI.
+    for (const scaleFactor of [2, 3]) {
+      image.addRepresentation({ scaleFactor,
+        buffer: source.resize({ width: size * scaleFactor, height: size * scaleFactor, quality: 'best' }).toPNG() });
+    }
+    return image;
+  } catch (err) {
+    console.warn('[tray] could not load ' + path.basename(filePath), err && err.message);
+    return null;
+  }
+}
 
 function focusBoostSecFromSettings(settings) {
   const n = Number(settings && settings.focusBoostSec);
@@ -20,7 +41,7 @@ function formatRemaining(sec) {
 }
 
 /**
- * Minimal sydtrack tray (v1).
+ * Quiet live-category tray. No additional tracking or renderer permissions.
  * @param {object} deps
  * @param {() => import('electron').BrowserWindow|null} deps.getMainWindow
  * @param {() => object|null} deps.getStore
@@ -38,12 +59,23 @@ function createAppTray(deps) {
   const sendTrackerUpdate = deps.sendTrackerUpdate || (() => {});
   const onQuit = deps.onQuit;
 
-  let image = nativeImage.createFromPath(LOGO_PATH);
-  if (!image.isEmpty()) {
-    image = image.resize({ width: 24, height: 24 });
+  const standard = loadTrayImage(path.join(TRAY_ASSETS, 'standard.png')) ||
+    loadTrayImage(LOGO_PATH) || nativeImage.createEmpty();
+  const images = { standard };
+  for (const category of ['other', 'productive', 'unproductive']) {
+    images[category] = loadTrayImage(path.join(TRAY_ASSETS, category + '.png')) || standard;
   }
-  const tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
-  tray.setToolTip('sydtrack');
+  const tray = new Tray(standard);
+  let currentImage = standard;
+  let currentTooltip = '';
+  let pendingReason = null;
+  let staleTimer = null;
+  let destroyed = false;
+
+  function clearStaleTimer() {
+    if (staleTimer) clearTimeout(staleTimer);
+    staleTimer = null;
+  }
 
   function settings() {
     const store = getStore();
@@ -146,10 +178,10 @@ function createAppTray(deps) {
     pushFreshSnapshot();
   }
 
-  function buildTooltip() {
+  function buildTooltip(state) {
     const s = settings();
     const parts = [];
-    parts.push(s.trackingPaused ? 'Paused' : 'Live');
+    parts.push(state.label);
     const profile = deps.getActiveProfile && deps.getActiveProfile();
     if (profile) parts.push('Profile: ' + profile.name);
     parts.push(s.focusBoost ? 'focusboost' : 'boost off');
@@ -211,13 +243,46 @@ function createAppTray(deps) {
     ]);
   }
 
-  function refresh() {
+  function refresh({ freshSample = false } = {}) {
+    if (destroyed) return;
     try {
-      tray.setToolTip(buildTooltip());
+      const prefs = settings();
+      if (freshSample) {
+        pendingReason = null;
+        clearStaleTimer();
+      } else if (prefs.trackingPaused || prefs.onboardingComplete === false) {
+        // Resuming must wait for a new decision, even if the previous payload
+        // predates the pause. A settings-only refresh is not a foreground sample.
+        pendingReason = 'waiting';
+      }
+      const state = resolveTrayState(prefs, getLastPayload(), pendingReason);
+      if (state.icon === 'standard') clearStaleTimer();
+      else if (freshSample) {
+        // A stalled probe must not leave a stale category displayed indefinitely.
+        staleTimer = setTimeout(() => invalidate('unavailable'), toleranceMs(prefs.pollMs));
+        if (staleTimer.unref) staleTimer.unref();
+      }
+      const image = images[state.icon] || standard;
+      if (image !== currentImage) {
+        tray.setImage(image);
+        currentImage = image;
+      }
+      const tooltip = buildTooltip(state);
+      if (tooltip !== currentTooltip) {
+        tray.setToolTip(tooltip);
+        currentTooltip = tooltip;
+      }
       tray.setContextMenu(buildMenu());
     } catch (err) {
       console.warn('[tray] refresh failed', err && err.message);
     }
+  }
+
+  function invalidate(reason = 'waiting') {
+    if (destroyed) return;
+    pendingReason = reason;
+    clearStaleTimer();
+    refresh();
   }
 
   tray.on('double-click', () => showWindow());
@@ -231,7 +296,11 @@ function createAppTray(deps) {
   return {
     tray,
     refresh,
+    invalidate,
     destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      clearStaleTimer();
       try {
         tray.destroy();
       } catch (_) {
