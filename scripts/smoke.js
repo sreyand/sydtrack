@@ -1075,12 +1075,14 @@ async function historyLoadingChecks() {
   let rendered = 0;
   const context = vm.createContext({
     historyRequest: 0, historicalWeek: null, analyticsSegment: 'week',
-    fullHistoryCache: null, fullHistoryPromise: null,
+    fullHistoryCache: null, fullHistoryPromise: null, fullHistoryGeneration: 0, wellbeingStats: null,
     $: id => targets[id], renderWeek: () => rendered++, esc: value => String(value).replaceAll('<', '&lt;'), fmtFriendly: String,
     latestGoalSettings: {}, sydtrackGoals: require('../renderer/lib/goals'), fmtDuration: String,
     api: { getHistorySummary: days => new Promise((resolve, reject) => requests.push({ days, resolve, reject })) }
   });
   vm.runInContext(source.slice(source.indexOf('function describeFocus'), source.indexOf('let historyRequest')), context);
+  const wellbeingSource = fs.readFileSync(path.join(__dirname, '..', 'renderer/wellbeing-ui.js'), 'utf8');
+  vm.runInContext(wellbeingSource.slice(wellbeingSource.indexOf('function historyWithCurrentDay'), wellbeingSource.indexOf('function renderScoreList')), context);
   vm.runInContext(source.slice(source.indexOf('function setHistoryLoading'), source.indexOf('const ANALYTICS_SUBTITLES')), context);
   const first = context.loadAnalyticsHistory();
   assert(targets['week-chart'].textContent === 'Loading history…' && requests[0].days === 90, '#9 Analytics loads the 90-day window once');
@@ -1091,6 +1093,12 @@ async function historyLoadingChecks() {
   await second;
   assert(rendered === 0 && requests.length === 1, '#9 late week responses cannot overwrite a newer segment and reuse the full-history read');
   assert(targets['month-history'].innerHTML.includes('33%'), '#9 month slices the cached 90-day read and calculates focus share excluding Other');
+  context.wellbeingStats = { date: '2026-09-01', byCategory: { productive: 3, unproductive: 1, other: 1 } };
+  await context.loadAnalyticsHistory();
+  assert(targets['month-history'].innerHTML.includes('75%') && requests.length === 1,
+    'Returning to cached history uses current-day totals without another history read');
+  assert(context.fullHistoryCache[0].byCategory.productive === 1, 'Live overlay does not mutate the cached historical snapshot');
+  context.wellbeingStats = null;
   const markup = context.monthMarkup([{ byCategory: { productive: 10, unproductive: 10, other: 80 }, apps: [
     { name: '<editor>', seconds: 10, category: 'productive' }, { name: '<editor>', seconds: 5, category: 'unproductive' },
     { name: 'ignored-app', seconds: 999, category: 'ignored' }] }]);
@@ -1102,6 +1110,16 @@ async function historyLoadingChecks() {
   requests[1].reject(new Error('test'));
   await error;
   assert(targets['month-history'].textContent.includes('retry') || (targets['analytics-loading'].textContent || '').includes('retry'), '#9 history failures show a retry instruction');
+  const stale = context.loadAnalyticsHistory();
+  context.invalidateHistoryViews();
+  const fresh = context.loadAnalyticsHistory();
+  requests[2].resolve([{ date: '2026-09-01', byCategory: { productive: 1, unproductive: 0, other: 0 } }]);
+  await stale;
+  assert(context.fullHistoryCache === null, 'An invalidated pending history read cannot repopulate the cache');
+  requests[3].resolve([{ date: '2026-09-02', byCategory: { productive: 0, unproductive: 1, other: 0 } }]);
+  await fresh;
+  assert(context.fullHistoryCache[0].date === '2026-09-02' && targets['month-history'].innerHTML.includes('0%'),
+    'The fresh history request wins after a day boundary or data invalidation');
 }
 
 async function focusProfileChecks() {

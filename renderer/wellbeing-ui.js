@@ -4,6 +4,7 @@ let wellbeingStats = null;
 let wellbeingDate = '';
 const WEEK_HISTORY_DAYS = 14;
 const historyCache = { date: '', at: 0, count: 0, days: null, pending: null, pendingDate: '', pendingCount: 0 };
+let focusScoreSelection = null;
 
 function wellbeingEl(id) {
   return document.getElementById(id);
@@ -130,10 +131,22 @@ function renderWellbeing(stats) {
   renderScreenGoal(stats);
 }
 
+// History caches remain bounded; the current day's totals are already supplied
+// by the live renderer and must not be replaced by an older cached snapshot.
+function historyWithCurrentDay(days) {
+  const live = wellbeingStats;
+  return (Array.isArray(days) ? days : []).map(day => live && day.date === live.date ? {
+    ...day,
+    byCategory: live.byCategory || day.byCategory,
+    topApps: live.topApps || day.topApps,
+    apps: live.appBreakdown || day.apps
+  } : day);
+}
+
 function renderScoreList(target, days, windowSize) {
   if (!target || typeof sydtrackGoals === 'undefined') return;
   const prefs = goalPrefs();
-  const rolling = sydtrackGoals.rollingAverage(days || [], {
+  const rolling = sydtrackGoals.rollingAverage(historyWithCurrentDay(days), {
     window: windowSize,
     includeOther: prefs.includeOther,
     goalPct: prefs.goalPct
@@ -145,14 +158,16 @@ function renderScoreList(target, days, windowSize) {
   target.innerHTML = '<div class="week-score-grid">' + rolling.days.map((day) => {
     const date = String(day.date || '');
     const label = date.length >= 10 ? date.slice(5, 7) + '/' + date.slice(8, 10) : date;
-    return '<div class="week-score-day" data-hit="' + (day.scored ? (day.hit ? 'yes' : 'no') : 'na') +
-      '" title="' + wellbeingEsc(date + ': ' + (day.scored ? day.percent + '% focus' : day.limited ? 'most tracked time is Other; no score' : 'no score')) +
-      '"><span>' + wellbeingEsc(label) + '</span><strong>' + (day.scored ? day.percent + '%' : '—') + '</strong></div>';
+    const title = date + ': ' + (day.scored ? day.percent + '% focus' : day.limited ? 'most tracked time is Other; no score' : 'no score');
+    return focusScoreTile(day, 'week', label, title);
   }).join('') + '</div>';
 }
 
 function renderWeekWellbeing() {
-  loadGoalHistory(wellbeingDate, WEEK_HISTORY_DAYS).then((days) => {
+  const date = wellbeingDate;
+  return loadGoalHistory(date, WEEK_HISTORY_DAYS).then((days) => {
+    if (date !== wellbeingDate) return;
+    days = historyWithCurrentDay(days);
     const body = wellbeingEl('week-review-body');
     const list = wellbeingEl('week-focus-score-list');
     if (body && typeof sydtrackInsights !== 'undefined') {
@@ -171,19 +186,37 @@ function renderMonthFocusScores(days) {
   const list = wellbeingEl('month-focus-score-list');
   if (typeof sydtrackGoals === 'undefined') return;
   const prefs = goalPrefs();
-  const month = sydtrackGoals.rollingAverage(days || [], { window: 30, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
+  const month = sydtrackGoals.rollingAverage(historyWithCurrentDay(days), { window: 30, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
   if (!list) return;
   list.innerHTML = '<div class="month-score-grid">' + month.days.map((day, index) => {
     const avg = month.series[index];
     const date = String(day.date || '');
     const label = date.length >= 10 ? date.slice(5, 7) + '/' + date.slice(8, 10) : date;
-    const score = day.scored ? day.percent + '%' : '—';
     const title = date + ': ' + (day.scored ? day.percent + '% focus share' : day.limited ? 'most tracked time is Other; no score' : 'no scored activity') +
       (avg && avg.percent != null ? '; 30-day average ' + avg.percent + '%' : '');
-    return '<div class="month-score-day" data-hit="' + (day.scored ? (day.hit ? 'yes' : 'no') : 'na') +
-      '" title="' + wellbeingEsc(title) + '"><span class="month-score-date">' + wellbeingEsc(label) +
-      '</span><strong>' + score + '</strong></div>';
+    return focusScoreTile(day, 'month', label, title);
   }).join('') + '</div>';
+}
+
+function focusScoreTile(day, period, label, title) {
+  const date = String(day.date || '');
+  const selected = focusScoreSelection && focusScoreSelection.date === date && focusScoreSelection.period === period;
+  return '<button type="button" class="' + period + '-score-day focus-score-day" data-score-date="' + wellbeingEsc(date) +
+    '" data-score-period="' + period + '" data-hit="' + (day.scored ? (day.hit ? 'yes' : 'no') : 'na') +
+    '" data-selected="' + !!selected + '"' + (selected ? ' aria-current="true"' : '') +
+    ' title="' + wellbeingEsc(title + '; open Day Analytics') + '" aria-label="' + wellbeingEsc('View Day Analytics for ' + title) +
+    '"><span class="' + period + '-score-date">' + wellbeingEsc(label) + '</span><strong>' +
+    (day.scored ? day.percent + '%' : '—') + '</strong><span class="focus-score-open" aria-hidden="true">↗</span></button>';
+}
+
+function setFocusScoreSelection(date, period) {
+  focusScoreSelection = { date, period };
+  document.querySelectorAll('.focus-score-day').forEach(button => {
+    const selected = button.dataset.scoreDate === date && button.dataset.scorePeriod === period;
+    button.dataset.selected = String(selected);
+    if (selected) button.setAttribute('aria-current', 'true');
+    else button.removeAttribute('aria-current');
+  });
 }
 
 function bindWellbeing() {
@@ -199,6 +232,14 @@ function bindWellbeing() {
     if (!Number.isFinite(hours) || hours <= 0) return;
     pushSettings({ screenTimeLimitSec: Math.round(hours * 3600) });
   });
+  for (const id of ['week-focus-score-list', 'month-focus-score-list']) {
+    on(id, 'click', event => {
+      const button = event.target.closest('.focus-score-day');
+      if (button && event.currentTarget.contains(button) && typeof openFocusScoreDay === 'function') {
+        openFocusScoreDay(button.dataset.scoreDate, button.dataset.scorePeriod);
+      }
+    });
+  }
 }
 
 function drillSharePercent(total, active) {

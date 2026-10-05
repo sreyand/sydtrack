@@ -292,6 +292,7 @@ let timelineFollowsToday = true;
 let timelineProfileNames = {};
 let timelineManualViewport = null;
 let timelineViewport = null;
+let focusScoreReturn = null;
 
 function localDateKey() {
   const d = new Date();
@@ -453,6 +454,11 @@ async function loadTimelineDay() {
   if (!dateInput || !dateInput.value) return;
   const date = dateInput.value;
   const request = ++timelineRequest;
+  if (!timelineDayData || timelineDayData.date !== date) {
+    timelineDayData = { date, timeline: [], byHour: [], byCategory: {} };
+    renderTimeline();
+    if (analyticsSegment === 'day') renderDay(timelineDayData);
+  }
   $('timeline-precision').textContent = 'Loading activity…';
   $('timeline-longest').classList.add('hidden');
   $('timeline-longest').textContent = '';
@@ -463,6 +469,8 @@ async function loadTimelineDay() {
     timelineDayData = day || { date, timeline: [], byHour: [] };
     renderTimeline();
     if (analyticsSegment === 'day') renderDay(timelineDayData);
+    const status = $('focus-score-status');
+    if (status && analyticsSegment === 'day') status.textContent = 'Day Analytics loaded for ' + date + '.';
     timelineLastRefresh = Date.now();
   } catch (_) {
     if (request === timelineRequest) $('timeline-precision').textContent = 'Could not load this day.';
@@ -486,6 +494,7 @@ let historyRequest = 0;
 let historicalWeek = null;
 let fullHistoryCache = null;
 let fullHistoryPromise = null;
+let fullHistoryGeneration = 0;
 
 function setHistoryLoading(on, message) {
   const el = $('analytics-loading');
@@ -500,6 +509,8 @@ function setHistoryLoading(on, message) {
 }
 
 function invalidateHistoryViews() {
+  historyRequest++;
+  fullHistoryGeneration++;
   fullHistoryCache = null;
   fullHistoryPromise = null;
   historicalWeek = null;
@@ -510,11 +521,14 @@ async function ensureFullHistory(fetchHistory = api && api.getHistorySummary) {
   if (!fetchHistory) return null;
   if (!fullHistoryPromise) {
     setHistoryLoading(true, 'Loading history…');
+    const generation = fullHistoryGeneration;
     fullHistoryPromise = Promise.resolve(fetchHistory(90)).then((days) => {
+      if (generation !== fullHistoryGeneration) return null;
       fullHistoryCache = Array.isArray(days) ? days : [];
       setHistoryLoading(false);
       return fullHistoryCache;
     }).catch(() => {
+      if (generation !== fullHistoryGeneration) return null;
       fullHistoryPromise = null;
       setHistoryLoading(false, 'Could not load history. Reopen this tab to retry.');
       return null;
@@ -532,10 +546,10 @@ async function loadAnalyticsHistory(fetchHistory = api && api.getHistorySummary)
   try {
     const all = await ensureFullHistory(fetchHistory);
     if (request !== historyRequest || analyticsSegment !== segment) return;
-    const days = (all || []).slice(segment === 'week' ? -7 : -30);
+    const days = historyWithCurrentDay(all).slice(segment === 'week' ? -7 : -30);
     if (segment === 'week') { historicalWeek = days; renderWeek({ week: days }); }
     else if (target) target.innerHTML = monthMarkup(days);
-    if (segment === 'week' && typeof renderWeekWellbeing === 'function') renderWeekWellbeing(days);
+    if (segment === 'week' && typeof renderWeekWellbeing === 'function') await renderWeekWellbeing();
     if (segment === 'month' && typeof renderMonthFocusScores === 'function') renderMonthFocusScores(days);
   } catch (_) { if (request === historyRequest && target) target.textContent = 'Could not load history. Reopen this tab to retry.'; }
 }
@@ -620,13 +634,16 @@ async function loadLifetime() {
   }
 }
 
-function setAnalyticsSegment(segment) {
+function setAnalyticsSegment(segment, preserveScoreReturn = false) {
   hideChartTip('day-tip');
   hideChartTip('week-tip');
   if (segment !== 'day' && segment !== 'week' && segment !== 'month' && segment !== 'apps' && segment !== 'lifetime') {
     segment = 'day';
   }
   analyticsSegment = segment;
+  if (!preserveScoreReturn) focusScoreReturn = null;
+  const scoreBack = $('focus-score-back');
+  if (scoreBack) scoreBack.classList.toggle('hidden', segment !== 'day' || !focusScoreReturn);
   document.querySelectorAll('.segment-btn[data-segment]').forEach((b) => {
     const on = b.getAttribute('data-segment') === segment;
     b.classList.toggle('active', on);
@@ -640,11 +657,56 @@ function setAnalyticsSegment(segment) {
   const sub = $('analytics-subtitle');
   if (sub) sub.textContent = ANALYTICS_SUBTITLES[segment] || ANALYTICS_SUBTITLES.day;
   historyRequest++;
-  loadAnalyticsHistory();
+  const historyLoad = loadAnalyticsHistory();
   if (segment === 'lifetime') loadLifetime();
   if (segment === 'day') loadTimelineDay();
   if (segment === 'apps' && appsRange !== 'day') setAppsRange(appsRange);
+  return historyLoad;
 }
+
+function openFocusScoreDay(date, period) {
+  if (!['week', 'month'].includes(period) || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const parsed = new Date(date + 'T12:00:00');
+  if (!Number.isFinite(parsed.getTime()) || parsed.getFullYear() !== Number(date.slice(0, 4)) ||
+    parsed.getMonth() + 1 !== Number(date.slice(5, 7)) || parsed.getDate() !== Number(date.slice(8, 10)) || date > localDateKey()) return false;
+  const input = $('timeline-date');
+  const main = document.querySelector('.main');
+  if (!input || !main) return false;
+  focusScoreReturn = { date, period, scrollTop: main.scrollTop };
+  setFocusScoreSelection(date, period);
+  input.max = localDateKey();
+  input.value = date;
+  // A score tile represents this specific date, including across midnight.
+  timelineFollowsToday = false;
+  timelineManualViewport = null;
+  setAnalyticsSegment('day', true);
+  main.scrollTop = 0;
+  $('focus-score-status').textContent = 'Opening Day Analytics for ' + date + '.';
+  document.querySelector('.segment-btn[data-segment="day"]')?.focus({ preventScroll: true });
+  return true;
+}
+
+async function returnToFocusScores() {
+  const origin = focusScoreReturn;
+  if (!origin) return;
+  await setAnalyticsSegment(origin.period, true);
+  if (focusScoreReturn !== origin || analyticsSegment !== origin.period || $('view-analytics').classList.contains('hidden')) return;
+  const list = $(origin.period + '-focus-score-list');
+  const tile = list && [...list.querySelectorAll('.focus-score-day')].find(button => button.dataset.scoreDate === origin.date);
+  const focusTarget = tile || document.querySelector('.segment-btn[data-segment="' + origin.period + '"]');
+  if (focusTarget) focusTarget.focus({ preventScroll: true });
+  document.querySelector('.main').scrollTop = origin.scrollTop;
+}
+
+const focusScoreBack = $('focus-score-back');
+if (focusScoreBack) focusScoreBack.addEventListener('click', returnToFocusScores);
+const scoreAnalyticsView = $('view-analytics');
+if (scoreAnalyticsView) scoreAnalyticsView.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && focusScoreReturn && analyticsSegment === 'day') {
+    event.preventDefault();
+    returnToFocusScores();
+  }
+});
 
 function initSettingsPanels() {
   const tracking = $('settings-panel-tracking');
@@ -2075,6 +2137,8 @@ function renderRoundup(stats) {
 
 function renderStats(stats) {
   if (!stats) return;
+  const dayChanged = liveDayDate && stats.date && liveDayDate !== stats.date;
+  if (dayChanged) invalidateHistoryViews();
   if (stats.settings) latestGoalSettings = Object.assign({}, latestGoalSettings, stats.settings);
   renderMood(stats);
   if (stats.week) renderWeek(stats);
@@ -2100,6 +2164,7 @@ function renderStats(stats) {
     if (stats.dataDir && $('data-path')) $('data-path').textContent = stats.dataDir;
   }
   renderAppList(stats);
+  if (dayChanged && ['week', 'month'].includes(analyticsSegment)) loadAnalyticsHistory();
 }
 
 let lastAppsStats = null;

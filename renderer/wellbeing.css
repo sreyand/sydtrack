@@ -24,6 +24,47 @@
 .week-score-day[data-hit="no"] { background: var(--color-unproductive-tint); border-color: color-mix(in srgb, var(--color-data-unproductive) 40%, var(--color-border)); }
 .week-score-day[data-hit="na"] strong { color: var(--color-ink-faint); font-weight: 400; }
 
+.focus-score-day {
+  position: relative;
+  font-family: inherit;
+  text-align: left;
+  color: var(--color-ink);
+  cursor: pointer;
+  padding-right: 24px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.focus-score-day .focus-score-open {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: var(--color-accent);
+  font-size: 14px;
+  opacity: 0;
+}
+.focus-score-day:hover,
+.focus-score-day:focus-visible,
+.focus-score-day[data-selected="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-tint);
+}
+.focus-score-day:hover .focus-score-open,
+.focus-score-day:focus-visible .focus-score-open { opacity: 1; }
+.focus-score-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  margin: 0 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-muted);
+  font: var(--caption);
+  cursor: pointer;
+}
+.focus-score-back:hover { color: var(--color-ink); }
+@media (prefers-reduced-motion: reduce) { .focus-score-day { transition: none; } }
+@media (pointer: coarse) { .focus-score-back { min-height: 44px; } }
+
 @media (max-width: 900px) { .week-score-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 /* —— Lane B: Roundup + Analytics layout (scoped) —— */
