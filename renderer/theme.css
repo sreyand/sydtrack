@@ -212,6 +212,29 @@
   --color-data-other-tint: #342D3F;
 }
 
+[data-theme="forest"] {
+  color-scheme: dark;
+  --color-canvas: #111B16;
+  --color-surface: #19261E;
+  --color-surface-sunken: #223127;
+  --color-border: #314339;
+  --color-border-strong: #496352;
+  --color-ink: #EDF1E6;
+  --color-ink-muted: #B9C6B4;
+  --color-ink-faint: #889D86;
+  --color-accent: #A3C59D;
+  --color-accent-tint: #293E2C;
+  --color-accent-hover: #BAD6B4;
+  --color-on-accent: #142219;
+  --color-data-productive: #73BD90;
+  --color-data-productive-tint: #20382B;
+  --color-data-unproductive: #ED978A;
+  --color-data-unproductive-tint: #432B29;
+  --color-on-unproductive: #321D19;
+  --color-data-other: #A8B2A2;
+  --color-data-other-tint: #30382F;
+}
+
 :root,
 [data-theme] {
   --space-1: 4px;

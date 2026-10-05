@@ -10,6 +10,8 @@ const { APP_ID } = require('../src/app-identity');
 const { createUpdateChecker } = require('../src/updates');
 let updateRequests = 0;
 const releasePagesOpened = [];
+let trackerCreates = 0, trackerStarts = 0, pauseBoundaries = 0;
+let expireTimedPause = null;
 
 let failed = 0;
 function assert(cond, msg) {
@@ -151,6 +153,20 @@ const electron = {
 const originalLoad = Module._load;
 Module._load = function load(request, parent, isMain) {
   if (request === 'electron') return electron;
+  if (request === './tracker' && parent.filename === path.join(__dirname, '..', 'src', 'main.js')) {
+    return { createTracker: () => {
+      trackerCreates++;
+      return { start() { trackerStarts++; }, stop() {}, setSystemPresence() {}, getLastFocused: () => null,
+        invalidateClassification() {}, refreshCadence() {}, markPauseBoundary() { pauseBoundaries++; } };
+    } };
+  }
+  if (request === './timed-pause' && parent.filename === path.join(__dirname, '..', 'src', 'main.js')) {
+    const timedPause = originalLoad.call(this, request, parent, isMain);
+    return { ...timedPause, createTimedPause: options => {
+      expireTimedPause = options.onExpire;
+      return timedPause.createTimedPause(options);
+    } };
+  }
   if (request === './updates' && parent.filename === path.join(__dirname, '..', 'src', 'main.js')) {
     return { createUpdateChecker: options => createUpdateChecker({ ...options, fetch: async () => {
       updateRequests++;
@@ -245,6 +261,49 @@ async function run() {
   assert(manuallyResumed.trackingPaused === false && manuallyResumed.trackingPauseUntil === 0,
     'manual resume cancels the timed deadline');
 
+  for (const minutes of [15, 30, 60]) {
+    const before = Date.now();
+    const paused = await handlers.get('tracking:pauseFor')(goodEvent, minutes);
+    assert(paused.trackingPaused && paused.trackingPauseUntil >= before + minutes * 60_000 &&
+      paused.trackingPauseUntil <= Date.now() + minutes * 60_000, 'flexible pause IPC persists the exact ' + minutes + '-minute duration');
+    const saved = JSON.parse(fs.readFileSync(path.join(userData, 'settings.json'), 'utf8'));
+    assert(saved.trackingPauseUntil === paused.trackingPauseUntil, 'flexible pause deadline reaches durable settings');
+    assert(paused.onboardingComplete === false && trackerCreates === 0 && trackerStarts === 0,
+      'timed pause does not complete onboarding or start tracking');
+  }
+  expireTimedPause();
+  const expired = (await handlers.get('state:get')(goodEvent)).stats.settings;
+  assert(!expired.trackingPaused && expired.trackingPauseUntil === 0 && expired.onboardingComplete === false && trackerCreates === 0,
+    'automatic resume cannot bypass incomplete onboarding');
+
+  const unchangedSettings = fs.readFileSync(path.join(userData, 'settings.json'), 'utf8');
+  for (const invalid of [undefined, null, false, '15', 0, -15, 15.5, 16, 45, 90, NaN, Infinity, [], [30], { minutes: 30 }]) {
+    await throws(() => handlers.get('tracking:pauseFor')(goodEvent, invalid), 'flexible pause rejects invalid duration ' + String(invalid));
+    assert(fs.readFileSync(path.join(userData, 'settings.json'), 'utf8') === unchangedSettings, 'rejected pause cannot write settings');
+  }
+  await throws(() => handlers.get('tracking:pauseFor')({ sender: webContents, senderFrame: { url: APP_PAGE_URL } }, 30),
+    'flexible pause rejects a child frame even with the app URL');
+  await throws(() => handlers.get('tracking:pauseFor')(badEvent, 30), 'valid pause duration cannot bypass sender checks');
+  assert(fs.readFileSync(path.join(userData, 'settings.json'), 'utf8') === unchangedSettings, 'rejected sender cannot write a pause deadline');
+
+  await handlers.get('settings:update')(goodEvent, { onboardingComplete: true, trackingPaused: false });
+  assert(trackerCreates === 1 && trackerStarts === 1, 'completed onboarding starts one tracking service');
+  const boundaries = pauseBoundaries;
+  await handlers.get('tracking:pauseFor')(goodEvent, 30);
+  assert(pauseBoundaries === boundaries + 1, 'flexible pause uses the existing tracker pause boundary');
+  await handlers.get('tracking:pauseFor')(goodEvent, 60);
+  assert(pauseBoundaries === boundaries + 1, 'changing duration while paused reschedules without restarting tracking');
+  const indefinite = await handlers.get('settings:update')(goodEvent, { trackingPaused: true });
+  assert(indefinite.trackingPaused && indefinite.trackingPauseUntil === 0, 'manual indefinite pause clears an earlier timed deadline');
+  await handlers.get('tracking:pauseFor')(goodEvent, 15);
+  const resumed = await handlers.get('settings:update')(goodEvent, { trackingPaused: false });
+  assert(!resumed.trackingPaused && resumed.trackingPauseUntil === 0 && pauseBoundaries === boundaries + 2,
+    'manual resume clears the deadline and uses the existing tracker resume boundary');
+  await handlers.get('tracking:pauseFor')(goodEvent, 60);
+  expireTimedPause();
+  assert(pauseBoundaries === boundaries + 4 && trackerCreates === 1 && trackerStarts === 1,
+    'automatic expiry resumes the same tracker and marks both transition boundaries');
+
   for (const channel of channels) {
     const handler = handlers.get(channel);
     assert(typeof handler === 'function', channel + ' is registered');
@@ -280,6 +339,12 @@ async function run() {
   assert(requests.slice(-2).every(request => request.payload.profileId === 'default'), 'an in-flight rule/Ignore save retains its original profile guard');
   await exposed.sydtrack.setRules({ productive: [], unproductive: [] });
   assert(requests.at(-1).payload.profileId === 'new-profile', 'ordinary rule saves still use the current profile');
+  await exposed.sydtrack.pauseForMinutes(30);
+  assert(requests.at(-1).channel === 'tracking:pauseFor' && requests.at(-1).payload === 30,
+    'preload passes only numeric minutes to the flexible pause channel');
+  await exposed.sydtrack.pauseFor15Minutes();
+  assert(requests.at(-1).channel === 'tracking:pause15' && requests.at(-1).payload === undefined,
+    'legacy preload keeps the original no-payload pause channel');
 
   const builder = require('../build/electron-builder.config.js');
   assert(builder.appId === APP_ID, 'builder and runtime application identities match');

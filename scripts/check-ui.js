@@ -3,7 +3,7 @@
 if (!process.versions.electron) {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
-  const child = require('child_process').spawn(require('electron'), [__filename], { env, stdio: 'inherit' });
+  const child = require('child_process').spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
   child.on('error', (err) => { console.error(err); process.exitCode = 1; });
   child.on('exit', (code) => { process.exitCode = code == null ? 1 : code; });
   return;
@@ -15,6 +15,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { THEME_IDS } = require('../src/theme');
+const THEME_PICKER_ORDER = ['midnight', 'tide', 'plum', 'forest', 'dusk', 'linen', 'graphite', 'coral', 'starlight'];
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-ui-')));
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
@@ -98,7 +99,7 @@ app.whenReady().then(async () => {
         ['data disclosure', document.querySelector('.storage-details summary'), document.querySelector('.storage-details summary')],
         ['data explanation', document.querySelector('.storage-details-body p'), document.querySelector('.storage-details-body')]
       ];
-      if (['tide', 'linen', 'plum'].includes(theme)) {
+      if (['tide', 'linen', 'plum', 'forest'].includes(theme)) {
         const selected = document.querySelector('[data-theme-id="' + theme + '"]');
         samples.push(
           ['selected theme', selected, selected],
@@ -288,20 +289,82 @@ app.whenReady().then(async () => {
   if (footerStateChecks.flat().some(check => !check.stable || !check.contained || !check.dot || !check.labeled)) throw new Error('Sidebar footer state layout failed');
   const themePickerChecks = [];
   win.setSize(1040, 760);
-  for (const theme of ['tide', 'linen', 'plum']) {
+  for (const theme of ['tide', 'linen', 'plum', 'forest']) {
     themePickerChecks.push(await win.webContents.executeJavaScript(`(async () => {
       document.querySelector('[data-tab="home"]').click();
       document.body.classList.add('nav-collapsed');
       document.querySelector('[data-theme-id="${theme}"]').click();
+      if ('${theme}' === 'forest') {
+        const stats = { date: localDateKey(), byCategory: { productive: 10800, unproductive: 2400, other: 1200 },
+          topApps: [{ name: 'Code', seconds: 10800, category: 'productive' }, { name: 'Chrome', seconds: 2400, category: 'unproductive' }] };
+        renderPie(stats);
+        renderMood({ ...stats, mood: { id: 'focused', ratio: 0.82 } });
+        renderLastFocused({ app: 'Code', title: 'Synthetic project', category: 'productive', source: 'real' });
+        document.querySelector('.main').scrollTop = 0;
+      }
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const selected = [...document.querySelectorAll('[data-theme-id][aria-pressed="true"]')];
       return { theme: '${theme}', applied: document.documentElement.dataset.theme === '${theme}',
-        selected: selected.length === 1 && selected[0].dataset.themeId === '${theme}' };
+        selected: selected.length === 1 && selected[0].dataset.themeId === '${theme}',
+        forestCanvas: '${theme}' !== 'forest' || getComputedStyle(document.body).backgroundColor === 'rgb(17, 27, 22)' };
     })()`));
-    fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-theme-' + theme + '.png'), (await win.webContents.capturePage()).toPNG());
+    const filename = theme === 'forest' ? 'sydtrack-ui-forest-home.png' : 'sydtrack-theme-' + theme + '.png';
+    // Hidden-window capture can otherwise return the preceding compositor frame.
+    if (theme === 'forest') await win.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 200))');
+    fs.writeFileSync(path.join(os.tmpdir(), filename), (await win.webContents.capturePage()).toPNG());
   }
   console.log('Theme picker checks:', JSON.stringify(themePickerChecks));
-  if (themePickerChecks.some(check => !check.applied || !check.selected)) throw new Error('Theme picker failed');
+  if (themePickerChecks.some(check => !check.applied || !check.selected || !check.forestCanvas)) throw new Error('Theme picker failed');
+  const themePickerLayouts = [];
+  for (const width of [800, 1040, 1600]) {
+    win.setSize(width, 760);
+    const contentWidth = win.getContentSize()[0];
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (Math.abs(innerWidth - ${contentWidth}) <= 1) return;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      throw new Error('Theme chooser did not receive the requested window width');
+    })()`);
+    themePickerLayouts.push(await win.webContents.executeJavaScript(`(async () => {
+      document.body.classList.remove('nav-collapsed');
+      document.querySelector('[data-tab="settings"]').click();
+      document.querySelector('[data-settings-tab="tracking"]').click();
+      applyTheme('forest');
+      const card = document.getElementById('settings-appearance-card');
+      card.scrollIntoView({ block: 'center' });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const picker = card.querySelector('.theme-swatches');
+      const bounds = picker.getBoundingClientRect();
+      const buttons = [...picker.querySelectorAll('[data-theme-id]')];
+      const rects = buttons.map(button => button.getBoundingClientRect());
+      const rows = new Set(rects.map(rect => Math.round(rect.top))).size;
+      // These compact choices can all fit naturally even at 800px. Prove the
+      // wrap behavior under a narrower chooser without changing app styling.
+      const originalMaxWidth = picker.style.maxWidth;
+      picker.style.maxWidth = '360px';
+      const wrappedBounds = picker.getBoundingClientRect();
+      const wrappedRects = buttons.map(button => button.getBoundingClientRect());
+      const wrappedRows = new Set(wrappedRects.map(rect => Math.round(rect.top))).size;
+      const wraps = getComputedStyle(picker).flexWrap === 'wrap' && wrappedRows > 1 &&
+        wrappedRects.every(rect => rect.left >= wrappedBounds.left - 1 && rect.right <= wrappedBounds.right + 1);
+      picker.style.maxWidth = originalMaxWidth;
+      return { width: innerWidth, rows, constrainedRows: wrappedRows,
+        order: buttons.map(button => button.dataset.themeId).join(',') === ${JSON.stringify(THEME_PICKER_ORDER.join(','))},
+        wraps,
+        contained: rects.every(rect => rect.width > 0 && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.bottom <= bounds.bottom + 1),
+        noOverlap: rects.every((rect, index) => rects.slice(index + 1).every(other =>
+          rect.right <= other.left + 1 || other.right <= rect.left + 1 || rect.bottom <= other.top + 1 || other.bottom <= rect.top + 1)),
+        textFits: buttons.every(button => button.scrollWidth <= button.clientWidth + 1),
+        noPageOverflow: document.querySelector('.main').scrollWidth <= document.querySelector('.main').clientWidth + 1,
+        forestSelected: buttons.filter(button => button.getAttribute('aria-pressed') === 'true').length === 1 &&
+          picker.querySelector('[data-theme-id="forest"]').getAttribute('aria-pressed') === 'true' };
+    })()`));
+    if (width === 1040) fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-forest-settings.png'), (await win.webContents.capturePage()).toPNG());
+  }
+  console.log('Dark-to-light theme picker layouts:', JSON.stringify(themePickerLayouts));
+  if (themePickerLayouts.some(check => !check.order || !check.wraps || !check.contained || !check.noOverlap || !check.textFits || !check.noPageOverflow || !check.forestSelected))
+    throw new Error('Theme chooser ordering or wrapping failed');
   await win.webContents.executeJavaScript("applyTheme('midnight')");
   await win.webContents.executeJavaScript("document.body.classList.remove('nav-collapsed')");
   for (const width of [800, 1040, 1600]) {
@@ -708,7 +771,7 @@ app.whenReady().then(async () => {
     const shortcut = document.getElementById('profile-shortcut').value === 'Alt+B' &&
       document.getElementById('profile-shortcut').closest('#settings-panel-tracking') != null &&
       document.getElementById('profile-shortcut').options.length === 4 &&
-      document.querySelector('#profile-shortcut-settings .settings-block-title').textContent === 'Focus profile hotswap' &&
+      document.querySelector('#profile-shortcut-settings .settings-field-label').textContent === 'Focus profile hotswap' &&
       document.getElementById('profile-shortcut-status').classList.contains('hidden') &&
       getComputedStyle(document.querySelector('.profile-shortcut-row')).borderBottomWidth === '0px' &&
       !document.getElementById('profile-shortcut-settings').textContent.includes('Cycles through');
@@ -723,6 +786,208 @@ app.whenReady().then(async () => {
       overflow: document.getElementById('view-settings').scrollWidth > document.getElementById('view-settings').clientWidth + 1 };
   })()`);
   console.log('Settings tabs checks:', JSON.stringify(settingsChecks));
+  const breakReminderChecks = await win.webContents.executeJavaScript(`(async () => {
+    document.querySelector('[data-settings-tab="wellbeing"]').click();
+    const saved = { theme: 'midnight', breakReminderEnabled: true, breakReminderMinutes: 45 };
+    const changes = [];
+    const realPushSettings = pushSettings;
+    const minutes = document.getElementById('break-reminder-minutes');
+    const toggle = document.getElementById('break-reminder-toggle');
+    minutes.blur();
+    applySettingsInputs(saved);
+    // Exercise the existing handlers with an in-memory saved preference, never
+    // a production preload, tracker, profile, or settings file.
+    pushSettings = async partial => {
+      changes.push({ ...partial });
+      Object.assign(saved, partial);
+      applySettingsInputs({ ...saved });
+      return { ...saved };
+    };
+    try {
+      minutes.value = '65';
+      minutes.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      const edited = saved.breakReminderMinutes === 65 && !minutes.disabled;
+      toggle.click();
+      await Promise.resolve();
+      const disabledPreserves = saved.breakReminderEnabled === false && saved.breakReminderMinutes === 65 &&
+        minutes.disabled && minutes.value === '65' && minutes.getClientRects().length > 0;
+      toggle.click();
+      await Promise.resolve();
+      const reenabledPreserves = saved.breakReminderEnabled === true && saved.breakReminderMinutes === 65 &&
+        !minutes.disabled && minutes.value === '65';
+      const exactChanges = JSON.stringify(changes) === JSON.stringify([
+        { breakReminderMinutes: 65 }, { breakReminderEnabled: false }, { breakReminderEnabled: true }
+      ]);
+      return { edited, disabledPreserves, reenabledPreserves, exactChanges };
+    } finally { pushSettings = realPushSettings; }
+  })()`);
+  console.log('Inline Breaks preference checks:', JSON.stringify(breakReminderChecks));
+  if (!Object.values(breakReminderChecks).every(Boolean)) throw new Error('Inline Breaks changed saved-minute or enable/disable behavior');
+  const settingsGeometryChecks = [];
+  for (const width of [800, 1040, 1600]) {
+    win.setSize(width, 760);
+    const contentWidth = win.getContentSize()[0];
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (Math.abs(innerWidth - ${contentWidth}) <= 1) return;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      throw new Error('Settings geometry did not receive the requested window width');
+    })()`);
+    settingsGeometryChecks.push(...await win.webContents.executeJavaScript(`(() => {
+      document.body.classList.remove('nav-collapsed');
+      document.querySelector('[data-tab="settings"]').click();
+      const results = [];
+      const shown = node => !node.hidden && node.getClientRects().length > 0 && node.getBoundingClientRect().width > 0;
+      for (const theme of ['midnight', 'linen', 'forest']) {
+        for (const screenEnabled of [false, true]) {
+          for (const breakEnabled of [false, true]) {
+            applySettingsInputs({ theme, screenTimeLimitEnabled: screenEnabled, screenTimeLimitSec: 28800,
+              breakReminderEnabled: breakEnabled, breakReminderMinutes: 45, notificationsEnabled: breakEnabled,
+              focusBoostScheduleEnabled: breakEnabled, focusBoostScheduleStart: '09:00', focusBoostScheduleEnd: '17:00' });
+            for (const tab of ['wellbeing', 'notifications']) {
+              document.querySelector('[data-settings-tab="' + tab + '"]').click();
+              const panel = document.getElementById('settings-panel-' + tab);
+              const controls = [...panel.querySelectorAll('input, select, textarea, .schedule-time-trigger')].filter(shown);
+              const rects = controls.map(control => control.getBoundingClientRect());
+              const gaps = [...panel.querySelectorAll('.field')].filter(field => shown(field) &&
+                getComputedStyle(field).flexDirection === 'column').map(field => {
+                  const control = [...field.children].find(node => node.matches('input, select, textarea') && shown(node)) ||
+                    field.querySelector('.schedule-time-trigger');
+                  const label = [...field.children].find(node => node !== control);
+                  return control.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+                });
+              const titles = [...panel.querySelectorAll('.settings-block-title')];
+              const breaks = document.getElementById('settings-breaks');
+              const lastBreakField = breaks.querySelector('.break-reminder-row');
+              const breakCopy = document.getElementById('break-reminder-field');
+              const breakMinutes = document.getElementById('break-reminder-minutes');
+              const breakToggle = document.getElementById('break-reminder-toggle');
+              const sentenceParts = ['break-reminder-label', 'break-reminder-minutes', 'break-reminder-unit']
+                .map(id => document.getElementById(id).getBoundingClientRect());
+              const breakInlineGaps = tab === 'wellbeing' ? sentenceParts.slice(1).flatMap((rect, index) => {
+                const previous = sentenceParts[index];
+                return Math.abs(rect.top + rect.height / 2 - previous.top - previous.height / 2) <= 2
+                  ? [rect.left - previous.right] : [];
+              }) : [];
+              const wellbeingSections = tab === 'wellbeing' ? [document.getElementById('goals-settings'), breaks] : [];
+              const wellbeingHeadingGaps = wellbeingSections.map(section => {
+                const title = section.querySelector(':scope > .settings-block-title');
+                const firstRow = [...section.children].find(node => node.matches('.field, .switch-row') && shown(node));
+                return firstRow.getBoundingClientRect().top - title.getBoundingClientRect().bottom;
+              });
+              const wellbeingHelperGaps = tab === 'wellbeing' ? [...panel.querySelectorAll('.switch-row .hint')].filter(shown).map(hint => {
+                const title = hint.parentElement.querySelector('.switch-title');
+                return hint.getBoundingClientRect().top - title.getBoundingClientRect().bottom;
+              }) : [];
+              const wellbeingFinalRows = wellbeingSections.map(section =>
+                [...section.children].filter(node => node.matches('.field, .switch-row') && shown(node)).at(-1));
+              let threeDigitBreakFits = true;
+              if (tab === 'wellbeing') {
+                const previousMinutes = breakMinutes.value;
+                breakMinutes.value = '240';
+                const style = getComputedStyle(breakMinutes);
+                const context = document.createElement('canvas').getContext('2d');
+                context.font = style.font;
+                const contentWidth = breakMinutes.getBoundingClientRect().width -
+                  ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((total, name) => total + parseFloat(style[name]), 0);
+                // Leave room for native number steppers, in addition to the text.
+                threeDigitBreakFits = breakMinutes.value === '240' && breakMinutes.scrollWidth <= breakMinutes.clientWidth + 1 &&
+                  context.measureText('240').width + 18 <= contentWidth;
+                breakMinutes.value = previousMinutes;
+              }
+              results.push({ width: innerWidth, theme, tab, screenEnabled, breakEnabled,
+                minGap: gaps.length ? Math.min(...gaps) : null, maxGap: gaps.length ? Math.max(...gaps) : null,
+                tightGaps: gaps.every(gap => gap >= 6 && gap <= 10) && (tab !== 'notifications' || gaps.length === 6),
+                contained: controls.every((control, index) => {
+                  const card = control.closest('.card').getBoundingClientRect();
+                  return rects[index].left >= card.left && rects[index].right <= card.right && rects[index].width > 0;
+                }),
+                noOverlap: rects.every((rect, index) => rects.slice(index + 1).every(other =>
+                  rect.right <= other.left + 1 || other.right <= rect.left + 1 || rect.bottom <= other.top + 1 || other.bottom <= rect.top + 1)),
+                noPageOverflow: panel.scrollWidth <= panel.clientWidth + 1 &&
+                  document.querySelector('.main').scrollWidth <= document.querySelector('.main').clientWidth + 1,
+                headings: titles.map(title => title.textContent.trim()).join(',') === (tab === 'wellbeing' ? 'Daily goals,Breaks' : '') &&
+                  titles.every(title => getComputedStyle(title).textTransform === 'none'),
+                visibility: tab !== 'wellbeing' || shown(document.getElementById('screen-limit-field')) === screenEnabled &&
+                  shown(document.getElementById('break-reminder-field')) &&
+                  document.getElementById('break-reminder-minutes').disabled === !breakEnabled &&
+                  document.getElementById('break-reminder-minutes').value === '45',
+                inlineBreak: tab !== 'wellbeing' || lastBreakField.textContent.replace(/\\s+/g, ' ').trim() === 'Remind me to take a break after minutes' &&
+                  [...breakCopy.children].map(node => node.id).join(',') === 'break-reminder-label,break-reminder-minutes,break-reminder-unit' &&
+                  breakCopy.tagName === 'LABEL' && breakCopy.htmlFor === breakMinutes.id &&
+                  breakMinutes.getAttribute('aria-labelledby') === 'break-reminder-label break-reminder-unit' &&
+                  !lastBreakField.querySelector('label label') && !breakToggle.closest('label') &&
+                  breakToggle.getAttribute('aria-label') === 'Enable break reminders',
+                breakSentenceFits: tab !== 'wellbeing' || sentenceParts.every(rect => rect.left >= breakCopy.getBoundingClientRect().left - 1 &&
+                  rect.right <= breakCopy.getBoundingClientRect().right + 1) &&
+                  breakCopy.getBoundingClientRect().right <= breakToggle.getBoundingClientRect().left + 1 &&
+                  Math.abs(breakToggle.getBoundingClientRect().right - lastBreakField.getBoundingClientRect().right) <= 1 &&
+                  (innerWidth <= 900 || sentenceParts.every(rect => Math.abs(rect.top + rect.height / 2 -
+                    sentenceParts[0].top - sentenceParts[0].height / 2) <= 2)),
+                threeDigitBreakFits,
+                regularBreakText: tab !== 'wellbeing' || getComputedStyle(breakCopy).fontWeight === '400',
+                breakWeight: tab === 'wellbeing' ? getComputedStyle(breakCopy).fontWeight : null,
+                spacedBreakBox: tab !== 'wellbeing' || getComputedStyle(breakCopy).columnGap === '12px' &&
+                  getComputedStyle(breakCopy).rowGap === '12px' && breakInlineGaps.every(gap => gap >= 11 && gap <= 13),
+                minBreakGap: breakInlineGaps.length ? Math.min(...breakInlineGaps) : null,
+                maxBreakGap: breakInlineGaps.length ? Math.max(...breakInlineGaps) : null,
+                wellbeingRhythm: tab !== 'wellbeing' || wellbeingHeadingGaps.every(gap => gap >= 7 && gap <= 9) &&
+                  wellbeingHelperGaps.every(gap => gap >= 3 && gap <= 5) &&
+                  wellbeingFinalRows.every(row => getComputedStyle(row).paddingBottom === '0px'),
+                minHeadingGap: wellbeingHeadingGaps.length ? Math.min(...wellbeingHeadingGaps) : null,
+                maxHeadingGap: wellbeingHeadingGaps.length ? Math.max(...wellbeingHeadingGaps) : null,
+                minHelperGap: wellbeingHelperGaps.length ? Math.min(...wellbeingHelperGaps) : null,
+                maxHelperGap: wellbeingHelperGaps.length ? Math.max(...wellbeingHelperGaps) : null,
+                cleanBottom: tab !== 'wellbeing' || getComputedStyle(lastBreakField).borderBottomWidth === '0px',
+                scheduleState: tab !== 'notifications' || document.getElementById('fb-schedule-start').disabled === !breakEnabled &&
+                  document.getElementById('fb-schedule-end').disabled === !breakEnabled &&
+                  document.getElementById('fb-schedule-start-trigger').disabled === !breakEnabled &&
+                  document.getElementById('fb-schedule-end-trigger').disabled === !breakEnabled });
+            }
+          }
+        }
+      }
+      return results;
+    })()`));
+  }
+  const settingsGeometryFailures = settingsGeometryChecks.filter(check => !check.tightGaps || !check.contained || !check.noOverlap ||
+    !check.noPageOverflow || !check.headings || !check.visibility || !check.inlineBreak || !check.breakSentenceFits ||
+    !check.threeDigitBreakFits || !check.regularBreakText || !check.spacedBreakBox || !check.wellbeingRhythm || !check.cleanBottom || !check.scheduleState);
+  const measuredGaps = settingsGeometryChecks.filter(check => check.minGap != null);
+  const measuredBreakGaps = settingsGeometryChecks.filter(check => check.minBreakGap != null);
+  const measuredWellbeingGaps = settingsGeometryChecks.filter(check => check.minHeadingGap != null);
+  console.log('Settings compact field geometry:', JSON.stringify({ cases: settingsGeometryChecks.length,
+    widths: [...new Set(settingsGeometryChecks.map(check => check.width))],
+    themes: [...new Set(settingsGeometryChecks.map(check => check.theme))],
+    minGap: Math.min(...measuredGaps.map(check => check.minGap)), maxGap: Math.max(...measuredGaps.map(check => check.maxGap)),
+    minBreakGap: Math.min(...measuredBreakGaps.map(check => check.minBreakGap)), maxBreakGap: Math.max(...measuredBreakGaps.map(check => check.maxBreakGap)),
+    breakFontWeights: [...new Set(measuredWellbeingGaps.map(check => check.breakWeight))],
+    minHeadingGap: Math.min(...measuredWellbeingGaps.map(check => check.minHeadingGap)), maxHeadingGap: Math.max(...measuredWellbeingGaps.map(check => check.maxHeadingGap)),
+    minHelperGap: Math.min(...measuredWellbeingGaps.map(check => check.minHelperGap)), maxHelperGap: Math.max(...measuredWellbeingGaps.map(check => check.maxHelperGap)),
+    failures: settingsGeometryFailures.slice(0, 8), failureCount: settingsGeometryFailures.length }));
+  if (settingsGeometryFailures.length) throw new Error('Compact Settings geometry failed');
+  win.setSize(1040, 900);
+  for (const tab of ['wellbeing', 'notifications']) {
+    await win.webContents.executeJavaScript(`(async () => {
+      applySettingsInputs({ theme: 'midnight', screenTimeLimitEnabled: true, screenTimeLimitSec: 28800,
+        breakReminderEnabled: true, breakReminderMinutes: 45, notificationsEnabled: true, focusBoostScheduleEnabled: true });
+      document.querySelector('[data-settings-tab="${tab}"]').click();
+      document.querySelector('.main').scrollTop = 0;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    })()`);
+    fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-settings-' + tab + '-clean.png'), (await win.webContents.capturePage()).toPNG());
+    if (tab === 'wellbeing') {
+      await win.webContents.executeJavaScript(`(async () => {
+        applySettingsInputs({ ...latestGoalSettings, breakReminderEnabled: false });
+        await new Promise(resolve => setTimeout(resolve, 200));
+      })()`);
+      fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-ui-settings-wellbeing-disabled-clean.png'), (await win.webContents.capturePage()).toPNG());
+    }
+  }
+  win.setSize(1040, 760);
+  await win.webContents.executeJavaScript(`document.querySelector('[data-settings-tab="tracking"]').click()`);
   await win.webContents.executeJavaScript(`(async () => {
     document.getElementById('settings-storage-details').scrollIntoView({block: 'center'});
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -788,4 +1053,4 @@ app.whenReady().then(async () => {
   app.exit(failed || !homePieNavigation.reachedDayApps || !homePieNavigation.keyboardWorks || !homePieNavigation.emptyStaysHome || appsChecks.overflow || appsChecks.cardGap > 20 || appsChecks.centerPadding < 10 || !appsChecks.weekly || !appsChecks.appsOnRight || appsChecks.slices !== 4 || !appsChecks.mixed || !appsChecks.collapsed || appsChecks.rows !== 5 || historyChecks.share !== '75%' || !historyChecks.visible || historyChecks.overflow || historyChecks.scoreCells !== 30 || historyChecks.scoreHeight > 520 || !lifetimeChecks.visible || lifetimeChecks.total !== '10h tracked' || lifetimeChecks.days !== '4' || lifetimeChecks.bars !== 3 || lifetimeChecks.overflow || !roundupEvidence.productive || !roundupEvidence.unproductive || !roundupEvidence.redundantCardRemoved || !settingsChecks.initial || !settingsChecks.wellbeing || !settingsChecks.notifications || !settingsChecks.dataPrivacy || !settingsChecks.shortcut || settingsChecks.overflow || !sessionDayChecks.todayPresent || !sessionDayChecks.historicalSelected || !sessionDayChecks.minutesRightAligned || !onboardingChecks.visible || !onboardingChecks.generalSelected || !onboardingChecks.startupSelected || !onboardingChecks.currentCopy || !onboardingChecks.fits || !scrollbarChecks.appeared || !scrollbarChecks.faded || layoutChecks.some(r => !r.sidebarAligned || !r.mobileRail || !r.customAligned || !r.controlsInside) ? 1 : 0);
 }).catch((error) => { console.error(error); app.exit(1); });
 
-setTimeout(() => { console.error('UI checks timed out'); app.exit(1); }, 30000).unref();
+setTimeout(() => { console.error('UI checks timed out'); app.exit(1); }, 45000).unref();

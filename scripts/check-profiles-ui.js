@@ -2,7 +2,7 @@
 
 if (!process.versions.electron) {
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-  const child = require('child_process').spawn(require('electron'), [__filename], { env, stdio: 'inherit' });
+  const child = require('child_process').spawn(require('electron'), [__filename], { env, stdio: 'inherit', windowsHide: true });
   child.on('error', err => { console.error(err); process.exitCode = 1; });
   child.on('exit', code => { process.exitCode = code == null ? 1 : code; });
   return;
@@ -16,10 +16,12 @@ const { createQuickCorrections } = require('../src/quick-corrections');
 const { createUpdateChecker } = require('../src/updates');
 const { createSessionManager } = require('../src/sessions');
 const { validateIpcPayload } = require('../src/ipc-validate');
+const THEME_PICKER_ORDER = ['midnight', 'tide', 'plum', 'forest', 'dusk', 'linen', 'graphite', 'coral', 'starlight'];
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-profile-ui-'));
 app.setPath('userData', root); app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   const store = createStore(root);
+  if (store.getSettings().theme !== 'midnight') throw new Error('Default theme must remain Midnight');
   store.addSeconds('Chrome', 'other', 60, { category: 'other', reason: 'No matching keyword' });
   store.addSeconds('Chrome', 'productive', 30, { category: 'productive', reason: 'github' });
   store.addSeconds('Code', 'other', 20);
@@ -85,7 +87,9 @@ app.whenReady().then(async () => {
     await loadRulesAndIgnore();
     const check = (condition, message) => { if (!condition) throw new Error(message); };
     const wait = async predicate => { for (let i = 0; i < 100; i++) { if (await predicate()) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('UI wait timed out'); };
-    for (const theme of ['tide', 'linen', 'plum']) {
+    check([...document.querySelectorAll('.theme-swatch')].map(button => button.dataset.themeId).join(',') ===
+      ${JSON.stringify(THEME_PICKER_ORDER.join(','))}, 'Theme picker is ordered from dark to light');
+    for (const theme of ['tide', 'linen', 'plum', 'forest']) {
       document.querySelector('[data-theme-id="' + theme + '"]').click();
       await wait(async () => (await window.sydtrack.getState()).settings.theme === theme);
       check(document.documentElement.dataset.theme === theme, 'Theme click updates the renderer');
@@ -246,7 +250,7 @@ app.whenReady().then(async () => {
     check(!document.getElementById('tags-other-card') && document.getElementById('rules-other-edit').value === '', 'Redundant inbox is gone and neutral overrides remain editable');
     document.querySelector('.nav-btn[data-tab="home"]').click();
   })()`);
-  if (createStore(root).getSettings().theme !== 'plum') throw new Error('New theme did not survive a settings reload');
+  if (createStore(root).getSettings().theme !== 'forest') throw new Error('Forest theme did not survive a settings reload');
   for (const width of [800, 1040, 1600]) {
     win.setSize(width, 850);
     const pickerLayout = await win.webContents.executeJavaScript(`(async () => {
@@ -312,7 +316,7 @@ app.whenReady().then(async () => {
   })()`);
   fs.writeFileSync(path.join(os.tmpdir(), 'sydtrack-update-checker.png'), (await win.webContents.capturePage()).toPNG());
   await win.webContents.executeJavaScript(`document.querySelector('.nav-btn[data-tab="home"]').click();`);
-  console.log('Theme persistence UI checks passed: three new picker choices, validated preload saves, settings reload.');
+  console.log('Theme persistence UI checks passed: dark-to-light order, four new picker choices including Forest, validated preload saves, settings reload, unchanged Midnight default.');
   console.log('Correction and update UI checks passed: literal selection, explicit confirmation, cancellation, unsaved edits, Home/Analytics Undo and opt-in checks.');
   win.webContents.send('profiles:cycle-requested');
   await win.webContents.executeJavaScript(`(async () => {

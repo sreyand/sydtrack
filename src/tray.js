@@ -2,7 +2,7 @@
 
 const path = require('path');
 const { Tray, Menu, nativeImage } = require('electron');
-const { pauseFor15Minutes } = require('./timed-pause');
+const { pauseForMinutes } = require('./timed-pause');
 const { resolveTrayState } = require('./tray-state');
 const { toleranceMs } = require('./tracking-decision');
 
@@ -132,8 +132,8 @@ function createAppTray(deps) {
     pushFreshSnapshot();
   }
 
-  function startTimedPause() {
-    pushSettings(pauseFor15Minutes());
+  function startTimedPause(minutes) {
+    pushSettings(pauseForMinutes(minutes));
     refresh();
     pushFreshSnapshot();
   }
@@ -177,9 +177,13 @@ function createAppTray(deps) {
         click: () => togglePause()
       },
       {
-        label: 'Pause for 15 minutes',
+        label: 'Pause for',
         enabled: ready,
-        click: () => startTimedPause()
+        submenu: [
+          { label: '15 minutes', click: () => startTimedPause(15) },
+          { label: '30 minutes', click: () => startTimedPause(30) },
+          { label: '1 hour', click: () => startTimedPause(60) }
+        ]
       },
       {
         label: 'Notifications',

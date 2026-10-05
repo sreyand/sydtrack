@@ -645,7 +645,7 @@ async function regressionChecks() {
     sendTrackerUpdate: (payload) => { trayPayload = payload; } });
   trayMenu.find(item => item.label === 'Pause tracking' || item.label === 'Resume tracking').click();
   assert(trayPayload.sessionCompleted === null, 'tray settings refresh does not replay a session completion event');
-  trayMenu.find(item => item.label === 'Pause for 15 minutes').click();
+  trayMenu.find(item => item.label === 'Pause for').submenu.find(item => item.label === '15 minutes').click();
   assert(trayPayload.stats.settings.trackingPaused === true && trayPayload.stats.settings.trackingPauseUntil > Date.now(),
     'tray timed pause stores a resume deadline and refreshes the window');
   const previousBoost = settingsStore.getSettings().focusBoost;

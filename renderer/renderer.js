@@ -121,6 +121,9 @@ function showNameTip(ev) {
 
 const api = window.sydtrack;
 let applying = false;
+let pauseUiSettings = null;
+let pauseActionBusy = false;
+let pauseActionError = '';
 /** Cached rules/ignore for one-click reclassify. */
 let cachedRules = { productive: [], unproductive: [], other: [] };
 let cachedBrowserApps = [];
@@ -725,6 +728,7 @@ function initSettingsPanels() {
   wellbeing.append(wellbeingCard);
   notifications.append(notificationCard);
   document.querySelectorAll('[data-settings-tab]').forEach(button => button.addEventListener('click', () => {
+    closePauseMenu();
     const tab = button.dataset.settingsTab;
     document.querySelectorAll('[data-settings-tab]').forEach(candidate => {
       const selected = candidate === button;
@@ -740,6 +744,7 @@ initSettingsPanels();
 
 document.querySelectorAll('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
+    closePauseMenu();
     hideChartTip('day-tip');
     hideChartTip('week-tip');
     document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
@@ -1065,6 +1070,7 @@ function paintLivePie() {
 }
 
 function renderLiveTotals() {
+  renderPauseRemaining();
   if (!liveStats) return;
   paintLivePie();
 }
@@ -1519,7 +1525,7 @@ function applySettingsInputs(settings) {
   if ($('break-reminder-minutes') && document.activeElement !== $('break-reminder-minutes')) {
     $('break-reminder-minutes').value = String(Number(settings.breakReminderMinutes) || 60);
   }
-  if ($('break-reminder-field')) $('break-reminder-field').classList.toggle('hidden', settings.breakReminderEnabled !== true);
+  if ($('break-reminder-minutes')) $('break-reminder-minutes').disabled = settings.breakReminderEnabled !== true;
   if ($('launch-startup-toggle') && document.activeElement !== $('launch-startup-toggle')) {
     $('launch-startup-toggle').checked = settings.launchAtStartup !== false;
   }
@@ -1547,7 +1553,7 @@ function applySettingsInputs(settings) {
   applyFocusBoostSchedule(settings).catch(() => {});
 }
 
-const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk', 'tide', 'linen', 'plum'];
+const THEME_IDS = ['midnight', 'tide', 'plum', 'forest', 'dusk', 'linen', 'graphite', 'coral', 'starlight'];
 
 function applyTheme(theme) {
   const id = THEME_IDS.indexOf(theme) >= 0 ? theme : 'midnight';
@@ -1583,18 +1589,45 @@ function syncPauseUi(settings) {
     btn.setAttribute('aria-label', paused ? 'Resume tracking' : 'Pause tracking');
   };
   applyPauseBtn($('pause-btn'));
-  applyPauseBtn($('pause-settings-btn'));
+  if (pauseUiSettings && (pauseUiSettings.trackingPaused !== paused || pauseUiSettings.trackingPauseUntil !== pauseUntil)) pauseActionError = '';
+  pauseUiSettings = { trackingPaused: paused, trackingPauseUntil: pauseUntil, onboardingComplete: !settings || settings.onboardingComplete !== false };
+  const control = $('pause-settings-btn');
+  if (control) {
+    control.dataset.paused = paused ? 'on' : 'off';
+    $('pause-settings-label').textContent = paused ? 'Resume tracking' : 'Pause for…';
+    $('pause-settings-caret').classList.toggle('hidden', paused);
+    if (paused || !pauseUiSettings.onboardingComplete) closePauseMenu();
+    if (paused) { control.removeAttribute('aria-haspopup'); control.removeAttribute('aria-expanded'); }
+    else {
+      control.setAttribute('aria-haspopup', 'menu');
+      control.setAttribute('aria-expanded', String(!$('pause-settings-menu').classList.contains('hidden')));
+    }
+    control.disabled = pauseActionBusy || !pauseUiSettings.onboardingComplete;
+  }
+  if ($('pause-btn')) $('pause-btn').disabled = pauseActionBusy || !pauseUiSettings.onboardingComplete;
   const pauseStatus = $('pause-until-status');
   if (pauseStatus) {
-    pauseStatus.textContent = untilLabel ? 'Resumes at ' + untilLabel : '';
-    pauseStatus.classList.toggle('hidden', !untilLabel);
+    pauseStatus.textContent = pauseActionError || (untilLabel ? 'Resumes at ' + untilLabel : '');
+    pauseStatus.classList.toggle('hidden', !pauseActionError && !untilLabel);
   }
   document.body.setAttribute('data-paused', paused ? 'on' : 'off');
+  renderPauseRemaining();
+}
+
+function renderPauseRemaining() {
   const pill = $('source-pill');
-  if (pill && paused) {
-    pill.textContent = 'Paused';
-    pill.title = 'Paused';
+  if (!pill || !pauseUiSettings) return;
+  if (pauseUiSettings.trackingPaused) {
+    const until = pauseUiSettings.trackingPauseUntil;
+    const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+    const label = until > 0 ? 'Paused · ' + fmtCountdown(remaining) : 'Paused';
+    if (pill.textContent !== label) pill.textContent = label;
+    pill.title = until > 0 ? label + ' · resumes automatically' : label;
     pill.className = 'status-pill paused';
+  } else if (pill.classList.contains('paused')) {
+    pill.textContent = 'Waiting';
+    pill.title = 'Waiting for the next tracking update';
+    pill.className = 'status-pill idle';
   }
 }
 
@@ -1639,6 +1672,7 @@ function syncFocusBoostScheduleUi(settings) {
   if (times) times.classList.toggle('is-disabled', !enabled);
   if (start) start.disabled = !enabled;
   if (end) end.disabled = !enabled;
+  window.sydtrackScheduleTimeUI?.sync();
 }
 
 function playBoostKick() {
@@ -2455,10 +2489,7 @@ if ($('focusboost-message')) {
 }
 
 async function setTrackingPaused(paused) {
-  const next = await pushSettings({ trackingPaused: !!paused });
-  syncPauseUi(next || { trackingPaused: !!paused });
-  syncNotifUi(next || {});
-  return next;
+  return performPauseAction(paused ? 0 : null, $('pause-btn'));
 }
 
 
@@ -2474,6 +2505,7 @@ if ($('notif-btn')) {
 
 if ($('pause-btn')) {
   $('pause-btn').addEventListener('click', () => {
+    if (pauseActionBusy) return;
     const on = $('pause-btn').getAttribute('data-paused') === 'on';
     setTrackingPaused(!on);
   });
@@ -2494,23 +2526,118 @@ if ($('fb-schedule-toggle')) {
   });
 }
 if ($('fb-schedule-start')) {
-  $('fb-schedule-start').addEventListener('change', async () => {
+  $('fb-schedule-start').addEventListener('change', event => {
     const v = String($('fb-schedule-start').value || '09:00');
-    await saveFocusBoostSchedulePartial({ focusBoostScheduleStart: v });
+    const pending = saveFocusBoostSchedulePartial({ focusBoostScheduleStart: v });
+    if (event.detail?.scheduleTimePicker) event.detail.pending = pending;
+    else pending.catch(() => {});
   });
 }
 if ($('fb-schedule-end')) {
-  $('fb-schedule-end').addEventListener('change', async () => {
+  $('fb-schedule-end').addEventListener('change', event => {
     const v = String($('fb-schedule-end').value || '17:00');
-    await saveFocusBoostSchedulePartial({ focusBoostScheduleEnd: v });
+    const pending = saveFocusBoostSchedulePartial({ focusBoostScheduleEnd: v });
+    if (event.detail?.scheduleTimePicker) event.detail.pending = pending;
+    else pending.catch(() => {});
   });
 }
 
-if ($('pause-settings-btn')) {
-  $('pause-settings-btn').addEventListener('click', () => {
-    const on = $('pause-settings-btn').getAttribute('data-paused') === 'on';
-    setTrackingPaused(!on);
+function closePauseMenu(restoreFocus = false) {
+  const menu = $('pause-settings-menu');
+  if (!menu) return;
+  menu.classList.add('hidden');
+  menu.classList.remove('pause-menu-up');
+  const button = $('pause-settings-btn');
+  if (button.dataset.paused === 'on') button.removeAttribute('aria-expanded');
+  else button.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) $('pause-settings-btn').focus({ preventScroll: true });
+}
+
+function openPauseMenu(last = false) {
+  const control = $('pause-settings-btn');
+  const menu = $('pause-settings-menu');
+  if (!control || !menu || control.disabled || control.dataset.paused === 'on') return;
+  pauseActionError = '';
+  if (pauseUiSettings) syncPauseUi(pauseUiSettings);
+  menu.classList.remove('hidden', 'pause-menu-up');
+  menu.style.maxHeight = '';
+  control.setAttribute('aria-expanded', 'true');
+  const rect = control.getBoundingClientRect();
+  const needed = menu.getBoundingClientRect().height;
+  const below = window.innerHeight - rect.bottom - 12;
+  const above = rect.top - 12;
+  const upwards = below < needed && above > below;
+  menu.classList.toggle('pause-menu-up', upwards);
+  menu.style.maxHeight = Math.max(44, upwards ? above : below) + 'px';
+  const choices = [...menu.querySelectorAll('button')];
+  choices[last ? choices.length - 1 : 0]?.focus({ preventScroll: true });
+}
+
+async function performPauseAction(minutes, origin = $('pause-settings-btn')) {
+  if (!api || pauseActionBusy || !pauseUiSettings || !pauseUiSettings.onboardingComplete ||
+    ![null, 0, 15, 30, 60].includes(minutes)) return;
+  const restoreFocus = document.activeElement === origin || $('pause-settings-menu').contains(document.activeElement);
+  closePauseMenu(origin === $('pause-settings-btn'));
+  pauseActionError = '';
+  pauseActionBusy = true;
+  syncPauseUi(pauseUiSettings);
+  try {
+    const next = minutes == null ? await pushSettings({ trackingPaused: false }) : minutes === 0
+      ? await pushSettings({ trackingPaused: true }) : await api.pauseForMinutes(minutes);
+    if (next && minutes > 0) applySettingsInputs(next);
+    return next;
+  } catch (_) {
+    pauseActionError = minutes == null ? 'Could not resume tracking. Try again.' : 'Could not pause tracking. Try again.';
+  } finally {
+    pauseActionBusy = false;
+    syncPauseUi(pauseUiSettings);
+    if (restoreFocus && document.activeElement === document.body && origin.getClientRects().length && !origin.disabled) {
+      origin.focus({ preventScroll: true });
+    }
+  }
+}
+
+const pauseSettingsControl = $('pause-settings-btn');
+const pauseSettingsMenu = $('pause-settings-menu');
+if (pauseSettingsControl && pauseSettingsMenu) {
+  pauseSettingsControl.addEventListener('click', () => {
+    if (pauseSettingsControl.dataset.paused === 'on') performPauseAction(null);
+    else if (!pauseSettingsMenu.classList.contains('hidden')) closePauseMenu();
+    else openPauseMenu();
   });
+  pauseSettingsControl.addEventListener('keydown', event => {
+    if (['ArrowDown', 'ArrowUp'].includes(event.key) && pauseSettingsControl.dataset.paused !== 'on') {
+      event.preventDefault(); openPauseMenu(event.key === 'ArrowUp');
+    }
+  });
+  pauseSettingsMenu.addEventListener('click', event => {
+    const choice = event.target.closest('[data-pause-minutes]');
+    if (choice && pauseSettingsMenu.contains(choice)) performPauseAction(Number(choice.dataset.pauseMinutes));
+  });
+  pauseSettingsMenu.addEventListener('keydown', event => {
+    const choices = [...pauseSettingsMenu.querySelectorAll('button')];
+    const index = choices.indexOf(document.activeElement);
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? choices.length - 1 :
+        (index + (event.key === 'ArrowDown' ? 1 : choices.length - 1)) % choices.length;
+      choices[next]?.focus();
+    } else if (event.key === 'Tab') closePauseMenu(true);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !pauseSettingsMenu.classList.contains('hidden')) {
+      event.preventDefault(); closePauseMenu(true);
+    }
+  });
+  document.addEventListener('pointerdown', event => {
+    if (!event.target.closest('.pause-settings-actions')) closePauseMenu();
+  });
+  document.addEventListener('focusin', event => {
+    if (!event.target.closest('.pause-settings-actions')) closePauseMenu();
+  });
+  window.addEventListener('resize', () => closePauseMenu());
+  window.addEventListener('scroll', () => closePauseMenu(), { passive: true });
+  document.querySelector('.main')?.addEventListener('scroll', () => closePauseMenu(), { passive: true });
 }
 
 async function toggleFocusBoost() {
@@ -3594,19 +3721,6 @@ if ($('onboarding-start')) {
   });
 }
 
-if ($('pause-15-btn')) {
-  $('pause-15-btn').addEventListener('click', async () => {
-    if (!api || !api.pauseFor15Minutes) return;
-    const button = $('pause-15-btn');
-    button.disabled = true;
-    try {
-      const next = await api.pauseFor15Minutes();
-      applySettingsInputs(next);
-    } finally {
-      button.disabled = false;
-    }
-  });
-}
 const liveTotalsTicker = createLiveTicker({
   interval: 1000,
   now: () => Date.now(),

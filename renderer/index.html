@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="theme.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="wellbeing.css" />
+  <link rel="stylesheet" href="schedule-time.css" />
 </head>
 <body>
   <div class="window-drag-region" aria-hidden="true"></div>
@@ -258,7 +259,6 @@
         </div>
 
         <div id="panel-day" class="analytics-panel" data-panel="day">
-          <button type="button" id="focus-score-back" class="focus-score-back hidden"><span aria-hidden="true">←</span> Back to focusscore</button>
           <span id="focus-score-status" class="screen-reader-only" role="status" aria-live="polite"></span>
           <article class="card timeline-card" aria-labelledby="timeline-heading">
             <div class="timeline-head">
@@ -309,6 +309,7 @@
               <div id="day-focus-sub" class="day-metric-sub muted">Of productive + unproductive</div>
             </article>
           </div>
+          <button type="button" id="focus-score-back" class="focus-score-back hidden"><span aria-hidden="true">←</span> Back to focusscore</button>
         </div>
 
         <div id="panel-week" class="analytics-panel hidden" data-panel="week">
@@ -605,13 +606,14 @@
           <h3>Appearance</h3>
           <div class="theme-swatches" role="group" aria-label="Theme">
             <button type="button" class="theme-swatch" data-theme-id="midnight" aria-pressed="true">Midnight</button>
-            <button type="button" class="theme-swatch" data-theme-id="graphite" aria-pressed="false">Graphite</button>
+            <button type="button" class="theme-swatch" data-theme-id="tide" aria-pressed="false">Tide</button>
+            <button type="button" class="theme-swatch" data-theme-id="plum" aria-pressed="false">Plum</button>
+            <button type="button" class="theme-swatch" data-theme-id="forest" aria-pressed="false">Forest</button>
             <button type="button" class="theme-swatch" data-theme-id="dusk" aria-pressed="false">Dusk</button>
+            <button type="button" class="theme-swatch" data-theme-id="linen" aria-pressed="false">Linen</button>
+            <button type="button" class="theme-swatch" data-theme-id="graphite" aria-pressed="false">Graphite</button>
             <button type="button" class="theme-swatch" data-theme-id="coral" aria-pressed="false">Coral</button>
             <button type="button" class="theme-swatch" data-theme-id="starlight" aria-pressed="false">Starlight</button>
-            <button type="button" class="theme-swatch" data-theme-id="tide" aria-pressed="false">Tide</button>
-            <button type="button" class="theme-swatch" data-theme-id="linen" aria-pressed="false">Linen</button>
-            <button type="button" class="theme-swatch" data-theme-id="plum" aria-pressed="false">Plum</button>
           </div>
         </article>
         <article class="card" id="settings-updates-card">
@@ -635,10 +637,15 @@
                 <div id="pause-until-status" class="hint hidden" role="status"></div>
               </div>
               <div class="pause-settings-actions">
-                <button type="button" id="pause-15-btn" class="btn">15 minutes</button>
-                <button type="button" id="pause-settings-btn" class="pause-power" data-paused="off" title="Pause tracking" aria-label="Pause tracking" aria-pressed="false">
-                  <svg class="pause-power-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M7.5 6.2a7 7 0 1 0 9 0"/></svg>
+                <button type="button" id="pause-settings-btn" class="btn pause-settings-trigger" data-paused="off" aria-haspopup="menu" aria-expanded="false" aria-controls="pause-settings-menu">
+                  <span id="pause-settings-label">Pause for…</span><span id="pause-settings-caret" class="pause-settings-caret" aria-hidden="true"></span>
                 </button>
+                <div id="pause-settings-menu" class="pause-settings-menu hidden" role="menu" aria-label="Pause tracking for">
+                  <button type="button" class="pause-duration-choice" role="menuitem" data-pause-minutes="15">15 minutes</button>
+                  <button type="button" class="pause-duration-choice" role="menuitem" data-pause-minutes="30">30 minutes</button>
+                  <button type="button" class="pause-duration-choice" role="menuitem" data-pause-minutes="60">1 hour</button>
+                  <button type="button" class="pause-duration-choice" role="menuitem" data-pause-minutes="0">Until I resume</button>
+                </div>
               </div>
             </div>
             <label class="switch-row" id="session-history-row">
@@ -655,20 +662,29 @@
                 <input type="checkbox" id="fb-schedule-toggle" />
               </label>
               <div class="settings-row-2 fb-schedule-times" id="fb-schedule-times">
-                <label class="field">
-                  <span>Starts</span>
-                  <input type="time" id="fb-schedule-start" value="09:00" />
-                </label>
-                <label class="field">
-                  <span>Ends</span>
-                  <input type="time" id="fb-schedule-end" value="17:00" />
-                </label>
+                <div class="field schedule-time-field">
+                  <span id="fb-schedule-start-label">Starts</span>
+                  <div class="schedule-time-control" data-schedule-input="fb-schedule-start">
+                    <input type="time" id="fb-schedule-start" value="09:00" aria-label="Schedule start time" disabled />
+                    <button type="button" id="fb-schedule-start-trigger" class="schedule-time-trigger" aria-labelledby="fb-schedule-start-label fb-schedule-start-value" aria-haspopup="dialog" aria-expanded="false" aria-controls="fb-schedule-start-popover" hidden disabled><span id="fb-schedule-start-value" class="schedule-time-value"></span><span class="schedule-time-caret" aria-hidden="true"></span></button>
+                    <div id="fb-schedule-start-popover" class="schedule-time-popover" role="dialog" aria-label="Schedule start time" hidden></div>
+                    <p id="fb-schedule-start-status" class="schedule-time-status" role="status" hidden></p>
+                  </div>
+                </div>
+                <div class="field schedule-time-field">
+                  <span id="fb-schedule-end-label">Ends</span>
+                  <div class="schedule-time-control" data-schedule-input="fb-schedule-end">
+                    <input type="time" id="fb-schedule-end" value="17:00" aria-label="Schedule end time" disabled />
+                    <button type="button" id="fb-schedule-end-trigger" class="schedule-time-trigger" aria-labelledby="fb-schedule-end-label fb-schedule-end-value" aria-haspopup="dialog" aria-expanded="false" aria-controls="fb-schedule-end-popover" hidden disabled><span id="fb-schedule-end-value" class="schedule-time-value"></span><span class="schedule-time-caret" aria-hidden="true"></span></button>
+                    <div id="fb-schedule-end-popover" class="schedule-time-popover" role="dialog" aria-label="Schedule end time" hidden></div>
+                    <p id="fb-schedule-end-status" class="schedule-time-status" role="status" hidden></p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
           <div class="settings-block" id="polling-settings">
-            <div class="settings-block-title">Polling</div>
             <label class="field settings-inline-field">
               <div class="settings-field-copy">
                 <span>Polling mode</span>
@@ -684,7 +700,7 @@
 
           <div class="settings-block" id="profile-shortcut-settings">
             <div class="field settings-inline-field profile-shortcut-row">
-              <label for="profile-shortcut" class="settings-block-title">Focus profile hotswap</label>
+              <label for="profile-shortcut" class="settings-field-label">Focus profile hotswap</label>
               <select id="profile-shortcut">
                 <option value="">Off</option>
                 <option value="Alt+B">Alt+B</option>
@@ -697,7 +713,6 @@
 
           <!-- Reminder timing fields -->
           <div class="settings-block" id="settings-reminder-timing">
-            <div class="settings-block-title">Reminders</div>
             <div class="settings-row-2">
               <label class="field">
                 <span>Standard reminder (minutes)</span>
@@ -743,18 +758,17 @@
 
           <div class="settings-block" id="settings-breaks">
             <div class="settings-block-title">Breaks</div>
-            <label class="switch-row">
-              <div><div class="switch-title">Remind me to take a break</div><div class="hint">Resets after a pause or 5 idle minutes.</div></div>
-              <input type="checkbox" id="break-reminder-toggle" />
-            </label>
-            <label class="field settings-inline-field hidden" id="break-reminder-field">
-              <span>After (minutes)</span>
-              <input type="number" id="break-reminder-minutes" min="10" max="240" step="5" value="60" />
-            </label>
+            <div class="switch-row break-reminder-row">
+              <label class="break-reminder-copy" id="break-reminder-field" for="break-reminder-minutes">
+                <span id="break-reminder-label">Remind me to take a break after</span>
+                <input type="number" id="break-reminder-minutes" min="10" max="240" step="5" value="60" aria-labelledby="break-reminder-label break-reminder-unit" disabled />
+                <span id="break-reminder-unit">minutes</span>
+              </label>
+              <input type="checkbox" id="break-reminder-toggle" aria-label="Enable break reminders" />
+            </div>
           </div>
 
           <div class="settings-block settings-block-idle" id="settings-idle">
-            <div class="settings-block-title">Idle</div>
             <label class="field settings-inline-field">
               <div class="settings-field-copy">
                 <span>Idle timeout (minutes)</span>
@@ -780,7 +794,6 @@
 
           <!-- Reminder notification text -->
           <div class="settings-block settings-block-reminders" id="settings-messages">
-            <div class="settings-block-title">Messages</div>
             <label class="field">
               <div class="field-label-row">
                 <span>Standard reminder message</span>
@@ -874,6 +887,7 @@
   <script src="lib/day-timeline.js"></script>
   <script src="lib/apps-analytics.js"></script>
   <script src="wellbeing-ui.js"></script>
+  <script src="schedule-time-ui.js"></script>
   <script src="renderer.js"></script>
   <script src="category-explanation-ui.js"></script>
   <script src="quick-corrections-ui.js"></script>

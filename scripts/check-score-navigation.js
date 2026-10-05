@@ -126,6 +126,7 @@ app.whenReady().then(async () => {
     const inputs = {
       Space: { key: ' ', code: 'Space', windowsVirtualKeyCode: 32, text: ' ', unmodifiedText: ' ' },
       Enter: { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' },
+      Tab: { key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 },
       Escape: { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }
     };
     const input = inputs[key];
@@ -159,8 +160,12 @@ app.whenReady().then(async () => {
       document.activeElement.dataset.selected === 'true'`, 'Back did not restore period, selected tile and keyboard focus');
     assert.equal((await snapshot()).backVisible, false, 'Return control hides outside drill-down');
   }
-  async function back(date, source) {
-    await render(`document.getElementById('focus-score-back').click()`);
+  async function back(date, source, activation = 'click') {
+    if (activation === 'click') await render(`document.getElementById('focus-score-back').click()`);
+    else {
+      await render(`document.getElementById('focus-score-back').focus({ preventScroll: true })`);
+      await nativeKey(activation);
+    }
     await returned(date, source);
   }
   try {
@@ -168,6 +173,8 @@ app.whenReady().then(async () => {
     await render(`(async () => { await window.sydtrackProfilesUI.reload(); await loadRulesAndIgnore(); })()`);
     await waitFor(`liveDayDate === ${JSON.stringify(today)}`, 'Isolated renderer did not finish booting');
     assert.equal(await render('typeof openFocusScoreDay'), 'function', 'Historical score navigation hook exists');
+    await render(`document.querySelector('.nav-btn[data-tab="analytics"]').click(); setAnalyticsSegment('day');`);
+    assert.equal((await snapshot()).backVisible, false, 'Ordinary Day analytics does not expose the drill-down return control');
 
     await period('week');
     const first = await open(scored.date, 'week');
@@ -182,9 +189,9 @@ app.whenReady().then(async () => {
     assert.equal(afterTick.share, first.share, 'Live focus share does not overwrite historical Day');
     await back(scored.date, 'week');
 
-    await open(scored.date, 'week', 'Enter'); await back(scored.date, 'week');
+    await open(scored.date, 'week', 'Enter'); await back(scored.date, 'week', 'Space');
     await period('month');
-    await open(scored.date, 'month', 'Space'); await back(scored.date, 'month');
+    await open(scored.date, 'month', 'Space'); await back(scored.date, 'month', 'Enter');
     await open(scored.date, 'month');
     await render(`document.querySelector('[data-segment="day"]').focus({ preventScroll: true })`);
     assert.equal(await render(`document.activeElement?.dataset.segment`), 'day', 'Escape begins on focused Day segment');
@@ -253,15 +260,37 @@ app.whenReady().then(async () => {
         })()`);
         assert.equal(grid.count, 30); assert.equal(grid.contained, true); assert.equal(grid.overflow, false);
         await open(scored.date, 'month');
-        const dayContained = await render(`(() => {
+        const dayLayout = await render(`(() => {
           const panel = document.getElementById('panel-day');
-          const back = document.getElementById('focus-score-back').getBoundingClientRect();
-          return panel.scrollWidth <= panel.clientWidth + 1 && back.left >= 0 && back.right <= innerWidth;
+          const back = document.getElementById('focus-score-back');
+          const rect = back.getBoundingClientRect();
+          const information = [...panel.querySelectorAll('.timeline-card, #day-hourly-card, .day-metric-grid')];
+          return { contained: panel.scrollWidth <= panel.clientWidth + 1 && rect.left >= 0 && rect.right <= innerWidth,
+            last: panel.lastElementChild === back,
+            afterAllInfo: information.length === 3 && information.every(item =>
+              (item.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+              item.getBoundingClientRect().bottom <= rect.top) };
         })()`);
-        assert.equal(dayContained, true, 'Historical Day and Back fit the viewport');
+        assert.equal(dayLayout.contained, true, 'Historical Day and Back fit the viewport');
+        assert.equal(dayLayout.last, true, 'Back is the final Day analytics element');
+        assert.equal(dayLayout.afterAllInfo, true, 'Timeline, hourly totals and every Day metric precede Back in DOM and layout');
+        await render(`(() => {
+          const controls = [...document.querySelectorAll('#panel-day button, #panel-day input, #panel-day [tabindex]')]
+            .filter(control => control.id !== 'focus-score-back' && !control.disabled && control.tabIndex >= 0 && control.offsetParent !== null);
+          controls[controls.length - 1].focus({ preventScroll: true });
+        })()`);
+        await nativeKey('Tab');
+        assert.equal(await render(`document.activeElement?.id`), 'focus-score-back', 'Tab reaches Back after the Day information controls');
+        assert.equal(await render(`document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle !== 'none'`), true,
+          'Bottom Back retains a visible keyboard focus indicator in both themes');
+        await render(`document.getElementById('focus-score-back').scrollIntoView({ block: 'end' })`);
+        await render('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+        assert.equal(await render(`(() => {
+          const main = document.querySelector('.main').getBoundingClientRect();
+          const back = document.getElementById('focus-score-back').getBoundingClientRect();
+          return back.top >= main.top - 1 && back.bottom <= main.bottom + 1;
+        })()`), true, 'Bottom Back is reachable inside the scrolling viewport');
         if (width === 1040 && theme === 'midnight') {
-          await render(`document.querySelector('.main').scrollTop = 0`);
-          await render('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
           fs.writeFileSync(path.join(temporary, 'selected-day.png'), (await win.webContents.capturePage()).toPNG());
         }
         await back(scored.date, 'month');
@@ -271,7 +300,8 @@ app.whenReady().then(async () => {
           await render('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
           fs.writeFileSync(path.join(temporary, 'selected-month.png'), (await win.webContents.capturePage()).toPNG());
         }
-        layouts.push({ width, theme, gridContained: true, backContained: true, restoredScroll: true });
+        layouts.push({ width, theme, gridContained: true, backContained: true, backAfterAllInfo: true,
+          backKeyboardReachable: true, restoredScroll: true });
       }
     }
     console.log('Score navigation layouts:', JSON.stringify(layouts));

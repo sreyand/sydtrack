@@ -114,7 +114,9 @@ async function main() {
   assert.equal(h.tray.image.name, 'productive');
   assert.equal(h.tray.tooltip, 'sydtrack — Productive');
   assert.equal(h.tray.menu.filter(item => item.type !== 'separator').map(item => item.label).join('|'),
-    'Open sydtrack|Pause tracking|Pause for 15 minutes|Notifications|Quit');
+    'Open sydtrack|Pause tracking|Pause for|Notifications|Quit');
+  assert.equal(h.tray.menu.find(item => item.label === 'Pause for').submenu.map(item => item.label).join('|'),
+    '15 minutes|30 minutes|1 hour');
   const count = h.changes.length, tipCount = h.tooltips.length;
   for (let i = 0; i < 25; i++) h.sample(activity());
   assert.equal(h.changes.length, count, 'same category never swaps its image again');
@@ -150,8 +152,22 @@ async function main() {
   assert.equal(h.timers.size, 0);
   h.tray.menu.find(item => item.label === 'Resume tracking').click();
   assert.equal(h.tray.image.name, 'standard', 'resume does not reuse the pre-pause sample');
-  h.tray.menu.find(item => item.label === 'Pause for 15 minutes').click();
-  assert.ok(h.store.getSettings().trackingPauseUntil > Date.now());
+  const realNow = Date.now;
+  let pauseStartedAt = realNow();
+  try {
+    Date.now = () => pauseStartedAt;
+    for (const [label, minutes] of [['15 minutes', 15], ['30 minutes', 30], ['1 hour', 60], ['15 minutes', 15]]) {
+      const pauseMenu = h.tray.menu.find(item => item.label === 'Pause for');
+      assert.equal(pauseMenu.enabled, true, 'timed pause remains available while already paused');
+      pauseMenu.submenu.find(item => item.label === label).click();
+      assert.equal(h.store.getSettings().trackingPaused, true);
+      assert.equal(h.store.getSettings().trackingPauseUntil, pauseStartedAt + minutes * 60 * 1000,
+        'each duration starts or reschedules its deadline from the current time');
+      assert.equal(h.tray.image.name, 'standard');
+      assert.equal(h.timers.size, 0, 'timed pause clears live-category expiry');
+      pauseStartedAt += 60000;
+    }
+  } finally { Date.now = realNow; }
   h.tray.menu.find(item => item.label === 'Resume tracking').click();
   assert.equal(h.store.getSettings().trackingPauseUntil, 0, 'manual resume cancels the timed-pause deadline');
   h.refresh(); assert.equal(h.tray.image.name, 'standard');
@@ -185,7 +201,7 @@ async function main() {
   const mac = makeHarness({ platform: 'darwin' }); assert.ok(mac.tray.handlers.click); mac.destroy();
   const onboarding = makeHarness(); onboarding.setPrefs({ onboardingComplete: false }); onboarding.refresh();
   assert.equal(onboarding.tray.menu.find(item => item.label === 'Pause tracking').enabled, false);
-  assert.equal(onboarding.tray.menu.find(item => item.label === 'Pause for 15 minutes').enabled, false);
+  assert.equal(onboarding.tray.menu.find(item => item.label === 'Pause for').enabled, false);
   assert.equal(onboarding.tray.tooltip, 'sydtrack — Ready to start'); onboarding.destroy();
   for (const name of ['standard', 'other', 'productive', 'unproductive']) {
     const bytes = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'assets', 'tray', name + '.png'));

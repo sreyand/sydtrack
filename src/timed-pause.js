@@ -1,10 +1,14 @@
 'use strict';
 
-const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 const RECHECK_MS = 60 * 1000;
 
+function pauseForMinutes(minutes, now = Date.now()) {
+  if (![15, 30, 60].includes(minutes)) throw new Error('Pause duration must be 15, 30, or 60 minutes.');
+  return { trackingPaused: true, trackingPauseUntil: now + minutes * 60 * 1000 };
+}
+
 function pauseFor15Minutes(now = Date.now()) {
-  return { trackingPaused: true, trackingPauseUntil: now + FIFTEEN_MINUTES_MS };
+  return pauseForMinutes(15, now);
 }
 
 function createTimedPause({ getSettings, onExpire, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
@@ -33,4 +37,4 @@ function createTimedPause({ getSettings, onExpire, now = Date.now, setTimer = se
   return { sync, dispose };
 }
 
-module.exports = { pauseFor15Minutes, createTimedPause };
+module.exports = { pauseForMinutes, pauseFor15Minutes, createTimedPause };

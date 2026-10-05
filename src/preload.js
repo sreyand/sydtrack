@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('sydtrack', {
   resetBrowserKeywords: () => ipcRenderer.invoke('keywords:reset'),
   updateSettings: (partial) => ipcRenderer.invoke('settings:update', partial),
   pauseFor15Minutes: () => ipcRenderer.invoke('tracking:pause15'),
+  pauseForMinutes: (minutes) => ipcRenderer.invoke('tracking:pauseFor', minutes),
   previewClassification: (draft) => ipcRenderer.invoke('classification:preview', draft),
   exportData: (opts) => ipcRenderer.invoke('data:export', opts || {}),
   exportCsv: () => ipcRenderer.invoke('data:exportCsv'),

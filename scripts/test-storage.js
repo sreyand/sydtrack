@@ -21,6 +21,8 @@ const { buildCsvExport, importCsv } = require('../src/data-export');
 const { deleteAllMyData } = require('../src/data-ownership');
 const { createSessionManager } = require('../src/sessions');
 const { createFocusProfiles } = require('../src/focus-profiles');
+const { validateIpcPayload } = require('../src/ipc-validate');
+const { THEME_IDS } = require('../src/theme');
 const { writeDataset } = require('./generate-activity');
 
 let failed = 0;
@@ -84,10 +86,19 @@ function daysAgo(n) {
 (function themePreferences() {
   const dir = tmp('theme-preferences');
   try {
-    for (const theme of ['tide', 'linen', 'plum', 'midnight']) {
-      createStore(dir).updateSettings({ theme });
+    assert(createStore(dir).getSettings().theme === 'midnight', 'new appearance preferences still default to Midnight');
+    for (const theme of THEME_IDS) {
+      createStore(dir).updateSettings(validateIpcPayload('settings:update', { theme }));
       assert(createStore(dir).getSettings().theme === theme, theme + ' preference survives restart');
     }
+    const forestStore = createStore(dir);
+    forestStore.updateSettings(validateIpcPayload('settings:update', { theme: 'forest' }));
+    forestStore.updateSettings({ notificationsEnabled: false });
+    const savedSettings = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
+    assert(savedSettings.theme === 'forest', 'Forest is persisted by its stable theme id');
+    const forestRestart = createStore(dir, { onboardingForNewInstall: true }).getSettings();
+    assert(forestRestart.theme === 'forest' && forestRestart.notificationsEnabled === false,
+      'Forest survives unrelated settings saves and desktop restart');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

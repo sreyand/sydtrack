@@ -41,7 +41,7 @@ const { createStore } = require('./store');
 const { createTracker } = require('./tracker');
 const { createSessionManager } = require('./sessions');
 const { updateAppSettings } = require('./settings-service');
-const { pauseFor15Minutes, createTimedPause } = require('./timed-pause');
+const { pauseForMinutes, pauseFor15Minutes, createTimedPause } = require('./timed-pause');
 const {
   buildExport,
   importBackup,
@@ -795,6 +795,12 @@ ipcMain.handle('tracking:pause15', async (event, payload) => {
   guardIpc(event, 'tracking:pause15', payload);
   if (!store) return {};
   return applySettings(pauseFor15Minutes());
+});
+
+ipcMain.handle('tracking:pauseFor', async (event, payload) => {
+  const minutes = guardIpc(event, 'tracking:pauseFor', payload);
+  if (!store) return {};
+  return applySettings(pauseForMinutes(minutes));
 });
 
 ipcMain.handle('classification:preview', async (event, payload) => {

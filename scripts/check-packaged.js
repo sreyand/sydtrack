@@ -15,6 +15,11 @@ const workspace = path.resolve(__dirname, '..');
 const releaseRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-packaged-'));
 const sevenZip = path.join(workspace, 'node_modules', '7zip-bin', 'win', 'x64', '7za.exe');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const has25Features = releaseVersion => {
+  const [major, minor] = String(releaseVersion).split('.').map(Number);
+  return major > 2 || (major === 2 && minor >= 5);
+};
+const sha256 = content => crypto.createHash('sha256').update(content).digest('hex');
 
 function filesIn(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
@@ -34,10 +39,18 @@ function verifyPayload(dir) {
   const releaseFiles = ['src/classification-explanation.js', 'src/tray.js', 'src/tray-state.js',
     'renderer/category-explanation-ui.js', 'renderer/quick-corrections-ui.js',
     ...['standard', 'productive', 'unproductive', 'other'].map(name => `renderer/assets/tray/${name}.png`)];
+  // Feature requirements follow the archive version, not a hardcoded current
+  // palette or a blanket assertion against frozen pre-2.5 release payloads.
+  if (has25Features(packaged.version)) releaseFiles.push('renderer/schedule-time-ui.js', 'renderer/schedule-time.css',
+    'renderer/wellbeing-ui.js', 'renderer/lib/goals.js', 'renderer/lib/day-timeline.js', 'src/timed-pause.js');
   for (const file of releaseFiles) assert(entries.includes('/' + file), `Release feature included: ${file}`);
   const html = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
   assert(html.includes('<script src="../src/classification-explanation.js"></script>'), 'Shared explanation formatter loaded');
   assert(html.includes('<script src="category-explanation-ui.js"></script>'), 'Category explanation UI loaded');
+  if (has25Features(packaged.version)) {
+    assert(html.includes('<script src="schedule-time-ui.js"></script>'), 'Exact-minute schedule picker loaded');
+    assert(html.includes('<link rel="stylesheet" href="schedule-time.css" />'), 'Schedule picker stylesheet loaded');
+  }
   const sourceFiles = ['src', 'renderer'].flatMap(folder => filesIn(path.join(workspace, folder)));
   for (const file of sourceFiles) {
     const relative = path.relative(workspace, file);
@@ -53,7 +66,10 @@ function verifyPayload(dir) {
     fs.readFileSync(path.join(workspace, 'renderer', 'assets', 'sydtrack.ico'))), 'Windows shell icon included');
   return { version: packaged.version, sourceFiles: sourceFiles.length,
     releaseFiles: releaseFiles.length,
-    archiveSha256: crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex') };
+    archiveFiles: entries.filter(entry => !asar.statFile(archive, path.join(...entry.slice(1).split('/'))).files).length,
+    featureSha256: Object.fromEntries(releaseFiles.filter(file => /\.(js|css)$/.test(file))
+      .map(file => [file, sha256(asar.extractFile(archive, path.join(...file.split('/'))))])),
+    archiveSha256: sha256(fs.readFileSync(archive)) };
 }
 
 async function connect(url) {
@@ -96,7 +112,7 @@ async function connect(url) {
   };
 }
 
-async function launch(executable, userData, label, existing = false, expectedTotals = null) {
+async function launch(executable, userData, label, existing = false, expectedTotals = null, historicalDate = null) {
   const env = { ...process.env, SYDTRACK_DEMO: '1' };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(executable, ['--inspect-brk=127.0.0.1:0', '--hidden'], {
@@ -143,6 +159,161 @@ async function launch(executable, userData, label, existing = false, expectedTot
   }
   async function renderer(expression) {
     return evaluate(`globalThis.__packagedElectron.BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(${JSON.stringify(expression)})`);
+  }
+  async function waitFor(expression, message) {
+    // Poll from the diagnostic process: hidden production windows may throttle
+    // renderer timers, but should never need to become visible for this check.
+    for (let attempt = 0; attempt < 150; attempt++) {
+      if (await renderer(`Boolean(${expression})`)) return;
+      await pause(30);
+    }
+    throw new Error(`${label}: ${message}`);
+  }
+  async function verify25Settings() {
+    await renderer(`document.querySelector('.nav-btn[data-tab="settings"]').click();
+      document.querySelector('[data-settings-tab="notifications"]').click()`);
+    await renderer(`pushSettings({ focusBoostScheduleEnabled: true, focusBoostScheduleStart: '09:07', focusBoostScheduleEnd: '23:59' })`);
+    const scheduleStructure = await renderer(`(() => ({
+      module: typeof window.sydtrackScheduleTimeUI?.sync,
+      stylesheet: [...document.styleSheets].some(sheet => sheet.href === 'sydtrack://app/renderer/schedule-time.css' && sheet.cssRules.length > 0),
+      controls: ['start', 'end'].map(which => {
+        const input = document.getElementById('fb-schedule-' + which);
+        const trigger = document.getElementById(input.id + '-trigger');
+        const popover = document.getElementById(input.id + '-popover');
+        return { native: input.type, hidden: input.hidden && input.getClientRects().length === 0,
+          active: !trigger.hidden && !trigger.disabled, display: getComputedStyle(trigger).display,
+          linked: trigger.tagName === 'BUTTON' && trigger.type === 'button' && trigger.getAttribute('aria-haspopup') === 'dialog' &&
+            trigger.getAttribute('aria-controls') === popover.id && popover.getAttribute('role') === 'dialog',
+          minutes: [...popover.querySelectorAll('[data-time-unit="minute"] [data-time-option]')].map(option => Number(option.dataset.timeOption)) };
+      })
+    }))()`);
+    assert.equal(scheduleStructure.module, 'function', 'Schedule picker actually instantiated through production protocol');
+    assert.equal(scheduleStructure.stylesheet, true, 'Schedule stylesheet actually parsed through production protocol');
+    for (const control of scheduleStructure.controls) {
+      assert.equal(control.native, 'time'); assert.equal(control.hidden, true); assert.equal(control.active, true);
+      assert.equal(control.linked, true); assert.notEqual(control.display, 'none');
+      assert.deepEqual(control.minutes, Array.from({ length: 60 }, (_, minute) => minute), 'All exact minutes are available');
+    }
+    for (const [which, time] of [['start', '23:47'], ['end', '00:03']]) {
+      const selected = await renderer(`(() => {
+        const id = 'fb-schedule-${which}';
+        const input = document.getElementById(id), trigger = document.getElementById(id + '-trigger');
+        trigger.click();
+        const popover = document.getElementById(id + '-popover');
+        if (popover.hidden || trigger.getAttribute('aria-expanded') !== 'true') throw Error('Packaged time picker did not open');
+        const period = popover.querySelector('[data-time-unit="period"]');
+        const [hour, minute] = ${JSON.stringify(time)}.split(':').map(Number);
+        const units = { hour: period ? hour % 12 || 12 : hour, minute, period: hour >= 12 ? 1 : 0 };
+        const before = input.value;
+        for (const [unit, value] of Object.entries(units)) {
+          const group = popover.querySelector('[data-time-unit="' + unit + '"]');
+          group?.querySelector('[data-time-option="' + value + '"]').click();
+        }
+        const draftOnly = input.value === before;
+        popover.querySelector('[data-time-action="save"]').click();
+        return draftOnly;
+      })()`);
+      assert.equal(selected, true, 'Schedule draft does not replace confirmed time before save');
+      await waitFor(`document.getElementById('fb-schedule-${which}-trigger').dataset.time === ${JSON.stringify(time)} &&
+        !document.getElementById('fb-schedule-${which}-trigger').disabled`, 'Exact-minute schedule commit did not settle');
+      const settings = (await renderer('window.sydtrack.getState()')).stats.settings;
+      assert.equal(settings[which === 'start' ? 'focusBoostScheduleStart' : 'focusBoostScheduleEnd'], time, 'Exact minute saved through production preload/IPC');
+      assert.equal(await renderer(`(() => {
+        const [hour, minute] = ${JSON.stringify(time)}.split(':').map(Number);
+        return document.getElementById('fb-schedule-${which}-value').textContent ===
+          new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(2000, 0, 1, hour, minute));
+      })()`), true, 'Trigger localizes the exact saved time');
+    }
+    await renderer('pushSettings({ focusBoostScheduleEnabled: false })');
+    assert.equal(await renderer(`['start', 'end'].every(which => document.getElementById('fb-schedule-' + which).disabled &&
+      document.getElementById('fb-schedule-' + which + '-trigger').disabled)`), true, 'Schedule off disables both backing inputs and custom controls');
+
+    await renderer(`document.querySelector('[data-settings-tab="wellbeing"]').click(); pushSettings({ breakReminderEnabled: false })`);
+    const breaks = await renderer(`(() => {
+      const field = document.getElementById('break-reminder-field'), minutes = document.getElementById('break-reminder-minutes');
+      return { inline: field.contains(minutes) && field.contains(document.getElementById('break-reminder-label')) &&
+        field.contains(document.getElementById('break-reminder-unit')) && getComputedStyle(field).display === 'flex',
+        regular: getComputedStyle(document.getElementById('break-reminder-label')).fontWeight === '400',
+        noHint: !document.getElementById('settings-breaks').querySelector('.hint'), disabled: minutes.disabled };
+    })()`);
+    for (const [name, passed] of Object.entries(breaks)) assert.equal(passed, true, `Inline Breaks ${name}`);
+    await renderer(`document.getElementById('break-reminder-toggle').click()`);
+    await waitFor(`!document.getElementById('break-reminder-minutes').disabled && latestGoalSettings.breakReminderEnabled === true`, 'Break minute input did not enable');
+    await renderer(`(() => { const input = document.getElementById('break-reminder-minutes'); input.value = '75'; input.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await waitFor('latestGoalSettings.breakReminderMinutes === 75', 'Break minutes did not save');
+    assert.equal((await renderer('window.sydtrack.getState()')).stats.settings.breakReminderMinutes, 75);
+    await renderer(`document.getElementById('break-reminder-toggle').click()`);
+    await waitFor(`document.getElementById('break-reminder-minutes').disabled && latestGoalSettings.breakReminderEnabled === false`, 'Break minute input did not disable');
+
+    await renderer(`document.querySelector('[data-settings-tab="tracking"]').click()`);
+    assert.equal(await renderer(`!document.getElementById('pause-15-btn') && !document.querySelector('#pause-settings-btn.power-btn')`), true, 'Old redundant pause controls are absent');
+    const choices = await renderer(`[...document.querySelectorAll('#pause-settings-menu button')].map(button => ({ minutes: Number(button.dataset.pauseMinutes), role: button.getAttribute('role'), type: button.type }))`);
+    assert.deepEqual(choices.map(choice => choice.minutes), [15, 30, 60, 0]);
+    assert(choices.every(choice => choice.role === 'menuitem' && choice.type === 'button'), 'Pause choices are native accessible menu buttons');
+    for (const minutes of [15, 30, 60]) {
+      // Main tracking remains paused throughout. Only synthesize the live UI
+      // state needed to select another duration; never resume or probe a window.
+      assert.equal((await renderer('window.sydtrack.getState()')).stats.settings.trackingPaused, true);
+      await renderer(`applySettingsInputs({ ...latestGoalSettings, trackingPaused: false, trackingPauseUntil: 0 });
+        document.getElementById('pause-settings-btn').click()`);
+      assert.equal(await renderer(`!document.getElementById('pause-settings-menu').classList.contains('hidden') &&
+        document.getElementById('pause-settings-btn').getAttribute('aria-expanded') === 'true'`), true, 'Production pause menu opens');
+      const startedAt = Date.now();
+      await renderer(`document.querySelector('#pause-settings-menu [data-pause-minutes="${minutes}"]').click()`);
+      await waitFor(`!pauseActionBusy && latestGoalSettings.trackingPaused === true &&
+        Math.abs(latestGoalSettings.trackingPauseUntil - ${startedAt + minutes * 60000}) < 10000`, 'Timed pause choice did not reach production settings');
+      const pausedSettings = (await renderer('window.sydtrack.getState()')).stats.settings;
+      assert.equal(pausedSettings.trackingPaused, true);
+      assert(Math.abs(pausedSettings.trackingPauseUntil - (startedAt + minutes * 60000)) < 10000, 'Timed pause duration is exact');
+      assert.equal(await renderer(`document.getElementById('pause-settings-label').textContent === 'Resume tracking' &&
+        !document.getElementById('pause-settings-btn').hasAttribute('aria-haspopup') &&
+        document.getElementById('pause-settings-menu').classList.contains('hidden') &&
+        document.getElementById('pause-until-status').textContent.includes('Resumes at') &&
+        document.getElementById('pause-btn').dataset.paused === 'on'`), true, 'Timed pause synchronizes Settings and sidebar without a paused menu');
+    }
+    const legacy = await renderer('window.sydtrack.pauseFor15Minutes()');
+    assert.equal(legacy.trackingPaused, true);
+    assert(Math.abs(legacy.trackingPauseUntil - (Date.now() + 15 * 60000)) < 10000, 'Legacy 15-minute preload bridge remains functional');
+    await renderer(`applySettingsInputs({ ...latestGoalSettings, trackingPaused: false, trackingPauseUntil: 0 });
+      document.getElementById('pause-settings-btn').click();
+      document.querySelector('#pause-settings-menu [data-pause-minutes="0"]').click()`);
+    await waitFor('!pauseActionBusy && latestGoalSettings.trackingPaused === true && latestGoalSettings.trackingPauseUntil === 0', 'Indefinite pause did not clear the deadline');
+    await renderer(`document.querySelector('[data-theme-id="forest"]').click()`);
+    await waitFor(`latestGoalSettings.theme === 'forest' && document.documentElement.dataset.theme === 'forest'`, 'Forest theme did not save');
+    const persisted = (await renderer('window.sydtrack.getState()')).stats.settings;
+    assert.equal(persisted.theme, 'forest'); assert.equal(persisted.trackingPaused, true); assert.equal(persisted.trackingPauseUntil, 0);
+    assert.equal(persisted.focusBoostScheduleStart, '23:47'); assert.equal(persisted.focusBoostScheduleEnd, '00:03');
+    console.log(`${label}: packaged 2.5 Settings passed: precise overnight schedule, inline Breaks, timed/legacy pause, and Forest save`);
+  }
+  async function verify25ScoreNavigation(date) {
+    const timeline = await renderer(`window.sydtrack.getTimelineDay(${JSON.stringify(date)})`);
+    assert.equal(timeline.date, date);
+    assert.deepEqual(timeline.byCategory, { productive: 3600, unproductive: 1200, other: 600 }, 'Historical fixture loads through real production preload');
+    for (const period of ['week', 'month']) {
+      const selector = `[data-score-date="${date}"][data-score-period="${period}"]`;
+      await renderer(`document.querySelector('.nav-btn[data-tab="analytics"]').click(); setAnalyticsSegment(${JSON.stringify(period)})`);
+      await waitFor(`document.querySelector(${JSON.stringify(selector)})`, `${period} historical score tile did not load`);
+      assert.equal(await renderer(`(() => {
+        const tile = document.querySelector(${JSON.stringify(selector)});
+        return tile.tagName === 'BUTTON' && tile.type === 'button' && !tile.disabled && tile.textContent.includes('75%') &&
+          tile.getAttribute('aria-label').includes(${JSON.stringify(date)});
+      })()`), true, 'Historical focusscore tile is accessible and uses actual stored totals');
+      await renderer(`document.querySelector(${JSON.stringify(selector)}).click()`);
+      await waitFor(`analyticsSegment === 'day' && timelineDayData?.date === ${JSON.stringify(date)} &&
+        timelineDayData.byCategory.productive === 3600 && timelineDayData.byCategory.unproductive === 1200 &&
+        timelineDayData.byCategory.other === 600 && !document.getElementById('timeline-precision').textContent.includes('Loading')`,
+      'Score click did not finish loading historical Day Analytics');
+      assert.equal(await renderer(`document.getElementById('timeline-date').value === ${JSON.stringify(date)} &&
+        document.getElementById('day-total').textContent === '1 hour 30 minutes' &&
+        document.getElementById('day-focus-share').textContent === '75%' &&
+        !document.getElementById('focus-score-back').classList.contains('hidden') && timelineFollowsToday === false`), true, 'Drill-down retains selected date and metrics');
+      await renderer(`document.getElementById('focus-score-back').click()`);
+      await waitFor(`analyticsSegment === ${JSON.stringify(period)} &&
+        document.activeElement?.matches(${JSON.stringify(selector)}) && document.activeElement.dataset.selected === 'true'`, 'Back did not restore selected source tile and keyboard focus');
+      assert.equal(await renderer(`document.getElementById('focus-score-back').classList.contains('hidden')`), true);
+    }
+    assert.equal(await renderer(`openFocusScoreDay('2000-02-30', 'month')`), false, 'Invalid historical date is rejected');
+    console.log(`${label}: packaged focusscore Week/Month → stored historical Day → selected source tile passed`);
   }
   async function verifyReleaseUI(correction, grouped, activeProfile) {
     // Render only known synthetic metadata, with tracking already paused. The
@@ -263,7 +434,11 @@ async function launch(executable, userData, label, existing = false, expectedTot
     await inspector.request('Debugger.resume');
     for (let i = 0; i < 100; i++) {
       const ready = await evaluate(`(() => {
-        const w = globalThis.__packagedElectron.BrowserWindow.getAllWindows()[0];
+        const windows = globalThis.__packagedElectron.BrowserWindow;
+        // Inspector evaluation can interrupt Electron while this lazy export
+        // is still initializing. Wait for the public method before calling it.
+        if (typeof windows?.getAllWindows !== 'function') return false;
+        const w = windows.getAllWindows()[0];
         return !!w && !w.webContents.isLoading() && w.webContents.getURL().startsWith('sydtrack://');
       })()`);
       if (ready) break;
@@ -272,6 +447,9 @@ async function launch(executable, userData, label, existing = false, expectedTot
     }
     const state = await renderer(`window.sydtrack.getState()`);
     console.log(`${label}: production preload and state IPC responded`);
+    const packagedVersion = await evaluate(`process.mainModule.require(globalThis.__packagedElectron.app.getAppPath() + '/package.json').version`);
+    const features25 = has25Features(packagedVersion);
+    assert.equal(state.stats.settings.trackingPaused, true, 'Actual tracking stays paused before feature checks');
     const rendererModules = await renderer(`(() => ({
       page: location.href,
       formatter: typeof window.sydtrackClassificationExplanation?.formatExplanation,
@@ -286,12 +464,27 @@ async function launch(executable, userData, label, existing = false, expectedTot
     for (const file of ['src/classification-explanation.js', 'renderer/category-explanation-ui.js', 'renderer/quick-corrections-ui.js']) {
       assert(rendererModules.scripts.includes('sydtrack://app/' + file), `Renderer script uses production protocol: ${file}`);
     }
+    if (features25) {
+      for (const file of ['renderer/schedule-time-ui.js', 'renderer/wellbeing-ui.js', 'renderer/lib/goals.js', 'renderer/lib/day-timeline.js']) {
+        assert(rendererModules.scripts.includes('sydtrack://app/' + file), `2.5 renderer script uses production protocol: ${file}`);
+      }
+      assert.equal(await renderer(`typeof window.sydtrackScheduleTimeUI?.sync === 'function' &&
+        typeof openFocusScoreDay === 'function' && typeof renderMonthFocusScores === 'function'`), true, '2.5 modules actually execute through production protocol');
+    }
     assert.equal(state.stats.settings.onboardingComplete, existing, 'Fresh/returning onboarding state');
     assert.equal(state.stats.settings.updateChecksEnabled, false, 'Network checks default off');
     const updates = await renderer(`window.sydtrack.getUpdates()`);
     assert.equal(updates.currentVersion, version);
     const themes = await renderer(`[...document.querySelectorAll('[data-theme-id]')].map(b => b.dataset.themeId)`);
-    assert.equal(themes.length, 8);
+    // The archive owns its supported palette, including frozen releases whose
+    // theme set differs from current source. Detect omissions and duplicates.
+    const packagedThemeIds = await evaluate(`process.mainModule.require(globalThis.__packagedElectron.app.getAppPath() + '/src/theme.js').THEME_IDS`);
+    assert(Array.isArray(packagedThemeIds) && packagedThemeIds.length > 0, 'Packaged theme list exists');
+    assert.deepEqual([...themes].sort(), [...packagedThemeIds].sort(), 'Appearance exposes each packaged theme exactly once');
+    if (features25) {
+      assert.equal(packagedThemeIds.length, 9, '2.5 includes nine built-in appearances');
+      assert(packagedThemeIds.includes('forest'), '2.5 includes Forest');
+    }
     const security = await evaluate(`globalThis.__packagedElectron.BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences()`);
     assert.equal(security.contextIsolation, true); assert.equal(security.sandbox, true); assert.equal(security.nodeIntegration, false);
     const trayImages = await evaluate(`(() => {
@@ -328,13 +521,27 @@ async function launch(executable, userData, label, existing = false, expectedTot
       await renderer(`window.sydtrack.undoCorrection(${JSON.stringify(grouped.undoToken)})`);
       await renderer(`window.sydtrack.undoCorrection(${JSON.stringify(correction.undoToken)})`);
       assert(!(await renderer(`window.sydtrack.getRules()`)).productive.includes('release smoke example'));
+      if (features25) await verify25Settings();
       const network = await renderer(`window.sydtrack.checkUpdates()`);
       assert.equal(network.currentVersion, version);
       assert(['current', 'available', 'unavailable'].includes(network.phase));
       console.log(`${label}: manual update check:`, JSON.stringify(network));
     } else {
-      assert.equal(state.stats.settings.theme, 'linen', 'Theme survives packaged restart');
+      assert.equal(state.stats.settings.theme, features25 ? 'forest' : 'linen', 'Theme survives packaged restart');
       assert.equal(state.stats.settings.trackingPaused, true, 'Pause survives packaged restart');
+      if (features25) {
+        assert.equal(state.stats.settings.trackingPauseUntil, 0, 'Indefinite pause survives packaged restart');
+        assert.equal(state.stats.settings.focusBoostScheduleStart, '23:47', 'Exact overnight start survives packaged restart');
+        assert.equal(state.stats.settings.focusBoostScheduleEnd, '00:03', 'Exact overnight end survives packaged restart');
+        assert.equal(state.stats.settings.focusBoostScheduleEnabled, false, 'Schedule disabled state survives packaged restart');
+        assert.equal(state.stats.settings.breakReminderMinutes, 75, 'Break minutes survive packaged restart');
+        assert.equal(state.stats.settings.breakReminderEnabled, false, 'Break disabled state survives packaged restart');
+        assert.equal(await renderer(`document.documentElement.dataset.theme === 'forest' &&
+          ['start', 'end'].every(which => document.getElementById('fb-schedule-' + which).hidden &&
+            !document.getElementById('fb-schedule-' + which + '-trigger').hidden &&
+            document.getElementById('fb-schedule-' + which + '-trigger').disabled &&
+            document.getElementById('fb-schedule-' + which + '-trigger').dataset.time === (which === 'start' ? '23:47' : '00:03'))`), true, 'Restart initializes themed custom controls from confirmed archived settings');
+      }
       assert(!(await renderer(`window.sydtrack.getRules()`)).productive.includes('release smoke example'), 'Undo persists');
       assert.deepEqual(state.stats.byCategory, expectedTotals, 'Existing fixture history is preserved');
       const row = state.stats.activityRows.find(entry => entry.reason === 'release smoke page');
@@ -344,6 +551,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
       assert.equal(corrected.stats.byCategory.other, expectedTotals.other, 'Unrelated browser time is unchanged');
       const undone = await renderer(`window.sydtrack.undoCorrection(${JSON.stringify(corrected.undoToken)})`);
       assert.deepEqual(undone.stats.byCategory, expectedTotals, 'Analytics Undo restores fixture totals');
+      if (features25) await verify25ScoreNavigation(historicalDate);
     }
     console.log(`${label}: ${existing ? 'restart persistence' : 'fresh onboarding, sandbox, preload IPC, rules, Undo'} passed`);
     await evaluate('globalThis.__packagedElectron.app.quit()').catch(() => {});
@@ -364,6 +572,10 @@ async function run() {
     const destination = path.join(releaseRoot, kind);
     fs.mkdirSync(destination);
     const artifact = path.join(workspace, 'dist', `sydtrack-${version}-${kind}.exe`);
+    assert(fs.existsSync(sevenZip), 'Bundled 7-Zip extractor is available');
+    assert(fs.existsSync(artifact), `Release artifact exists: ${artifact}`);
+    console.log(`${kind} artifact:`, JSON.stringify({ name: path.basename(artifact), bytes: fs.statSync(artifact).size,
+      sha256: sha256(fs.readFileSync(artifact)) }));
     const extracted = spawnSync(sevenZip, ['x', artifact, `-o${destination}`, '-y'], { windowsHide: true, encoding: 'utf8' });
     assert.equal(extracted.status, 0, extracted.stderr || extracted.stdout);
     const payload = verifyPayload(destination);
@@ -377,7 +589,20 @@ async function run() {
     fixture.addSeconds('Chrome', 'productive', 90, { category: 'productive', reason: 'release smoke page' });
     fixture.addSeconds('Chrome', 'other', 45, { category: 'other', reason: 'No matching keyword' });
     fixture.addSeconds('Code', 'unproductive', 30, { category: 'unproductive', reason: 'release smoke native' });
-    await launch(executable, userData, kind, true, fixture.snapshot().byCategory);
+    let historicalDate = null;
+    if (has25Features(payload.version)) {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 9).getTime();
+      historicalDate = require('../src/store').todayKey(start);
+      let at = start;
+      for (const [category, seconds] of Object.entries({ productive: 3600, unproductive: 1200, other: 600 })) {
+        fixture.addInterval('Synthetic historical app', category, at, at + seconds * 1000,
+          { category, reason: 'release historical fixture' }, 'default');
+        at += seconds * 1000;
+      }
+      fixture.updateSettings({ focusShareIncludeOther: false });
+    }
+    await launch(executable, userData, kind, true, fixture.snapshot().byCategory, historicalDate);
   }
   console.log('Packaged checks passed. Extracted payloads were launched; installer/portable wrappers were not executed.');
   console.log('Temporary diagnostic artifacts:', releaseRoot);

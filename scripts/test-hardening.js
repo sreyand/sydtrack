@@ -68,6 +68,7 @@ assert(windowBackgroundColor(false) === WINDOW_BACKGROUND_LIGHT, 'boolean light 
 assert(windowBackgroundColor('graphite') === '#F4F5F7', 'graphite theme uses its canvas');
 assert(windowBackgroundColor('midnight') === '#0E1116', 'midnight theme uses its canvas');
 assert(windowBackgroundColor('dusk') === '#2B2A33', 'dusk theme uses its canvas');
+assert(windowBackgroundColor('forest') === '#111B16', 'forest theme uses its green-black canvas');
 assert(buildBrowserWindowOptions({
   preloadPath: preload,
   backgroundColor: windowBackgroundColor('graphite')
@@ -80,6 +81,14 @@ const winChrome = buildBrowserWindowOptions({
 });
 assert(winChrome.titleBarStyle === 'hidden', 'Windows removes the stock Electron title strip');
 assert(winChrome.titleBarOverlay.color === '#FBF6F3' && winChrome.titleBarOverlay.symbolColor === '#2B2320', 'Windows controls follow the active theme');
+const forestChrome = buildBrowserWindowOptions({
+  preloadPath: preload,
+  platform: 'win32',
+  theme: 'forest',
+  backgroundColor: windowBackgroundColor('forest')
+});
+assert(forestChrome.backgroundColor === '#111B16' && forestChrome.titleBarOverlay.color === '#111B16' &&
+  forestChrome.titleBarOverlay.symbolColor === '#EDF1E6', 'Forest window fill and Windows controls use its palette');
 assert(titleBarOverlayForTheme('midnight').height === 32, 'custom title chrome uses the compact 32px control height');
 
 assert(CONTENT_SECURITY_POLICY.includes("default-src 'self'"), 'CSP default-src is self');
@@ -93,6 +102,7 @@ assert(!/<(?:script|link|img|iframe)\b[^>]+\b(?:src|href)=['"]https?:/i.test(htm
 assert(!/fonts\.googleapis|fontshare\.com|cdn\./i.test(html), 'renderer HTML has no font CDN');
 assert(DEFAULT_THEME === 'midnight', 'unset theme preference is Midnight');
 assert(normalizeTheme(undefined) === 'midnight' && normalizeTheme(null) === 'midnight', 'missing theme normalizes to Midnight');
+assert(normalizeTheme('forest') === 'forest' && isDarkTheme('forest'), 'Forest is a recognized dark appearance, not the fallback theme');
 assert(defaultSettings().theme === 'midnight', 'new installs default to Midnight');
 assert(defaultSettings().launchAtStartup === true, 'new installs open at login by default');
 assert(/data-theme="midnight"/.test(html), 'renderer first paint uses Midnight');
@@ -132,8 +142,26 @@ assert(!wellbeingUi.includes('of active tracked time today'), 'app hour-breakdow
 const rendererJs = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'renderer.js'), 'utf8');
 const rendererThemeIds = JSON.parse(rendererJs.match(/const THEME_IDS = (\[[^;]+\])/)[1].replace(/'/g, '"'));
 const pickerThemeIds = [...html.matchAll(/data-theme-id="([^"]+)"/g)].map(match => match[1]);
+const darkestToLightest = ['midnight', 'tide', 'plum', 'forest', 'dusk', 'linen', 'graphite', 'coral', 'starlight'];
 assert(JSON.stringify([...rendererThemeIds].sort()) === JSON.stringify([...THEME_IDS].sort()), 'renderer recognizes every supported theme');
 assert(JSON.stringify([...pickerThemeIds].sort()) === JSON.stringify([...THEME_IDS].sort()), 'Appearance exposes each supported theme exactly once');
+assert(JSON.stringify(THEME_IDS) === JSON.stringify(darkestToLightest), 'native theme catalog keeps the agreed darkest-to-lightest order');
+assert(JSON.stringify(rendererThemeIds) === JSON.stringify(darkestToLightest), 'renderer theme catalog follows the darkest-to-lightest order');
+assert(JSON.stringify(pickerThemeIds) === JSON.stringify(darkestToLightest), 'Appearance picker follows the darkest-to-lightest order');
+assert(/data-theme-id="forest"[^>]*aria-pressed="false"[^>]*>Forest<\/button>/.test(html), 'Appearance exposes Forest without changing the Midnight default');
+function canvasLuminance(hex) {
+  const linear = hex.slice(1).match(/../g).map((channel) => {
+    const srgb = parseInt(channel, 16) / 255;
+    return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+  });
+  return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+}
+for (let i = 1; i < THEME_IDS.length; i += 1) {
+  const previous = THEME_IDS[i - 1];
+  const current = THEME_IDS[i];
+  assert(canvasLuminance(THEMES[previous].canvas) <= canvasLuminance(THEMES[current].canvas),
+    previous + ' canvas is no lighter than ' + current + ' canvas');
+}
 assert(!rendererJs.includes('app-hours-btn') && !rendererJs.includes('>Hours</button>'), 'Apps Hours control is fully gone');
 assert(/#view-analytics \.analytics-toolbar \.segment-btn\.active[\s\S]{0,160}font-weight:\s*700/.test(homeCss), 'Analytics active tab is Satoshi 700');
 assert(/#view-analytics \.analytics-toolbar \.segment-btn\.active[\s\S]{0,200}var\(--color-accent\)/.test(homeCss), 'Analytics active tab uses the accent token');
@@ -143,6 +171,25 @@ assert(!rendererJs.includes('fmtPieDuration'), 'Home donut no longer uses the po
 assert(rendererJs.includes(".app-trunc, .has-tip"), 'existing name-tip also opens for has-tip cards');
 assert(html.includes('theme.css'), 'renderer loads the local theme sheet');
 assert(html.includes('settings-block-title'), 'Goals settings-block-title is preserved');
+assert(!/<div\s+class="settings-block-title">(?:Polling|Idle|Reminders|Messages)<\/div>/.test(html),
+  'Settings omit redundant section headings while retaining their field labels');
+assert(/<div\s+class="settings-block-title">Daily goals<\/div>/.test(html) &&
+  /<div\s+class="settings-block-title">Breaks<\/div>/.test(html), 'Wellbeing retains the two useful sentence-case section headings');
+assert(!/<label[^>]*for="profile-shortcut"[^>]*class="settings-block-title"/.test(html),
+  'Focus profile hotswap is a field label, not a section heading');
+assert(/<label[^>]*for="profile-shortcut"[^>]*class="settings-field-label"[^>]*>Focus profile hotswap<\/label>/.test(html),
+  'Focus profile hotswap keeps its associated semantic field label');
+assert(/class="switch-row break-reminder-row"/.test(html), 'Breaks uses one switch row for its sentence, minutes and enable toggle');
+assert(html.includes('Remind me to take a break after') && !html.includes('After (minutes)') &&
+  !html.includes('Resets after a pause or 5 idle minutes.'), 'Breaks replaces the extra After row and reset hint with one sentence');
+assert(/<label[^>]*id="break-reminder-field"[^>]*for="break-reminder-minutes"/.test(html),
+  'Inline break minutes retain an associated label');
+assert(/id="break-reminder-minutes"[^>]*aria-labelledby="break-reminder-label break-reminder-unit"/.test(html),
+  'Break minutes accessible name includes the sentence and minutes unit');
+assert(/id="break-reminder-toggle"[^>]*aria-label="Enable break reminders"/.test(html), 'Break toggle retains its own accessible name');
+for (const id of ['poll-mode', 'idle-timeout-min', 'threshold-min', 'focusboost-min', 'reminder-message', 'focusboost-message']) {
+  assert(html.includes('id="' + id + '"'), id + ' remains available after heading cleanup');
+}
 const satoshiDir = path.join(__dirname, '..', 'renderer', 'fonts', 'satoshi');
 for (const cut of ['Light', 'Regular', 'Medium', 'Bold', 'Black']) {
   assert(fs.existsSync(path.join(satoshiDir, 'Satoshi-' + cut + '.woff2')), 'Satoshi ' + cut + ' woff2 is bundled');
@@ -158,6 +205,10 @@ for (const id of THEME_IDS) {
   const block = themeCss.match(new RegExp('\\[data-theme="' + id + '"\\]\\s*\\{([^}]+)\\}'))[1];
   for (const [field, token] of Object.entries(themeTokens)) {
     assert(block.includes('--color-' + token + ': ' + THEMES[id][field] + ';'), id + ' ' + field + ' matches native palette');
+  }
+  if (id === 'forest') {
+    assert(block.includes('--color-ink-muted: ' + THEMES.forest.inkMuted + ';'), 'Forest muted text matches its palette');
+    assert(block.includes('--color-ink-faint: ' + THEMES.forest.inkFaint + ';'), 'Forest faint text matches its palette');
   }
   assert(block.includes('color-scheme: ' + (isDarkTheme(id) ? 'dark' : 'light')), id + ' native and renderer color schemes agree');
   assert(normalizeTheme(id) === id, id + ' survives normalization');

@@ -31,6 +31,7 @@ const CHANNELS = [
   'updates:check',
   'updates:openRelease',
   'tracking:pause15',
+  'tracking:pauseFor',
   'classification:preview',
   'data:export',
   'data:exportCsv',
@@ -164,6 +165,12 @@ function activityCorrection(payload) {
 function undoToken(payload) {
   if (typeof payload !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(payload)) invalid();
   return payload;
+}
+
+function pauseMinutes(value) {
+  const minutes = finiteInt(value, 15, 60);
+  if (![15, 30, 60].includes(minutes)) invalid();
+  return minutes;
 }
 
 function quickRule(payload) {
@@ -415,6 +422,7 @@ const VALIDATORS = {
   'updates:check': noPayload,
   'updates:openRelease': noPayload,
   'tracking:pause15': noPayload,
+  'tracking:pauseFor': pauseMinutes,
   'classification:preview': classificationPreview,
   'data:export': dataExport,
   'data:exportCsv': noPayload,

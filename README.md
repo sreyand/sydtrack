@@ -5,12 +5,12 @@
     <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
-    <a href="docs/release-notes-2.4.0.md">What’s new in v2.4.0</a>
+    <a href="docs/release-notes-2.5.0.md">What’s new in v2.5.0</a>
   </p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
-    <img alt="Version 2.4.0" src="https://img.shields.io/badge/version-2.4.0-8B7CF6?style=flat-square">
+    <img alt="Version 2.5.0" src="https://img.shields.io/badge/version-2.5.0-8B7CF6?style=flat-square">
     <img alt="GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-EF6A6A?style=flat-square">
   </p>
 </div>
@@ -23,11 +23,13 @@ sydtrack watches the app in front of you, classifies the time, and turns the res
 | --- | --- |
 | **Live daily view** | Productive, unproductive, and uncategorized time update as you work. The total advances smoothly every second. |
 | **Focus profiles** | Switch between General, Coding, Writing, Study, and Creative without rebuilding your tags every time your work changes. |
-| **Useful analytics** | Inspect category trends, an activity timeline, app-by-app time for day/week/month, and lifetime totals. Older days keep compact local summaries after detailed history expires. |
+| **Useful analytics** | Open a focusscore day for its timeline and app-by-app time, or review Week, Month, and lifetime totals. Older days keep compact local summaries after detailed history expires. |
 | **Focus sessions** | Run Pomodoro, Deep Work, or a custom timer with session history and distraction counts. |
-| **FocusBoost** | Use a shorter reminder threshold when you want sydtrack to interrupt a distraction sooner. Optional schedules can arm it automatically. |
+| **FocusBoost** | Use a shorter reminder threshold when you want sydtrack to interrupt a distraction sooner. Optional schedules can arm it automatically, with themed, exact-minute time controls. |
 | **Daily goals** | Set a productive-time share target and, if useful, a limit for total active screen time. |
-| **Optional break nudges** | A configurable notification after a long stretch of active tracking, off by default. Pausing or five idle minutes resets the stretch. |
+| **Optional break nudges** | A configurable notification after a long stretch of active tracking, off by default. |
+| **Flexible pauses** | Pause for 15 minutes, 30 minutes, or an hour, with automatic resume—or pause until you choose to resume. |
+| **Nine appearances** | Choose a built-in palette, including Forest, with choices arranged from dark to light. |
 | **Simple first run** | Choose a starting profile and decide whether sydtrack opens at sign-in. Tracking stays paused until you press Start. |
 
 ## Built to work on day one
@@ -69,12 +71,12 @@ Changing profiles affects future tracking; it does not rewrite history. Analytic
 
 sydtrack currently targets **Windows 10/11 x64**.
 
-- `sydtrack-2.4.0-setup.exe` — standard installer
-- `sydtrack-2.4.0-portable.exe` — run without installation
+- `sydtrack-2.5.0-setup.exe` — standard installer
+- `sydtrack-2.5.0-portable.exe` — run without installation
 
-Version 2.4.0 is prepared locally; publication is pending. Its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds.
+Version 2.5.0 is prepared and automatically checked locally; manual acceptance and publication are pending. Its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds. The [release validation report](docs/release-validation-2.5.0.md) records package checks and remaining manual acceptance.
 
-**In v2.4.0:** a colored tray logo shows the live category, a simpler tray menu and compact Home controls keep routine actions close, and **Why this category?** explains the rule behind Last focused. These changes use existing tracking decisions without adding data collection.
+**In v2.5.0:** clickable focusscore days connect the big picture to Day Analytics, flexible pauses keep breaks simple, and Forest plus cleaner Settings make the everyday controls feel more consistent.
 
 Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
 
@@ -89,7 +91,17 @@ Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/r
 
 On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memory** and an estimated **~1% total CPU** with the 3-second tracking cadence. The short Windows foreground probe accounts for most of that CPU time; results will vary with the machine and other activity.
 
-## What’s new in v2.4.0
+## What’s new in v2.5.0
+
+- Click a day in Week or Month focusscore to open Analytics for that exact date. **Back to focusscore**, below the day’s information, restores the original grid, focused day, and scroll position.
+- **Pause for…** offers 15 minutes, 30 minutes, 1 hour, or **Until I resume**. The same Settings control becomes **Resume** while paused; the sidebar shows a timed-pause countdown, and the tray offers the three timed durations.
+- Forest adds evergreen surfaces, sage accents, and ivory text. The nine choices run dark to light: Midnight, Tide, Plum, Forest, Dusk, Linen, Graphite, Coral, Starlight. Existing appearance preferences are preserved.
+- FocusBoost schedule controls now match the app’s dropdowns. Choose an exact hour and minute, then **Set time**; **Cancel** leaves the saved time unchanged. Display follows the locale’s 12- or 24-hour format.
+- Settings has tighter spacing, fewer redundant section headings, and one compact **Remind me to take a break after [minutes] minutes** row. Break reset behavior is documented below rather than repeated in the UI.
+
+Read the [v2.5.0 release notes](docs/release-notes-2.5.0.md) for upgrade details and [ITERATION.md](ITERATION.md) for the implementation handoff and remaining limitations.
+
+## What changed in v2.4.0
 
 - The tray logo is green for Productive, red for Unproductive, and gray for Other. It returns to the standard black logo for paused, idle, ignored, or unavailable activity and other inactive states. Hover shows a short status and, during a focus session, its countdown.
 - A simpler tray menu keeps Open, Pause/Resume, Pause for 15 minutes, Notifications, and Quit together. FocusBoost remains available on Home and in Settings.
@@ -187,9 +199,11 @@ By default, Focus Share is productive ÷ (productive + unproductive). Other stay
 </details>
 
 <details>
-<summary><strong>Idle and media behavior</strong></summary>
+<summary><strong>Idle, media, and break reminders</strong></summary>
 
 The idle timeout stops counting after a period without keyboard or mouse input. Two optional Windows-only settings can keep counting when the focused app is actively playing music or video. Paused media, background players, sleep, and the lock screen do not count. Media detection only decides whether an idle sample is kept; the active Focus profile still decides its category.
+
+Break reminders send one nudge after the configured minutes of continuous active tracking; both break reminders and notifications must be enabled. Pausing or five idle minutes resets the stretch, including when media keeps tracking. Sleep, lock, or an earlier stop in counted tracking (such as a shorter idle timeout or an ignored app) also resets it. Switching between tracked apps does not reset the timer, and it does not repeat until a new stretch begins.
 
 </details>
 

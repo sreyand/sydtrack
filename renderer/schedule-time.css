@@ -1,0 +1,32 @@
+/* Native backing inputs remain usable if the progressive picker script fails. */
+.schedule-time-control { position: relative; width: 224px; max-width: 100%; min-width: 0; }
+.schedule-time-control > input[hidden], .schedule-time-trigger[hidden], .schedule-time-popover[hidden], .schedule-time-status[hidden] { display: none; }
+.schedule-time-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; min-height: 38px; padding: 8px 10px;
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
+  color: var(--color-ink); background: var(--color-surface-sunken);
+  font: var(--body); font-variant-numeric: tabular-nums; text-align: left; cursor: pointer;
+}
+.schedule-time-trigger:hover:not(:disabled) { border-color: var(--color-accent); }
+.schedule-time-trigger:disabled { cursor: default; }
+.schedule-time-caret { width: 6px; height: 6px; flex: 0 0 auto; margin-right: 3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); }
+.schedule-time-popover {
+  position: fixed; z-index: 80; display: flex; flex-direction: column; gap: 12px;
+  box-sizing: border-box; padding: 12px; overflow: auto;
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-md);
+  background: var(--color-surface); color: var(--color-ink);
+}
+.schedule-time-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.schedule-time-columns[data-hour12="true"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.schedule-time-column { min-width: 0; }
+.schedule-time-column-label { margin: 0 0 6px; color: var(--color-ink-muted); font: var(--caption); text-align: center; }
+.schedule-time-list { position: relative; height: 168px; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--radius-sm); background: var(--color-surface-sunken); }
+.schedule-time-option { display: block; width: 100%; min-height: 32px; padding: 6px 4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-ink); font: var(--body); font-variant-numeric: tabular-nums; text-align: center; cursor: pointer; }
+.schedule-time-option:hover { background: var(--color-accent-tint); }
+.schedule-time-option[aria-selected="true"] { background: var(--color-accent-tint); color: var(--color-accent); font-weight: 700; }
+.schedule-time-footer { display: flex; justify-content: flex-end; gap: 8px; }
+.schedule-time-footer .btn { min-height: 32px; padding: 6px 10px; font: var(--caption); }
+.schedule-time-status { margin: 6px 0 0; color: var(--color-ink-muted); font: var(--caption); }
+.schedule-time-list:focus-visible, .schedule-time-trigger:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+@media (pointer: coarse) { .schedule-time-trigger, .schedule-time-option, .schedule-time-footer .btn { min-height: 44px; } }

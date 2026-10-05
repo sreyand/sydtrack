@@ -73,7 +73,7 @@ The trust model is stronger when the product has no incentive to collect more be
 
 ## Current stopping point
 
-The repository version is 2.4.0, with Windows setup and portable packages prepared and automatically checked locally; manual acceptance and publication are pending. Version 2.2.0 added first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 added the `r/` classification fix and recovery from transient Windows foreground-probe failures. Version 2.3.0 added the source/topic classification refinement, coverage-aware Focus Share, precise corrections with Undo, optional GitHub update checks, and three additional themes. Version 2.4.0 adds the live-category tray logo, simpler tray menu and Home layout, profile-aware rule confirmations, and on-demand Home category explanations. Release history belongs in `docs/release-notes-*.md`; the dated records below preserve the state at each implementation step.
+The repository version is 2.5.0, with Windows setup and portable packages prepared and automatically checked locally; manual acceptance and publication are pending. Version 2.2.0 added first-run onboarding, an activity timeline, app-by-app and Lifetime Analytics, same-day P/U/O/I corrections, a neutral Other choice on Home, and an optional profile-switch shortcut to the coherent 2.1 foundation. Version 2.2.1 added the `r/` classification fix and recovery from transient Windows foreground-probe failures. Version 2.3.0 added the source/topic classification refinement, coverage-aware Focus Share, precise corrections with Undo, optional GitHub update checks, and three additional themes. Version 2.4.0 added the live-category tray logo, simpler tray menu and Home layout, profile-aware rule confirmations, and on-demand Home category explanations. Version 2.5.0 adds clickable focusscore days, flexible pauses, Forest, custom exact-minute FocusBoost schedule controls, and quieter Settings. Release history belongs in `docs/release-notes-*.md`; the dated records below preserve the state at each implementation step.
 
 Windows x64 is the supported release target. macOS and Linux packaging are best-effort CI targets. Builds are unsigned. The app is ready for observation and user testing; it does not need another feature wave before people try it.
 
@@ -148,7 +148,7 @@ Consider:
 Privacy controls are product features, not compliance decoration.
 
 Settings → Tracking → Data now has an expandable “What sydtrack stores” explanation and shows the local data folder. It states the title-only Windows boundary, what is saved locally, the 90-day detailed-history limit, and what remains in long-term rollups. This adds no collection or retention change.
-“Pause for 15 minutes” is implemented: it skips foreground probes, survives restarts, and resumes without backfilling paused time. The other controls above remain candidates.
+Timed pauses are implemented for 15, 30, and 60 minutes: they skip foreground probes, survive restarts, and resume without backfilling paused time. Settings also offers **Until I resume** through the same compact control; the sidebar and tray retain pause/resume access. The other controls above remain candidates.
 
 ### 5. Intention versus outcome
 
@@ -272,7 +272,7 @@ Inspect the packaged version and hashes. Use the manual lifecycle and Focus prof
 Supporting references:
 
 - [README](README.md)
-- [Current release notes](docs/release-notes-2.4.0.md)
+- [Current release notes](docs/release-notes-2.5.0.md)
 - [Lifecycle validation](docs/manual-lifecycle-validation.md)
 - [Focus profile validation](docs/manual-focus-profiles-validation.md)
 - [Focus profile generation guide](docs/focus-profile-generation-guide.md)
@@ -403,3 +403,44 @@ Run `npm test`, `npm run test:ui`, and `npm run test:profiles-ui`. `npm run benc
 - Historical days reuse existing empty, Other-heavy, and older hourly-only states without inventing detail. Late requests and live updates cannot overwrite the selected date, which stays pinned across midnight. Returning grids overlay current-day totals and refresh their bounded history range at rollover; invalidated pending reads cannot revive stale caches.
 - This is navigation into existing analytics: no new metric, dashboard, IPC command, tracking behavior, stored data, setting, score formula, notification, or focusstreak change. Package version remains 2.4.0; existing setup/portable files are frozen. No packaging, publication, or commit is part of this pass.
 - Verification passed: `npm test`, `npm run test:ui` (now including the dedicated `test:score-navigation` check), the isolated real-preload profile checks, and `git diff --check`. Synthetic fixtures cover exact dates, trusted Enter/Space/Escape input, Back focus/scroll, empty/Other-heavy/daily-only/hourly-only days, delayed replies, current-score freshness, midnight range refresh, and 800/1040/1600px dark/light layouts. Selected-grid and Day screenshots were inspected. No personal activity was used.
+
+## Flexible tracking pauses — 2026-10-05 (unreleased)
+
+- Settings uses one **Pause for** menu with 15, 30, and 60 minutes or **Until I resume**. Choosing a duration pauses immediately; the same control becomes **Resume** while paused.
+- The sidebar keeps its one-click indefinite pause/resume toggle and shows the countdown during a timed pause. The tray's **Pause for** submenu offers 15, 30, and 60 minutes.
+- Timed deadlines persist across restarts and expire automatically. Paused time is never backfilled into activity, and the existing pause/privacy boundary is preserved. The legacy 15-minute pause entry point remains compatible.
+- Source-only follow-up: package version remains 2.4.0; existing setup/portable files are frozen. No release-note/version update, package rebuild, commit, or publication is part of this pass.
+- Verification passed: the full core suite, isolated general UI, profile UI, clickable focusscore navigation, dedicated pause-menu checks, and native tray checks. Synthetic fixtures cover exact durations, restart/expiry and paused-time accounting, immediate selection, indefinite pause/resume, countdowns, trusted keyboard input and focus restoration, failed-write retries, shared pending-action guards, navigation/scroll dismissal, and 800/1040/1600px layouts across all eight themes. The real Electron tray submenu/callbacks and onboarding guard were checked without a production tracker, and the open-menu screenshot was inspected. The dedicated `test:pause-menu` check is included in `test:ui`; no personal activity was used.
+
+## Settings and Analytics spacing polish — 2026-10-05 (unreleased)
+
+- Tracker's three top control rows now share a consistent minimum height and centered labels. Removed the extra gap after **Keep session history** before Polling; paused status text can still expand its row naturally.
+- Moved **Back to focusscore** below all Day analytics information. Existing keyboard navigation, selected date, and return focus/scroll behavior are unchanged.
+- Isolated pause-menu geometry checks pass across all eight themes and three widths; score-navigation checks pass in dark/light layouts at three widths, including the bottom button's visual order, keyboard reachability, and return behavior. Settings and Day screenshots were inspected. No theme, tracking change, version bump, or package rebuild in this polish pass.
+
+## Forest appearance — 2026-10-05 (unreleased)
+
+- Added Forest as a ninth built-in preset: evergreen surfaces, muted sage accents, and warm ivory text using the existing layout and typography. Productive, Unproductive, and Other retain their green/red/gray meaning; no appearance customization UI was added.
+- Ordered choices by canvas luminance, darkest to lightest: Midnight, Tide, Plum, Forest, Dusk, Linen, Graphite, Coral, Starlight. Midnight remains the initial default, and existing saved theme choices are preserved.
+- Forest saves through the validated settings path, survives restart and unrelated settings updates, and supplies matching native window/titlebar colors. Dark privacy-warning styles include Forest. Packaged checks now use the archive's own theme catalog rather than a fixed count, retaining compatibility with frozen eight-theme builds.
+- Verification passed: the full core suite, expanded hardening/storage checks, isolated UI and real-preload profile checks, and pause-menu/layout checks across all nine themes at three widths. Forest's 30 sampled UI color pairs exceed 4.5:1 contrast; the picker preserves order, fits without overlap, and wraps when constrained. Synthetic Forest Settings and Home screenshots were inspected.
+- Source-only change: version remains 2.4.0 and existing setup/portable artifacts remain unchanged. No dependency changes, package rebuild, commit, tag, upload, or publication.
+
+## Consistent schedule controls and quieter Settings — 2026-10-05 (unreleased)
+
+- FocusBoost's Starts/Ends controls now use compact, themed dropdown triggers and an exact-minute hour/minute picker, including AM/PM where the locale uses it. Existing HH:mm settings and overnight schedules remain unchanged; native time inputs are preserved as a fallback if the new picker module is unavailable.
+- The picker edits a draft before **Set time**, uses the existing settings/preload save path, and supports keyboard navigation, Escape/Cancel, and outside/navigation/scroll dismissal. Failed saves restore the confirmed time and retain the attempted draft for retry; pending saves guard both time controls.
+- Notifications fields now have one 8px label-to-control gap, without stacked margins or artificial two-line label heights. Removed redundant Polling, Idle, Reminders, and Messages headings; retained useful Daily goals/Breaks headings in sentence case and the normal Focus profile hotswap field label.
+- Removed Wellbeing's trailing divider whether optional Breaks controls are hidden or enabled. Existing controls, dependent-field visibility, and all saved settings are preserved.
+- The full core suite, hidden general UI checks (72 Settings width/theme/state combinations), clickable focusscore navigation, profile UI, and pause-menu regressions pass. Focused schedule checks cover all 60 minutes, exact overnight edits, cancellation, keyboard/focus behavior, draft/retry preservation, delayed/failed writes, settings reload/disable, native fallback, all nine themes at three widths, short-height windows, and a real 24-hour locale reload. Clean Wellbeing and Notifications screenshots were inspected; `test:schedule-time` is also included in `test:ui`.
+- Source-only change: version remains 2.4.0; frozen setup/portable artifacts were not rebuilt. No dependency changes, new IPC/settings keys, tracking changes, commit, tag, upload, or publication.
+
+## v2.5.0 release preparation — 2026-10-05
+
+- With explicit user approval to package the release, promoted the work since the frozen v2.4.0 build into the README and [v2.5.0 release notes](docs/release-notes-2.5.0.md): clickable focusscore days and bottom Back action, flexible pause durations, Forest and ordered appearances, custom exact-minute FocusBoost schedule controls, and Settings spacing/copy cleanup.
+- The final Breaks control is one regular-weight sentence with an inline minutes field and enable switch. Reset details are documented in README’s expandable **Idle, media, and break reminders** section; the timer’s behavior and stored settings are unchanged.
+- Bumped package and lockfile versions to 2.5.0 without dependency upgrades. Created unsigned Windows x64 setup and portable files, both carrying 2.5.0 executable metadata, plus `dist/SHA256SUMS-2.5.0.txt`. Existing v2.4.0 executable hashes are unchanged.
+- Passed the full core suite, isolated UI checks (general Settings states, clickable focusscore navigation, flexible pauses, and exact-minute/24-hour schedule controls), real-preload profile checks, and native tray checks. Both extracted packages passed their checks with identical app archives; the new UI modules run in the actual packaged main/preload/protocol/sandbox, with synthetic data, startup writes intercepted, and no production tracker. Restart/settings persistence and seeded activity/session history preservation passed.
+- [Release validation](docs/release-validation-2.5.0.md) records final sizes/hashes, the verification boundary, and remaining manual acceptance. GitHub metadata checking reported published 2.4.0 below the local 2.5.0 build; automatic checks remain off by default. Installer/portable wrappers, real tracking, Windows tray interaction, and sleep/lock acceptance remain manual.
+- No new classifier behavior, Focus Share formula, focusstreak feature, or foreground tracking reliability fix is included. The reported Windows backend timeout/JSON warning is deferred at the user’s request and must not be described as fixed.
+- Previous versioned release artifacts remain frozen. No commit, tag, upload, production-profile migration, or installation is part of this preparation.

@@ -25,9 +25,11 @@ app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-tray-che
 app.disableHardwareAcceleration();
 
 app.whenReady().then(() => {
-  let nativeTray = null, controller = null, selected = null, tooltip = '';
+  let nativeTray = null, nativeMenu = null, controller = null, selected = null, tooltip = '';
   let prefs = { onboardingComplete: true, trackingPaused: false, demoMode: false, pollMs: 3000 };
   let payload = null;
+  const settingsChanges = [], settingsSnapshots = [];
+  const store = { getSettings: () => prefs, snapshot: () => ({ settings: { ...prefs } }) };
   const trayModule = path.join(__dirname, '..', 'src', 'tray.js');
   const originalLoad = Module._load;
   try {
@@ -41,7 +43,7 @@ app.whenReady().then(() => {
           return {
             setImage(next) { nativeTray.setImage(next); selected = next; },
             setToolTip(text) { nativeTray.setToolTip(text); tooltip = text; },
-            setContextMenu(menu) { nativeTray.setContextMenu(menu); },
+            setContextMenu(menu) { nativeTray.setContextMenu(menu); nativeMenu = menu; },
             on(event, handler) { nativeTray.on(event, handler); },
             destroy() { nativeTray.destroy(); }
           };
@@ -52,8 +54,10 @@ app.whenReady().then(() => {
     const { createAppTray } = require(trayModule);
     Module._load = originalLoad;
     controller = createAppTray({ getMainWindow: () => null,
-      getStore: () => ({ getSettings: () => prefs }), getSessionManager: () => null,
-      getLastPayload: () => payload });
+      getStore: () => store, getSessionManager: () => null,
+      getLastPayload: () => payload,
+      updateSettings: partial => { settingsChanges.push(partial); prefs = { ...prefs, ...partial }; return prefs; },
+      sendTrackerUpdate: next => { payload = next; settingsSnapshots.push(next); } });
     const size = process.platform === 'linux' ? 24 : 16;
     function expectImage(name) {
       assert.equal(selected.isEmpty(), false);
@@ -75,6 +79,41 @@ app.whenReady().then(() => {
       expectImage(category);
       assert.ok(tooltip.includes(category[0].toUpperCase() + category.slice(1)));
     }
+    assert.ok(nativeMenu instanceof electron.Menu, 'the tray uses a real Electron Menu');
+    const pauseMenu = nativeMenu.items.find(item => item.label === 'Pause for');
+    assert.ok(pauseMenu.submenu instanceof electron.Menu, 'Pause for builds a real submenu');
+    assert.deepEqual(pauseMenu.submenu.items.map(item => item.label), ['15 minutes', '30 minutes', '1 hour']);
+    const realNow = Date.now;
+    let pauseStartedAt = realNow();
+    try {
+      Date.now = () => pauseStartedAt;
+      for (const [label, minutes] of [['15 minutes', 15], ['30 minutes', 30], ['1 hour', 60], ['15 minutes', 15]]) {
+        const parent = nativeMenu.items.find(item => item.label === 'Pause for');
+        assert.equal(parent.enabled, true, 'timed pauses can be rescheduled while paused');
+        const choice = parent.submenu.items.find(item => item.label === label);
+        const snapshotsBefore = settingsSnapshots.length;
+        choice.click(choice, null, {});
+        assert.deepEqual(settingsChanges[settingsChanges.length - 1], {
+          trackingPaused: true, trackingPauseUntil: pauseStartedAt + minutes * 60 * 1000
+        }, 'native submenu callback applies exactly the chosen pause deadline');
+        assert.equal(settingsSnapshots.length, snapshotsBefore + 1, 'each native callback refreshes synthetic window settings');
+        assert.equal(payload.stats.settings.trackingPauseUntil, prefs.trackingPauseUntil);
+        assert.equal(payload.sessionCompleted, null, 'settings refresh never replays session completion');
+        expectImage('standard');
+        assert.ok(tooltip.includes('Paused'));
+        pauseStartedAt += 60000;
+      }
+      const resume = nativeMenu.items.find(item => item.label === 'Resume tracking');
+      resume.click(resume, null, {});
+      assert.equal(prefs.trackingPaused, false);
+      assert.equal(prefs.trackingPauseUntil, 0, 'native Resume cancels the selected timed pause');
+      expectImage('standard');
+    } finally { Date.now = realNow; }
+    prefs = { ...prefs, onboardingComplete: false }; controller.refresh();
+    assert.equal(nativeMenu.items.find(item => item.label === 'Pause for').enabled, false,
+      'native timed-pause submenu is disabled before onboarding');
+    assert.equal(nativeMenu.items.find(item => item.label === 'Pause tracking').enabled, false);
+    prefs = { ...prefs, onboardingComplete: true }; controller.refresh();
     prefs = { ...prefs, trackingPaused: true }; controller.refresh(); expectImage('standard');
     assert.ok(tooltip.includes('Paused'));
     prefs = { ...prefs, trackingPaused: false }; controller.refresh(); expectImage('standard');
@@ -82,7 +121,7 @@ app.whenReady().then(() => {
     controller.invalidate('lock'); expectImage('standard'); assert.ok(tooltip.includes('Screen locked'));
     controller.refresh({ freshSample: true }); expectImage('other');
     controller.destroy(); assert.equal(nativeTray.isDestroyed(), true); controller = null;
-    console.log('Native tray passed: all four supplied logos, 1x/2x/3x images, color changes, pause/resume, lock, and cleanup.');
+    console.log('Native tray passed: all four supplied logos, 1x/2x/3x images, real pause submenu/callbacks, onboarding guard, color changes, pause/resume, lock, and cleanup.');
     app.quit();
   } finally {
     Module._load = originalLoad;

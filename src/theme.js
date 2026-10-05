@@ -1,6 +1,7 @@
 'use strict';
 
-const THEME_IDS = ['graphite', 'coral', 'midnight', 'starlight', 'dusk', 'tide', 'linen', 'plum'];
+// Built-in appearances ordered by canvas luminance, darkest to lightest.
+const THEME_IDS = ['midnight', 'tide', 'plum', 'forest', 'dusk', 'linen', 'graphite', 'coral', 'starlight'];
 const DEFAULT_THEME = 'midnight';
 
 const THEMES = {
@@ -137,6 +138,25 @@ const THEMES = {
     other: '#6F6B62',
     otherTint: '#EAE6DE'
   },
+  forest: {
+    canvas: '#111B16',
+    surface: '#19261E',
+    surfaceSunken: '#223127',
+    border: '#314339',
+    borderStrong: '#496352',
+    ink: '#EDF1E6',
+    inkMuted: '#B9C6B4',
+    inkFaint: '#889D86',
+    accent: '#A3C59D',
+    accentTint: '#293E2C',
+    accentHover: '#BAD6B4',
+    prod: '#73BD90',
+    prodTint: '#20382B',
+    unprod: '#ED978A',
+    unprodTint: '#432B29',
+    other: '#A8B2A2',
+    otherTint: '#30382F'
+  },
   plum: {
     canvas: '#1B1720',
     surface: '#251F2C',
@@ -182,7 +202,7 @@ function titleBarOverlayForTheme(value) {
 
 function isDarkTheme(value) {
   const id = normalizeTheme(value);
-  return id === 'midnight' || id === 'dusk' || id === 'tide' || id === 'plum';
+  return id === 'midnight' || id === 'dusk' || id === 'tide' || id === 'plum' || id === 'forest';
 }
 
 module.exports = {
