@@ -4,7 +4,6 @@ let wellbeingStats = null;
 let wellbeingDate = '';
 const WEEK_HISTORY_DAYS = 14;
 const historyCache = { date: '', at: 0, count: 0, days: null, pending: null, pendingDate: '', pendingCount: 0 };
-let focusScoreSelection = null;
 
 function wellbeingEl(id) {
   return document.getElementById(id);
@@ -155,12 +154,14 @@ function renderScoreList(target, days, windowSize) {
     target.textContent = 'No days to score yet.';
     return;
   }
-  target.innerHTML = '<div class="week-score-grid">' + rolling.days.map((day) => {
+  const markup = '<div class="week-score-grid">' + rolling.days.map((day) => {
     const date = String(day.date || '');
     const label = date.length >= 10 ? date.slice(5, 7) + '/' + date.slice(8, 10) : date;
     const title = date + ': ' + (day.scored ? day.percent + '% focus' : day.limited ? 'most tracked time is Other; no score' : 'no score');
     return focusScoreTile(day, 'week', label, title);
   }).join('') + '</div>';
+  if (window.sydtrackDOM) window.sydtrackDOM.patchChildren(target, markup, { key: 'data-score-date' });
+  else target.innerHTML = markup;
 }
 
 function renderWeekWellbeing() {
@@ -188,7 +189,7 @@ function renderMonthFocusScores(days) {
   const prefs = goalPrefs();
   const month = sydtrackGoals.rollingAverage(historyWithCurrentDay(days), { window: 30, includeOther: prefs.includeOther, goalPct: prefs.goalPct });
   if (!list) return;
-  list.innerHTML = '<div class="month-score-grid">' + month.days.map((day, index) => {
+  const markup = '<div class="month-score-grid">' + month.days.map((day, index) => {
     const avg = month.series[index];
     const date = String(day.date || '');
     const label = date.length >= 10 ? date.slice(5, 7) + '/' + date.slice(8, 10) : date;
@@ -196,27 +197,17 @@ function renderMonthFocusScores(days) {
       (avg && avg.percent != null ? '; 30-day average ' + avg.percent + '%' : '');
     return focusScoreTile(day, 'month', label, title);
   }).join('') + '</div>';
+  if (window.sydtrackDOM) window.sydtrackDOM.patchChildren(list, markup, { key: 'data-score-date' });
+  else list.innerHTML = markup;
 }
 
 function focusScoreTile(day, period, label, title) {
   const date = String(day.date || '');
-  const selected = focusScoreSelection && focusScoreSelection.date === date && focusScoreSelection.period === period;
   return '<button type="button" class="' + period + '-score-day focus-score-day" data-score-date="' + wellbeingEsc(date) +
     '" data-score-period="' + period + '" data-hit="' + (day.scored ? (day.hit ? 'yes' : 'no') : 'na') +
-    '" data-selected="' + !!selected + '"' + (selected ? ' aria-current="true"' : '') +
-    ' title="' + wellbeingEsc(title + '; open Day Analytics') + '" aria-label="' + wellbeingEsc('View Day Analytics for ' + title) +
+    '" title="' + wellbeingEsc(title + '; open Day Analytics') + '" aria-label="' + wellbeingEsc('View Day Analytics for ' + title) +
     '"><span class="' + period + '-score-date">' + wellbeingEsc(label) + '</span><strong>' +
     (day.scored ? day.percent + '%' : '—') + '</strong><span class="focus-score-open" aria-hidden="true">↗</span></button>';
-}
-
-function setFocusScoreSelection(date, period) {
-  focusScoreSelection = { date, period };
-  document.querySelectorAll('.focus-score-day').forEach(button => {
-    const selected = button.dataset.scoreDate === date && button.dataset.scorePeriod === period;
-    button.dataset.selected = String(selected);
-    if (selected) button.setAttribute('aria-current', 'true');
-    else button.removeAttribute('aria-current');
-  });
 }
 
 function bindWellbeing() {

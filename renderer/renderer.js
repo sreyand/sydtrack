@@ -54,6 +54,15 @@ function $(id) {
   return document.getElementById(id);
 }
 
+// Generated chart markup only; keep surviving interactive nodes during live updates.
+function patchChartMarkup(target, markup, key) {
+  if (window.sydtrackDOM) window.sydtrackDOM.patchChildren(target, markup, { key });
+  else target.innerHTML = markup;
+}
+
+let settingsSelectMenu = null;
+let appearanceSaving = false;
+
 function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -676,7 +685,6 @@ function openFocusScoreDay(date, period) {
   const main = document.querySelector('.main');
   if (!input || !main) return false;
   focusScoreReturn = { date, period, scrollTop: main.scrollTop };
-  setFocusScoreSelection(date, period);
   input.max = localDateKey();
   input.value = date;
   // A score tile represents this specific date, including across midnight.
@@ -722,9 +730,8 @@ function initSettingsPanels() {
   wellbeingCard.append($('goals-settings'), $('settings-breaks'));
   notificationCard.append(document.querySelector('.fb-schedule-block'), $('settings-reminder-timing'), $('settings-messages'));
   trackerCard.append($('settings-idle'));
-  $('settings-appearance-card').append(document.querySelector('.font-credit'));
   $('settings-data-card').insertBefore(document.querySelector('.settings-meta'), $('settings-storage-details'));
-  tracking.append($('settings-appearance-card'), trackerCard, $('settings-updates-card'), $('settings-data-card'));
+  tracking.append($('settings-appearance-card'), trackerCard, $('settings-updates-card'), $('settings-data-card'), document.querySelector('.font-credit'));
   wellbeing.append(wellbeingCard);
   notifications.append(notificationCard);
   document.querySelectorAll('[data-settings-tab]').forEach(button => button.addEventListener('click', () => {
@@ -1316,7 +1323,7 @@ function renderChartYAxis(elementId, axisMaxSeconds) {
   if (!el) return;
   const max = Math.max(0, Number(axisMaxSeconds) || 0) || 60 * 60;
   const mid = max / 2;
-  el.innerHTML =
+  const markup =
     '<span class="chart-y-tick">' +
     esc(formatAxisDuration(max)) +
     '</span>' +
@@ -1326,6 +1333,7 @@ function renderChartYAxis(elementId, axisMaxSeconds) {
     '<span class="chart-y-tick">' +
     esc(formatAxisDuration(0)) +
     '</span>';
+  patchChartMarkup(el, markup);
 }
 
 function weekTickLabel(iso) {
@@ -1368,7 +1376,7 @@ function renderWeek(stats) {
   };
 
   if (!week.length) {
-    chart.innerHTML = '<div class="week-empty muted">No week data yet</div>';
+    patchChartMarkup(chart, '<div class="week-empty muted">No week data yet</div>');
     renderChartYAxis('week-y-axis', 60 * 60);
     setMetrics('—', 'No productive time yet', '0 min', 'All categories · last 7 days', '—', 'Of productive + unproductive');
     return;
@@ -1425,7 +1433,7 @@ function renderWeek(stats) {
     other: h.other,
     topApps: Array.isArray(h.topApps) ? h.topApps.slice(0, 3) : []
   }));
-  chart.innerHTML = days
+  const markup = days
     .map((h, i) => {
       const sum = h.productive + h.unproductive + h.other;
       const empty = sum <= 0;
@@ -1462,6 +1470,7 @@ function renderWeek(stats) {
       );
     })
     .join('');
+  patchChartMarkup(chart, markup, 'data-day');
 
   refreshChartTip('week-tip', showWeekChartTip);
   if (total <= 0) {
@@ -1536,6 +1545,10 @@ function applySettingsInputs(settings) {
   if ($('profile-shortcut') && document.activeElement !== $('profile-shortcut')) {
     $('profile-shortcut').value = settings.profileShortcut || '';
   }
+  if ($('window-shortcut') && document.activeElement !== $('window-shortcut')) {
+    $('window-shortcut').value = settings.windowShortcut || '';
+  }
+  syncAppearanceUi(settings);
   if ($('reminder-message') && document.activeElement !== $('reminder-message')) {
     $('reminder-message').value = settings.reminderMessage || "You've been on {app} for a while... maybe it's time to get back?";
   }
@@ -1550,6 +1563,7 @@ function applySettingsInputs(settings) {
   syncSessionSettingsUi(settings);
   applyTheme(settings && settings.theme);
   applying = false;
+  settingsSelectMenu?.sync();
   applyFocusBoostSchedule(settings).catch(() => {});
 }
 
@@ -1612,6 +1626,46 @@ function syncPauseUi(settings) {
   }
   document.body.setAttribute('data-paused', paused ? 'on' : 'off');
   renderPauseRemaining();
+}
+
+function syncAppearanceUi(settings = latestGoalSettings || {}) {
+  const enabled = settings.themeRotationEnabled === true;
+  if ($('theme-rotation-toggle')) $('theme-rotation-toggle').checked = enabled;
+  $('theme-rotation-options')?.classList.toggle('hidden', !enabled);
+  if ($('theme-rotation-mode')) {
+    $('theme-rotation-mode').value = ['dark', 'light', 'any'].includes(settings.themeRotationMode) ? settings.themeRotationMode : 'dark';
+    $('theme-rotation-mode').disabled = appearanceSaving || !enabled;
+  }
+  if ($('theme-rotation-toggle')) $('theme-rotation-toggle').disabled = appearanceSaving;
+  document.querySelectorAll('[data-theme-id]').forEach(btn => { btn.disabled = appearanceSaving; });
+}
+
+async function saveAppearance(partial) {
+  if (appearanceSaving) throw new Error('An appearance change is already being saved');
+  appearanceSaving = true;
+  // Busy state only: do not confirm the select's optimistic value before saving.
+  $('theme-rotation-toggle').disabled = true;
+  document.querySelectorAll('[data-theme-id]').forEach(btn => { btn.disabled = true; });
+  $('theme-rotation-mode').disabled = true;
+  settingsSelectMenu?.refresh();
+  const status = $('appearance-status');
+  status.textContent = '';
+  status.classList.add('hidden');
+  try {
+    if (!api) throw new Error('Settings are unavailable');
+    return await pushSettings(partial);
+  } catch (err) {
+    applyTheme(latestGoalSettings?.theme);
+    if (!Object.hasOwn(partial, 'themeRotationMode') || !settingsSelectMenu) {
+      status.textContent = 'Could not save appearance. Try again.';
+      status.classList.remove('hidden');
+    }
+    throw err;
+  } finally {
+    appearanceSaving = false;
+    syncAppearanceUi();
+    settingsSelectMenu?.sync();
+  }
 }
 
 function renderPauseRemaining() {
@@ -1924,7 +1978,7 @@ function renderDay(stats) {
   }
 
   dayHoverHours = hours;
-  chart.innerHTML = hours
+  const markup = hours
     .map((h, i) => {
       const sum = h.productive + h.unproductive + h.other;
       const empty = sum <= 0;
@@ -1961,6 +2015,7 @@ function renderDay(stats) {
       );
     })
     .join('');
+  patchChartMarkup(chart, markup, 'data-hour');
 
   refreshChartTip('day-tip', showDayChartTip);
   const peakVal = $('day-peak-value');
@@ -2190,6 +2245,12 @@ function renderStats(stats) {
     if (analyticsSegment === 'day' && Date.now() - timelineLastRefresh > 15000) loadTimelineDay();
   }
   renderRoundup(stats);
+  // Overlay today's confirmed totals on cached score grids without refetching
+  // history or replacing the focused/hovered day button.
+  if (!dayChanged && !$('view-analytics').classList.contains('hidden')) {
+    if (analyticsSegment === 'month' && fullHistoryCache) renderMonthFocusScores(fullHistoryCache.slice(-30));
+    else if (analyticsSegment === 'week' && historicalWeek) renderScoreList($('week-focus-score-list'), historicalWeek, 7);
+  }
   applyPageDate('home-date', new Date());
   $('streak').textContent = fmtDuration(stats.unproductiveStreak || 0);
   if (stats.settings) {
@@ -2450,28 +2511,31 @@ if ($('launch-startup-toggle')) {
     pushSettings({ launchAtStartup: $('launch-startup-toggle').checked === true });
   });
 }
-if ($('poll-mode')) {
-  $('poll-mode').addEventListener('change', () => {
-    pushSettings({ pollMs: Number($('poll-mode').value) });
-  });
-}
-if ($('profile-shortcut')) {
-  $('profile-shortcut').addEventListener('change', async () => {
-    const select = $('profile-shortcut');
-    const old = latestGoalSettings && latestGoalSettings.profileShortcut || '';
-    const status = $('profile-shortcut-status');
-    select.disabled = true;
-    try {
-      await pushSettings({ profileShortcut: select.value });
-      status.textContent = '';
-      status.classList.add('hidden');
-    } catch (err) {
-      select.value = old;
-      status.textContent = 'That shortcut is unavailable. Choose another.';
+async function saveSettingsSelect(input, value) {
+  if (!api) throw new Error('Settings are unavailable');
+  if (input.id === 'theme-rotation-mode') return saveAppearance({ themeRotationMode: value });
+  const field = { 'poll-mode': 'pollMs', 'profile-shortcut': 'profileShortcut', 'window-shortcut': 'windowShortcut' }[input.id];
+  if (!field) throw new Error('Unknown settings control');
+  const status = $(input.id + '-status');
+  const old = latestGoalSettings?.[field] ?? (field === 'pollMs' ? 3000 : '');
+  if (status) { status.textContent = ''; status.classList.add('hidden'); }
+  try {
+    return await pushSettings({ [field]: field === 'pollMs' ? Number(value) : value });
+  } catch (err) {
+    input.value = String(old);
+    if (status && !input.hidden) {
+      status.textContent = field === 'pollMs' ? 'Could not save this option. Try again.' : 'That shortcut is unavailable. Choose another.';
       status.classList.remove('hidden');
-    } finally { select.disabled = false; }
+    }
+    throw err;
+  }
+}
+for (const id of ['poll-mode', 'profile-shortcut', 'window-shortcut', 'theme-rotation-mode']) {
+  $(id)?.addEventListener('change', () => {
+    saveSettingsSelect($(id), $(id).value).catch(() => {});
   });
 }
+settingsSelectMenu = window.sydtrackSelectMenuUI?.create({ root: $('view-settings'), onCommit: saveSettingsSelect }) || null;
 if ($('reminder-message')) {
   const saveReminderMsg = () => {
     const text = String($('reminder-message').value || '').trim() || "You've been on {app} for a while... maybe it's time to get back?";
@@ -2872,11 +2936,12 @@ if ($('kw-reset')) {
 document.querySelectorAll('[data-theme-id]').forEach((btn) => {
   btn.addEventListener('click', async () => {
     const theme = btn.getAttribute('data-theme-id');
-    applyTheme(theme);
-    if (api && api.updateSettings) {
-      try { await pushSettings({ theme }); } catch (_) {}
-    }
+    if (!api) { applyTheme(theme); return; } // Standalone demo/preview, no durable settings.
+    try { await saveAppearance({ theme, themeRotationEnabled: false }); } catch (_) {}
   });
+});
+$('theme-rotation-toggle')?.addEventListener('change', async (event) => {
+  try { await saveAppearance({ themeRotationEnabled: event.currentTarget.checked }); } catch (_) {}
 });
 
 if ($('ignore-reset')) {
@@ -3643,6 +3708,10 @@ async function boot() {
       if (state.profileShortcutRegistered === false && $('profile-shortcut-status')) {
         $('profile-shortcut-status').textContent = 'This shortcut is unavailable on this computer. Choose another.';
         $('profile-shortcut-status').classList.remove('hidden');
+      }
+      if (state.windowShortcutRegistered === false && $('window-shortcut-status')) {
+        $('window-shortcut-status').textContent = 'This shortcut is unavailable on this computer. Choose another.';
+        $('window-shortcut-status').classList.remove('hidden');
       }
       if ($('launch-startup-row')) {
         $('launch-startup-row').classList.toggle('hidden', state.platform !== 'win32' && state.platform !== 'darwin');

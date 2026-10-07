@@ -101,6 +101,15 @@ On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memo
 
 Read the [v2.5.0 release notes](docs/release-notes-2.5.0.md) for upgrade details and [ITERATION.md](ITERATION.md) for the implementation handoff and remaining limitations.
 
+## Development updates (unreleased)
+
+These changes are available in the current source only. The prepared v2.5.0 installer and portable files have not been rebuilt and do not include them.
+
+- **Rotate daily**, off by default, lives in **Settings → Tracking → Appearance**. Enable the switch and choose **Dark themes** (the default mode), **Light themes**, or **Any theme** beside it. Themes follow a predictable sequence for each local calendar day, consistent across restarts, sleep, and skipped days. Picking a theme manually turns rotation off.
+- **Show/hide sydtrack** adds an optional shortcut under **Settings → Tracking**: **Off** (default), **Ctrl/⌘+Alt+S**, **Ctrl/⌘+Shift+S**, or **Alt+S**. Hide the focused window or bring sydtrack forward. If a shortcut is unavailable, the previous working choice is preserved.
+- Settings dropdowns use themed menus while retaining their native controls as a fallback.
+- Charts and focusscore day buttons stay in place during live updates. Active Week and Month grids keep today's values fresh using cached history, preserving keyboard focus and hover state.
+
 ## What changed in v2.4.0
 
 - The tray logo is green for Productive, red for Unproductive, and gray for Other. It returns to the standard black logo for paused, idle, ignored, or unavailable activity and other inactive states. Hover shows a short status and, during a focus session, its countdown.

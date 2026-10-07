@@ -10,6 +10,20 @@ const { canonicalAppName, isBrowserProcess } = require('./classifier');
 const { isUnrecognizedReason } = require('./browser-rules');
 const { migrateGoalSettings } = require('../renderer/lib/goals');
 const { appendSegment, normalizeTimeline } = require('./timeline');
+const { WINDOW_SHORTCUTS } = require('./window-shortcut');
+const { THEME_IDS, normalizeTheme } = require('./theme');
+const { normalizeRotationMode } = require('./theme-rotation');
+
+function sanitizeDesktopPreferences(value) {
+  return { ...value,
+    theme: normalizeTheme(value.theme),
+    windowShortcut: WINDOW_SHORTCUTS.includes(value.windowShortcut) ? value.windowShortcut : '',
+    themeRotationEnabled: value.themeRotationEnabled === true,
+    themeRotationMode: normalizeRotationMode(value.themeRotationMode),
+    themeRotationAnchorDate: validDateKey(value.themeRotationAnchorDate) ? value.themeRotationAnchorDate : '',
+    themeRotationAnchorTheme: THEME_IDS.includes(value.themeRotationAnchorTheme) ? value.themeRotationAnchorTheme : ''
+  };
+}
 
 function todayKey(at) {
   const d = at === undefined ? new Date() : new Date(at);
@@ -250,6 +264,7 @@ function defaultSettings() {
     trackVideoWhileIdle: false,
     pollMs: 3000,
     profileShortcut: '',
+    windowShortcut: '',
     focusBoost: false,
     focusBoostRestoreSec: null,
     focusBoostSec: 180,
@@ -263,7 +278,11 @@ function defaultSettings() {
     sessionCustomMin: 45,
     notificationsEnabled: true,
     updateChecksEnabled: false,
-    theme: 'midnight'
+    theme: 'midnight',
+    themeRotationEnabled: false,
+    themeRotationMode: 'dark',
+    themeRotationAnchorDate: '',
+    themeRotationAnchorTheme: ''
   };
 }
 
@@ -331,6 +350,7 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
   const needsGoalMigration = needsGoalSettingsMigration(savedSettings);
   if (needsGoalMigration && savedSettings) backupSettingsFile(settingsPath);
   settings = applyGoalMigration(settings, savedSettings);
+  settings = sanitizeDesktopPreferences(settings);
   const dropRetiredSettings = !!(savedSettings && ['decompressBreaksPerDay', 'decompressBreakMinutes', 'gamificationEnabled', 'duckEnabled']
     .some((key) => Object.prototype.hasOwnProperty.call(savedSettings, key)));
   if (settingsRecovered) settings.trackingPaused = true;
@@ -817,17 +837,21 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
   }
 
   function updateSettings(partial) {
-    Object.assign(settings, partial);
+    const previous = settings;
+    settings = Object.assign({}, settings, partial);
     if (process.env.SYDTRACK_THRESHOLD_SEC && partial.thresholdSec == null) {
       settings.thresholdSec = Number(process.env.SYDTRACK_THRESHOLD_SEC);
     }
     settings = migrateGoalSettings(settings, { existingInstall: true });
-    persistSettings();
+    settings = sanitizeDesktopPreferences(settings);
+    try { persistSettings(); }
+    catch (err) { settings = previous; throw err; }
     return { ...settings };
   }
 
   function applyImportedSettings(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...settings };
+    const previous = settings;
     if (needsGoalSettingsMigration(raw)) {
       if (fs.existsSync(settingsPath)) backupSettingsFile(settingsPath);
       // Migrate the imported snapshot itself. Merging current schema-2
@@ -841,7 +865,9 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
       settings = Object.assign({}, settings, raw);
     }
     settings = migrateGoalSettings(settings, { existingInstall: true });
-    persistSettings();
+    settings = sanitizeDesktopPreferences(settings);
+    try { persistSettings(); }
+    catch (err) { settings = previous; throw err; }
     return { ...settings };
   }
 

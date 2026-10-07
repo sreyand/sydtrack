@@ -136,6 +136,19 @@ app.whenReady().then(async () => {
       type: 'keyUp', key: input.key, code: input.code, windowsVirtualKeyCode: input.windowsVirtualKeyCode
     });
   }
+  async function nativeClick(selector) {
+    if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+    await win.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true });
+    const point = await render(`(() => {
+      const control = document.querySelector(${JSON.stringify(selector)});
+      control.scrollIntoView({ block: 'center' });
+      const rect = control.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point });
+    await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point });
+  }
   async function open(date, source, activation = 'click') {
     const selector = tileSelector(date, source);
     await render(`(() => {
@@ -156,8 +169,9 @@ app.whenReady().then(async () => {
   }
   async function returned(date, source) {
     await waitFor(`analyticsSegment === ${JSON.stringify(source)} &&
-      document.activeElement?.matches(${JSON.stringify(tileSelector(date, source))}) &&
-      document.activeElement.dataset.selected === 'true'`, 'Back did not restore period, selected tile and keyboard focus');
+      document.activeElement?.matches(${JSON.stringify(tileSelector(date, source))})`, 'Back did not restore period, source tile and keyboard focus');
+    assert.equal(await render(`document.querySelector('.focus-score-day[data-selected], .focus-score-day[aria-current]') === null`), true,
+      'Navigation tiles have no persistent selection or current-day marker');
     assert.equal((await snapshot()).backVisible, false, 'Return control hides outside drill-down');
   }
   async function back(date, source, activation = 'click') {
@@ -176,6 +190,36 @@ app.whenReady().then(async () => {
     await render(`document.querySelector('.nav-btn[data-tab="analytics"]').click(); setAnalyticsSegment('day');`);
     assert.equal((await snapshot()).backVisible, false, 'Ordinary Day analytics does not expose the drill-down return control');
 
+    for (const theme of ['midnight', 'forest']) {
+      await render(`applyTheme(${JSON.stringify(theme)})`);
+      for (const source of ['week', 'month']) {
+        await period(source);
+        const selector = tileSelector(scored.date, source);
+        await nativeClick(selector);
+        await waitFor(`analyticsSegment === 'day' && timelineDayData?.date === ${JSON.stringify(scored.date)} &&
+          !document.getElementById('timeline-precision').textContent.includes('Loading')`, 'Pointer drill-down did not load');
+        await nativeClick('#focus-score-back');
+        await returned(scored.date, source);
+        await win.webContents.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+        await render('new Promise(resolve => setTimeout(resolve, 150))');
+        assert.equal(await render(`(() => {
+          const tile = document.querySelector(${JSON.stringify(selector)});
+          const reference = tile.cloneNode(true);
+          tile.parentElement.append(reference);
+          const actual = getComputedStyle(tile), normal = getComputedStyle(reference);
+          const unchanged = !tile.matches(':hover, :focus-visible') && actual.backgroundColor === normal.backgroundColor &&
+            actual.borderTopColor === normal.borderTopColor && actual.outlineStyle === normal.outlineStyle;
+          reference.remove();
+          return unchanged;
+        })()`), true, 'Pointer return retains the normal score appearance: ' + theme + '/' + source);
+        await render(`document.querySelector('[data-segment="day"]').focus(); setAnalyticsSegment(${JSON.stringify(source)});`);
+        await waitFor(`document.querySelector(${JSON.stringify(selector)})`, 'Score rerender did not settle');
+        assert.equal(await render(`document.querySelector('.focus-score-day[data-selected], .focus-score-day[aria-current]') === null`), true,
+          'Rerender does not revive last-opened selection');
+      }
+    }
+    console.log('Score navigation: trusted pointer returns restore normal Week/Month styling in Midnight and Forest without persistent selection.');
+
     await period('week');
     const first = await open(scored.date, 'week');
     assert.equal(first.total, '1 hour 30 minutes'); assert.equal(first.share, '75%');
@@ -190,6 +234,17 @@ app.whenReady().then(async () => {
     await back(scored.date, 'week');
 
     await open(scored.date, 'week', 'Enter'); await back(scored.date, 'week', 'Space');
+    assert.equal(await render(`document.activeElement.matches(':focus-visible') && getComputedStyle(document.activeElement).outlineStyle !== 'none'`), true,
+      'Keyboard return still restores a visible focus indicator');
+    assert.equal(await render(`(() => {
+      const tile = document.activeElement;
+      const reference = tile.cloneNode(true);
+      tile.parentElement.append(reference);
+      const actual = getComputedStyle(tile), normal = getComputedStyle(reference);
+      const unchanged = actual.backgroundColor === normal.backgroundColor && actual.borderTopColor === normal.borderTopColor;
+      reference.remove();
+      return unchanged;
+    })()`), true, 'Keyboard focus uses an outline without changing the normal score colors');
     await period('month');
     await open(scored.date, 'month', 'Space'); await back(scored.date, 'month', 'Enter');
     await open(scored.date, 'month');
@@ -315,6 +370,18 @@ app.whenReady().then(async () => {
     await waitFor('latestGoalSettings?.thresholdSec === 778', 'Same-day totals update did not arrive');
     await back(today, 'month');
     assert.equal(await render(`document.querySelector(${JSON.stringify(tileSelector(today, 'month'))}).querySelector('strong').textContent`), '50%', 'Back overlays current totals on cached Month grid');
+    await render(`window.liveScoreTile = document.querySelector(${JSON.stringify(tileSelector(today, 'month'))});
+      window.liveScoreGrid = liveScoreTile.parentElement; liveScoreTile.focus({ preventScroll: true });`);
+    const focusUpdate = { productive: 450, unproductive: 300, other: 0 };
+    win.webContents.send('tracker:update', { stats: { ...store.snapshot(), byCategory: focusUpdate,
+      byHour: sameDay.byHour, settings: { ...store.getSettings(), thresholdSec: 779 } }, now: null, lastFocused: null });
+    await waitFor(`liveScoreTile.querySelector('strong').textContent === '60%'`, 'Live grid score did not update');
+    assert.equal(await render(`document.querySelector(${JSON.stringify(tileSelector(today, 'month'))}) === liveScoreTile &&
+      liveScoreTile.parentElement === liveScoreGrid && document.activeElement === liveScoreTile`), true,
+      'A changed live score preserves its button, wrapper and keyboard focus');
+    win.webContents.send('tracker:update', { stats: { ...store.snapshot(), byCategory: sameDay.byCategory,
+      byHour: sameDay.byHour, settings: { ...store.getSettings(), thresholdSec: 780 } }, now: null, lastFocused: null });
+    await waitFor(`liveScoreTile.querySelector('strong').textContent === '50%'`, 'Reset live grid score did not arrive');
     await period('week');
     assert.equal(await render(`document.querySelector(${JSON.stringify(tileSelector(today, 'week'))}).querySelector('strong').textContent`), '50%', 'Cached Week grid also reflects current totals');
     await period('month');

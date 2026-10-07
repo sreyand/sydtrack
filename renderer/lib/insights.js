@@ -115,7 +115,7 @@
       const direction = info.deltaPoints > 0 ? 'Up' : 'Down';
       lines.push(
         direction + ' ' +
-        Math.abs(info.deltaPoints) + ' point' + (Math.abs(info.deltaPoints) === 1 ? '' : 's') +
+        Math.abs(info.deltaPoints) + '%' +
         ' from last week.'
       );
     }

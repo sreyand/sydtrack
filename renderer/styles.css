@@ -3104,6 +3104,27 @@ h4 {
   box-shadow: none;
 }
 
+/* Expanded footer follows the nav edges and its shared icon column. Keep the
+   compact/mobile layouts and their centered status light unchanged. */
+@media (min-width: 901px) {
+  body:not(.nav-collapsed) .rail-foot { padding: 0; }
+  body:not(.nav-collapsed) .notif-toggle {
+    min-height: 36px;
+    padding: 8px calc(var(--space-4) - 1px);
+  }
+  body:not(.nav-collapsed) .notif-toggle .notif-ico { width: 16px; height: 16px; }
+  body:not(.nav-collapsed) .pause-power {
+    width: calc(2 * var(--space-4) + 16px);
+    height: 36px;
+  }
+  body:not(.nav-collapsed) .pause-power-ico { width: 16px; height: 16px; }
+  body:not(.nav-collapsed) .rail-status-row .status-pill {
+    height: 36px;
+    justify-content: flex-end;
+    padding: 8px calc(var(--space-4) - 1px);
+  }
+}
+
 .main { padding: var(--space-6) var(--space-8); }
 @media (min-width: 1440px) {
   .main { padding-left: var(--space-8); padding-right: var(--space-8); }
@@ -3557,6 +3578,34 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
   padding-top: 0;
 }
 .theme-swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.appearance-head { margin-bottom: 16px; }
+.appearance-head h3 { margin: 0; }
+.appearance-rotation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px 16px;
+  margin-top: 20px;
+}
+#view-settings .appearance-rotation-switch {
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  font: var(--body);
+}
+.appearance-rotation-switch input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
+.appearance-rotation-switch:has(input:disabled) { cursor: default; opacity: .5; }
+.appearance-rotation .select-menu-control { width: 144px; }
+#theme-rotation-mode { width: 144px; padding: 8px 10px; }
+#settings-panel-tracking > .font-credit { margin: 0; padding: 0 2px; }
+.settings-inline-field > .select-menu-control { width: 168px; flex: 0 0 168px; }
+.day-stack, .day-seg { transition: height 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .day-stack, .day-seg { transition: none; } }
 .theme-swatch {
   appearance: none;
   border: 1px solid var(--color-border);
@@ -3629,7 +3678,7 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
   margin-bottom: var(--space-2);
 }
 #view-settings .appearance-card > .hint {
-  margin: 0 0 var(--space-3);
+  margin: 8px 0 0;
   max-width: 42rem;
 }
 #view-settings .appearance-card .theme-swatches {

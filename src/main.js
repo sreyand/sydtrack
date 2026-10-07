@@ -9,6 +9,8 @@ const { createErrorLog, installErrorLogging } = require('./error-log');
 let errorLog;
 const { createFocusProfiles } = require('./focus-profiles');
 const { createProfileShortcut } = require('./profile-shortcut');
+const { createWindowShortcut, toggleWindowVisibility } = require('./window-shortcut');
+const { initializeThemeRotation, resolveDailyTheme, millisecondsUntilNextDay } = require('./theme-rotation');
 const { createQuickCorrections } = require('./quick-corrections');
 const { createUpdateChecker } = require('./updates');
 let quickCorrections;
@@ -37,7 +39,7 @@ const {
   isIgnored,
   isBrowserProcess
 } = require('./classifier');
-const { createStore } = require('./store');
+const { createStore, todayKey } = require('./store');
 const { createTracker } = require('./tracker');
 const { createSessionManager } = require('./sessions');
 const { updateAppSettings } = require('./settings-service');
@@ -102,6 +104,11 @@ let servicesStarted = false;
 let appTray = null;
 let timedPause = null;
 let isQuitting = false;
+let themeRotationTimer = null;
+let themeRotationSyncing = false;
+const windowShortcut = createWindowShortcut(globalShortcut, () => {
+  if (!isQuitting) toggleWindowVisibility(mainWindow);
+});
 const profileShortcut = createProfileShortcut(globalShortcut, () => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('profiles:cycle-requested');
 });
@@ -241,6 +248,7 @@ function createWindow() {
     theme: activeTheme
   });
   mainWindow = new BrowserWindow(winOpts);
+  mainWindow.on('focus', syncDailyAppearance);
   installNavigationGuards(mainWindow.webContents);
   applyContentSecurityPolicy(mainWindow.webContents.session);
   denyPermissionRequests(mainWindow.webContents.session);
@@ -403,6 +411,7 @@ function startServices() {
   loadAppRules();
   loadAppIgnore();
   store = createStore(dataDir(), { onRecovery: reportRecovery, onboardingForNewInstall: true });
+  syncDailyAppearance();
   sessionManager = createSessionManager({
     dataDir: dataDir(),
     getSettings: () => store.getSettings(),
@@ -565,6 +574,10 @@ app.whenReady().then(() => {
   try {
     if (!profileShortcut.set(savedShortcut).ok) console.warn('[shortcut] profile shortcut is unavailable:', savedShortcut);
   } catch (err) { console.warn('[shortcut] saved profile shortcut is invalid:', err.message); }
+  const savedWindowShortcut = store.getSettings().onboardingComplete !== false ? store.getSettings().windowShortcut : '';
+  if (!windowShortcut.set(savedWindowShortcut || '').ok) console.warn('[shortcut] show/hide shortcut is unavailable');
+  powerMonitor.on('resume', syncDailyAppearance);
+  powerMonitor.on('unlock-screen', syncDailyAppearance);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else if (mainWindow && !mainWindow.isDestroyed()) {
@@ -589,6 +602,11 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   profileShortcut.dispose();
+  windowShortcut.dispose();
+  if (themeRotationTimer) clearTimeout(themeRotationTimer);
+  themeRotationTimer = null;
+  powerMonitor.removeListener('resume', syncDailyAppearance);
+  powerMonitor.removeListener('unlock-screen', syncDailyAppearance);
   if (timedPause) timedPause.dispose();
   if (updateChecker) updateChecker.dispose();
   if (quickCorrections) quickCorrections.clear();
@@ -603,7 +621,9 @@ ipcMain.handle('state:get', async (event, payload) => {
     session: sessionManager ? sessionManager.getActiveSession() : lastPayload.session || null,
     platform: process.platform,
     profileShortcutRegistered: !store || !store.getSettings().profileShortcut ||
-      profileShortcut.active() === store.getSettings().profileShortcut
+      profileShortcut.active() === store.getSettings().profileShortcut,
+    windowShortcutRegistered: !store || !store.getSettings().windowShortcut ||
+      windowShortcut.active() === store.getSettings().windowShortcut
   };
 });
 
@@ -819,29 +839,74 @@ ipcMain.handle('classification:preview', async (event, payload) => {
   return { ...classifyWithReason(win, rules), browser: isBrowserProcess(win, rules.identities) };
 });
 
-function applySettings(partial) {
-  const wasPaused = !!store.getSettings().trackingPaused;
-  const changes = partial && Object.prototype.hasOwnProperty.call(partial, 'trackingPaused') &&
+function applyNativeAppearance(theme) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  // Native chrome failure must not turn a successfully persisted setting into a failed save.
+  try {
+    mainWindow.setBackgroundColor(windowBackgroundColor(theme));
+    if (process.platform === 'win32' && typeof mainWindow.setTitleBarOverlay === 'function') {
+      mainWindow.setTitleBarOverlay(titleBarOverlayForTheme(theme));
+    }
+  } catch (err) { console.warn('[appearance] native window update failed:', err.message); }
+}
+
+function syncDailyAppearance() {
+  if (themeRotationSyncing) return;
+  if (themeRotationTimer) clearTimeout(themeRotationTimer);
+  themeRotationTimer = null;
+  if (!store || isQuitting) return;
+  themeRotationSyncing = true;
+  try {
+    const patch = resolveDailyTheme(store.getSettings(), todayKey());
+    if (Object.keys(patch).length) {
+      applySettings(patch, { automaticAppearance: true });
+      sendCurrentSettingsToRenderer();
+    }
+  } catch (err) { console.warn('[appearance] daily rotation could not save:', err.message); }
+  finally {
+    if (!isQuitting && store.getSettings().themeRotationEnabled === true) {
+      themeRotationTimer = setTimeout(syncDailyAppearance, millisecondsUntilNextDay(new Date()));
+      if (themeRotationTimer.unref) themeRotationTimer.unref();
+    }
+    themeRotationSyncing = false;
+  }
+}
+
+function applySettings(partial, { automaticAppearance = false } = {}) {
+  const previous = store.getSettings();
+  const wasPaused = !!previous.trackingPaused;
+  let changes = partial && Object.prototype.hasOwnProperty.call(partial, 'trackingPaused') &&
     !Object.prototype.hasOwnProperty.call(partial, 'trackingPauseUntil')
     ? { ...partial, trackingPauseUntil: 0 }
-    : partial;
-  const previousShortcut = profileShortcut.active();
-  if (changes && Object.prototype.hasOwnProperty.call(changes, 'profileShortcut') && !profileShortcut.set(changes.profileShortcut).ok) {
-    throw new Error('That shortcut is already in use. Choose another one.');
+    : { ...partial };
+  if (!automaticAppearance) {
+    if (Object.hasOwn(changes, 'theme')) changes.themeRotationEnabled = false;
+    const merged = { ...previous, ...changes };
+    if (merged.themeRotationEnabled === true && (previous.themeRotationEnabled !== true ||
+      merged.themeRotationMode !== previous.themeRotationMode)) {
+      changes = { ...changes, ...initializeThemeRotation(merged, todayKey()) };
+    }
   }
+  const previousShortcut = profileShortcut.active();
+  const previousWindowShortcut = windowShortcut.active();
   let next;
   try {
+    if (Object.hasOwn(changes, 'profileShortcut') && !profileShortcut.set(changes.profileShortcut).ok) {
+      throw new Error('That shortcut is already in use. Choose another one.');
+    }
+    if (Object.hasOwn(changes, 'windowShortcut') || Object.hasOwn(changes, 'onboardingComplete')) {
+      const desired = { ...previous, ...changes };
+      if (!windowShortcut.set(desired.onboardingComplete !== false ? desired.windowShortcut || '' : '').ok) {
+        throw new Error('That shortcut is already in use. Choose another one.');
+      }
+    }
     next = updateAppSettings(store, sessionManager, changes, () => {
       if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
-      if (partial && partial.theme && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.setBackgroundColor(windowBackgroundColor(partial.theme));
-        if (process.platform === 'win32' && typeof mainWindow.setTitleBarOverlay === 'function') {
-          mainWindow.setTitleBarOverlay(titleBarOverlayForTheme(partial.theme));
-        }
-      }
+      if (changes.theme) applyNativeAppearance(changes.theme);
     });
   } catch (err) {
     profileShortcut.set(previousShortcut);
+    windowShortcut.set(previousWindowShortcut);
     throw err;
   }
   if (tracker && wasPaused !== !!next.trackingPaused && typeof tracker.markPauseBoundary === 'function') {
@@ -858,7 +923,8 @@ function applySettings(partial) {
   }
   if (timedPause) timedPause.sync();
   if (updateChecker) updateChecker.sync();
-  return next;
+  if (!automaticAppearance) syncDailyAppearance();
+  return store.getSettings();
 }
 
 ipcMain.handle('data:export', async (event, payload) => {
@@ -938,7 +1004,11 @@ ipcMain.handle('data:import', async (event, payload) => {
       const imported = importCsv(store, fs.readFileSync(chosen, 'utf8'), {
         sessionManager,
         focusProfiles,
-        onSettings: applySettings,
+        onSettings: (settings) => {
+          const next = applySettings(settings, { automaticAppearance: true });
+          syncDailyAppearance();
+          return next;
+        },
         onRules: (rules) => {
           focusProfiles.save('default', { productive: rules.productive, unproductive: rules.unproductive, other: rules.other || [] });
         },
@@ -983,6 +1053,11 @@ ipcMain.handle('data:import', async (event, payload) => {
       try {
         if (!profileShortcut.set(next.profileShortcut || '').ok) console.warn('[shortcut] imported profile shortcut is unavailable');
       } catch (err) { console.warn('[shortcut] imported profile shortcut is invalid:', err.message); }
+      if (!windowShortcut.set(next.onboardingComplete !== false ? next.windowShortcut || '' : '').ok) {
+        console.warn('[shortcut] imported show/hide shortcut is unavailable');
+      }
+      syncDailyAppearance();
+      applyNativeAppearance(store.getSettings().theme);
       if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
     },
     onRules: (rules) => {

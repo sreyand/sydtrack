@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="wellbeing.css" />
   <link rel="stylesheet" href="schedule-time.css" />
+  <link rel="stylesheet" href="select-menu.css" />
 </head>
 <body>
   <div class="window-drag-region" aria-hidden="true"></div>
@@ -603,7 +604,9 @@
           <label class="switch-row"><div><div class="switch-title">Allow notifications</div></div><input type="checkbox" id="settings-notifications-toggle" checked /></label>
         </article>
         <article class="card appearance-card" id="settings-appearance-card">
-          <h3>Appearance</h3>
+          <div class="appearance-head">
+            <h3>Appearance</h3>
+          </div>
           <div class="theme-swatches" role="group" aria-label="Theme">
             <button type="button" class="theme-swatch" data-theme-id="midnight" aria-pressed="true">Midnight</button>
             <button type="button" class="theme-swatch" data-theme-id="tide" aria-pressed="false">Tide</button>
@@ -615,6 +618,20 @@
             <button type="button" class="theme-swatch" data-theme-id="coral" aria-pressed="false">Coral</button>
             <button type="button" class="theme-swatch" data-theme-id="starlight" aria-pressed="false">Starlight</button>
           </div>
+          <div class="appearance-rotation">
+            <label class="switch-row appearance-rotation-switch" title="Change themes once a day. Picking a theme manually turns this off.">
+              <input type="checkbox" id="theme-rotation-toggle" role="switch" />
+              <span>Rotate daily</span>
+            </label>
+            <div id="theme-rotation-options" class="hidden">
+              <select id="theme-rotation-mode" aria-label="Themes to rotate">
+                <option value="dark">Dark themes</option>
+                <option value="light">Light themes</option>
+                <option value="any">Any theme</option>
+              </select>
+            </div>
+          </div>
+          <p id="appearance-status" class="hint hidden" role="status"></p>
         </article>
         <article class="card" id="settings-updates-card">
           <h3>Updates <span id="updates-version" class="muted tiny"></span></h3>
@@ -683,14 +700,13 @@
               </div>
             </div>
           </div>
-
           <div class="settings-block" id="polling-settings">
             <label class="field settings-inline-field">
               <div class="settings-field-copy">
                 <span>Polling mode</span>
                 <div class="hint">How quickly sydtrack notices an app switch.</div>
               </div>
-              <select id="poll-mode">
+              <select id="poll-mode" aria-label="Polling mode">
                 <option value="5000">Low · 5 sec</option>
                 <option value="3000" selected>Med · 3 sec</option>
                 <option value="1000">Max · 1 sec</option>
@@ -709,6 +725,16 @@
               </select>
             </div>
             <p id="profile-shortcut-status" class="hint hidden" role="status"></p>
+            <div class="field settings-inline-field profile-shortcut-row">
+              <label for="window-shortcut" class="settings-field-label">Show/hide sydtrack</label>
+              <select id="window-shortcut">
+                <option value="">Off</option>
+                <option value="CommandOrControl+Alt+S">Ctrl/⌘+Alt+S</option>
+                <option value="CommandOrControl+Shift+S">Ctrl/⌘+Shift+S</option>
+                <option value="Alt+S">Alt+S</option>
+              </select>
+            </div>
+            <p id="window-shortcut-status" class="hint hidden" role="status"></p>
           </div>
 
           <!-- Reminder timing fields -->
@@ -886,8 +912,10 @@
   <script src="lib/insights.js"></script>
   <script src="lib/day-timeline.js"></script>
   <script src="lib/apps-analytics.js"></script>
+  <script src="dom-patch.js"></script>
   <script src="wellbeing-ui.js"></script>
   <script src="schedule-time-ui.js"></script>
+  <script src="select-menu-ui.js"></script>
   <script src="renderer.js"></script>
   <script src="category-explanation-ui.js"></script>
   <script src="quick-corrections-ui.js"></script>

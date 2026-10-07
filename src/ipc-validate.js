@@ -1,6 +1,7 @@
 'use strict';
 
 const { PROFILE_SHORTCUTS } = require('./profile-shortcut');
+const { WINDOW_SHORTCUTS } = require('./window-shortcut');
 const { THEME_IDS } = require('./theme');
 
 const CHANNELS = [
@@ -272,6 +273,15 @@ const SETTINGS = {
   },
   profileShortcut: (value) => {
     if (!PROFILE_SHORTCUTS.includes(value)) invalid();
+    return value;
+  },
+  windowShortcut: (value) => {
+    if (!WINDOW_SHORTCUTS.includes(value)) invalid();
+    return value;
+  },
+  themeRotationEnabled: bool,
+  themeRotationMode: (value) => {
+    if (!['dark', 'light', 'any'].includes(value)) invalid();
     return value;
   },
   trackingPaused: bool,

@@ -41,9 +41,7 @@
   font-size: 14px;
   opacity: 0;
 }
-.focus-score-day:hover,
-.focus-score-day:focus-visible,
-.focus-score-day[data-selected="true"] {
+.focus-score-day:hover {
   border-color: var(--color-accent);
   background: var(--color-accent-tint);
 }

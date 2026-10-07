@@ -78,6 +78,8 @@
     control.draft = parse(control.retryValue) || parse(control.input.value) || parse(control.confirmed);
     if (!control.draft) return;
     opened = control;
+    control.openWidth = window.innerWidth;
+    control.openHeight = window.innerHeight;
     control.popover.hidden = false;
     control.trigger.setAttribute('aria-expanded', 'true');
     control.popover.style.width = Math.min(hour12 ? 264 : 204, window.innerWidth - 24) + 'px';
@@ -240,9 +242,14 @@
   document.addEventListener('click', event => {
     if (event.target.closest('.nav-btn, [data-settings-tab]')) close();
   });
-  window.addEventListener('resize', () => close());
+  window.addEventListener('resize', () => {
+    // A queued resize can arrive after opening at its final dimensions. Only a
+    // viewport change since placement makes this popover's position stale.
+    if (opened && (opened.openWidth !== window.innerWidth || opened.openHeight !== window.innerHeight)) close();
+  });
   document.addEventListener('scroll', event => {
-    if (opened && !opened.popover.contains(event.target)) close();
+    // Ignore delayed scroll notifications from closed picker columns as well.
+    if (opened && !event.target.closest?.('.schedule-time-popover, .select-menu-listbox')) close();
   }, { capture: true, passive: true });
   window.sydtrackScheduleTimeUI = { sync, close };
 })();

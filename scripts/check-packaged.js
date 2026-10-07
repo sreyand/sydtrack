@@ -309,11 +309,13 @@ async function launch(executable, userData, label, existing = false, expectedTot
         !document.getElementById('focus-score-back').classList.contains('hidden') && timelineFollowsToday === false`), true, 'Drill-down retains selected date and metrics');
       await renderer(`document.getElementById('focus-score-back').click()`);
       await waitFor(`analyticsSegment === ${JSON.stringify(period)} &&
-        document.activeElement?.matches(${JSON.stringify(selector)}) && document.activeElement.dataset.selected === 'true'`, 'Back did not restore selected source tile and keyboard focus');
+        document.activeElement?.matches(${JSON.stringify(selector)})`, 'Back did not restore source tile and keyboard focus');
+      assert.equal(await renderer(`document.querySelector('.focus-score-day[data-selected], .focus-score-day[aria-current]') === null`), true,
+        'Score navigation leaves no persistent selected tile');
       assert.equal(await renderer(`document.getElementById('focus-score-back').classList.contains('hidden')`), true);
     }
     assert.equal(await renderer(`openFocusScoreDay('2000-02-30', 'month')`), false, 'Invalid historical date is rejected');
-    console.log(`${label}: packaged focusscore Week/Month → stored historical Day → selected source tile passed`);
+    console.log(`${label}: packaged focusscore Week/Month → stored historical Day → source tile without persistent selection passed`);
   }
   async function verifyReleaseUI(correction, grouped, activeProfile) {
     // Render only known synthetic metadata, with tracking already paused. The

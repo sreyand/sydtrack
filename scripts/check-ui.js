@@ -243,11 +243,21 @@ app.whenReady().then(async () => {
         const footerRhythm = mobile || !${collapsed} || (footer.every(r => r.width === 44 && r.height === 44) &&
           footer.slice(1).every((r, i) => Math.abs(r.top - footer[i].bottom - 8) <= 1));
         const footerInside = footer.every(r => r.top >= rail.top && r.bottom <= rail.bottom && r.left >= rail.left && r.right <= rail.right);
+        const nav = rect('.nav-btn');
+        const notificationIcon = document.querySelector('#notif-btn .notif-ico-' +
+          (document.getElementById('notif-btn').dataset.muted === 'on' ? 'off' : 'on'));
+        const iconCenter = el => { const r = el.getBoundingClientRect(); return r.left + r.width / 2; };
+        const expandedFooterAligned = mobile || ${collapsed} || (
+          Math.abs(footer[0].left - nav.left) <= 1 && Math.abs(footer[0].right - nav.right) <= 1 &&
+          Math.abs(footer[1].left - nav.left) <= 1 && Math.abs(footer[2].right - nav.right) <= 1 &&
+          footer.every(r => Math.abs(r.height - footer[0].height) <= 1) &&
+          Math.abs(iconCenter(notificationIcon) - center('.nav-ico')) <= 1 &&
+          Math.abs(center('.pause-power-ico') - center('.nav-ico')) <= 1);
         const mobileRail = !mobile || (rail.width >= rect('.shell').width - 1 && rect('#nav-toggle').width === 0);
         const customAligned = Math.abs(center('#session-custom-min') - center('#session-start-btn')) <= 1;
         const card = rect('#session-timer-card');
         const controlsInside = ['#session-custom-min', '#session-start-btn', '.session-mode-control'].every(s => { const r = rect(s); return r.left >= card.left && r.right <= card.right; });
-        return { width: innerWidth, collapsed: ${collapsed}, sidebarAligned, footerRhythm, footerInside, mobileRail, customAligned, controlsInside };
+        return { width: innerWidth, collapsed: ${collapsed}, sidebarAligned, footerRhythm, footerInside, expandedFooterAligned, mobileRail, customAligned, controlsInside };
       })()`));
       if (width === 1040 && collapsed) {
         await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
@@ -256,7 +266,7 @@ app.whenReady().then(async () => {
     }
   }
   console.log('Layout checks:', JSON.stringify(layoutChecks));
-  if (layoutChecks.some(check => !check.footerRhythm || !check.footerInside)) throw new Error('Sidebar footer spacing or containment failed');
+  if (layoutChecks.some(check => !check.footerRhythm || !check.footerInside || !check.expandedFooterAligned)) throw new Error('Sidebar footer spacing, alignment or containment failed');
   const footerStateChecks = [];
   for (const height of [600, 760]) {
     win.setSize(1040, height);

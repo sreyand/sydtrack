@@ -290,6 +290,15 @@ app.whenReady().then(async () => {
 
     const beforeDismissals = scheduleWrites().length;
     await open('start');
+    await draft('start', '11:26');
+    await render(`window.dispatchEvent(new Event('resize'))`);
+    assert.equal((await state('start')).visible, true, 'A stale resize notification at the placed viewport keeps the draft open');
+    await render(`document.querySelector('#${id('end')}-popover [role="listbox"]').dispatchEvent(new Event('scroll'));
+      document.querySelector('.select-menu-listbox')?.dispatchEvent(new Event('scroll'));`);
+    const retained = await state('start');
+    assert.equal(retained.visible, true, 'Closed-picker scroll notifications do not dismiss the current draft');
+    assert.equal(retained.groups.find(group => group.unit === 'minute').activeValue, '26');
+    assert.equal(retained.time, '22:37', 'Ignored stale events do not commit a draft');
     await render(`document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.body.click()`);
     await waitFor(`!(${visible('start')})`, 'Outside pointer did not dismiss picker');
     await open('start');
@@ -304,6 +313,9 @@ app.whenReady().then(async () => {
     await showNotifications(); await open('start');
     await render(`document.querySelector('.main').dispatchEvent(new Event('scroll'))`);
     await waitFor(`!(${visible('start')})`, 'Main scroll did not dismiss picker');
+    await open('start');
+    await render(`document.body.dispatchEvent(new Event('scroll'))`);
+    await waitFor(`!(${visible('start')})`, 'Body scroll did not dismiss picker');
     await open('end'); await setWidth(1050);
     await waitFor(`!(${visible('end')})`, 'Resize did not dismiss picker');
     await setWidth(1040); await showNotifications();

@@ -444,3 +444,39 @@ Run `npm test`, `npm run test:ui`, and `npm run test:profiles-ui`. `npm run benc
 - [Release validation](docs/release-validation-2.5.0.md) records final sizes/hashes, the verification boundary, and remaining manual acceptance. GitHub metadata checking reported published 2.4.0 below the local 2.5.0 build; automatic checks remain off by default. Installer/portable wrappers, real tracking, Windows tray interaction, and sleep/lock acceptance remain manual.
 - No new classifier behavior, Focus Share formula, focusstreak feature, or foreground tracking reliability fix is included. The reported Windows backend timeout/JSON warning is deferred at the user’s request and must not be described as fixed.
 - Previous versioned release artifacts remain frozen. No commit, tag, upload, production-profile migration, or installation is part of this preparation.
+
+## Post-package focusscore return polish — 2026-10-05
+
+- Removed the last-opened day selection state and its accent fill/border. Week and Month tiles retain their normal score colors after returning from Day Analytics, including after later grid renders. They are navigation buttons, not persistent selections, so they no longer emit `data-selected` or `aria-current`.
+- Return focus and scroll restoration remain intact. Hover still offers the opening affordance; keyboard focus uses the existing visible outline without replacing the score colors.
+- Passed syntax checks and isolated focusscore navigation regressions, including trusted pointer round trips in Midnight/Forest, keyboard return, exact dates, late replies, rollover, and existing layout/scroll checks. Updated the packaged checker expectations for the next build.
+- Source-only follow-up: the already prepared v2.5.0 setup, portable, checksums, and release-validation snapshot are unchanged and do not contain this fix. No version bump, rebuild, installation, or publication was performed.
+
+## Week-over-week copy — 2026-10-07
+
+- At the user's request, comparison copy now reads “Up 17% from last week.” (or “Down 17% from last week.”) instead of points. This is presentation only: the existing difference between the two periods' Focus Share percentages is unchanged, not converted to a relative percentage increase.
+- Added positive, negative, one-point, and unchanged copy regressions. This remains a source-only change; prepared v2.5.0 packages were not rebuilt.
+
+## Minimal interface polish and optional desktop controls — 2026-10-07 (unreleased)
+
+- Appearance adds an opt-in **Daily rotation** control, off by default. Its eligible modes are **Only dark** (default), **Only light**, and **Any**, following the existing dark-to-light theme catalog. A saved theme ID and local calendar-date anchor determine the sequence; restarts, sleep, skipped dates, and backward date changes do not advance it by an extra launch or accumulate DST drift. Enabling or changing modes starts from the current eligible theme, or the first eligible theme when necessary. A manual theme choice disables rotation. Startup, midnight, focus, and resume synchronize the current appearance and native window colors.
+- Tracking adds **Show/hide sydtrack**, defaulting to **Off**, with Ctrl/⌘+Alt+S, Ctrl/⌘+Shift+S, and Alt+S choices. The shortcut hides a focused window or restores/shows/focuses it otherwise. Conflicts preserve the previous working registration; setting-write failures restore in-memory preferences and registrations. The shortcut is not registered before onboarding completes and is released on quit.
+- Tracking and Appearance selects use themed menus with native-select fallback. Existing settings, scope, and keyboard access remain intact.
+- Live chart updates preserve their existing nodes, and focusscore grids retain their day buttons rather than rebuilding them on each update. Active Week and Month views overlay today's activity on cached history, keeping their values current without replacing focused or hovered cells or reading history on every tracking sample.
+- Verification passed: the full core suite (103 syntax-checked files), isolated general UI, focusscore navigation/live-focus, pause-menu, exact-minute schedule, real-preload profile, and DOM-patching checks. The new four-control dropdown/rotation harness passes 54 theme/viewport combinations, keyboard navigation, delayed/failed writes, retry, shared pending guards, reload, and native fallback. Rotation/settings tests cover local dates and DST, restart stability, JSON/CSV roundtrips, private-anchor rejection, collisions, and failed-write rollback; synthetic main-process checks cover rollover/wake/native colors, a single midnight timer even during overdue pause expiry, and authoritative post-midnight replies. Clean Forest and Graphite Settings screenshots were inspected. Actual OS shortcut presses and real sleep/wake acceptance remain manual.
+- Fixed a related dropdown race found during regressions: delayed resize notifications no longer close a menu already placed at the current viewport, and delayed scrolls from closed popup lists do not dismiss a new draft. Actual page scrolling, navigation, and viewport changes still dismiss menus.
+- Source-only follow-up: version remains 2.5.0. Prepared setup/portable files, checksums, and their release-validation snapshot remain frozen and do not contain these changes. No package rebuild, commit, tag, upload, installation, or publication is part of this pass.
+
+## Sidebar alignment and quieter Appearance — 2026-10-07 (unreleased)
+
+- Expanded sidebar footer controls now follow the navigation's outer edges and shared icon column. Notifications, power, and tracking status have matching row heights; status labels share a right edge. Collapsed and narrow-window layouts retain their existing behavior.
+- Moved Daily rotation and its optional theme-pool menu out of the Appearance heading into a separate row below the theme choices. No extra card, divider, explanatory copy, or behavior change was added.
+- Verification passed: general UI regressions including expanded/collapsed sidebar geometry, and the dropdown/rotation harness across 54 theme/viewport combinations. Clean Forest and Graphite screenshots were inspected.
+- Source-only UI polish; no version bump or package rebuild.
+
+## Appearance control hierarchy — 2026-10-07 (unreleased)
+
+- Replaced the oversized Daily rotation action with a native, keyboard-accessible **Rotate daily** switch. Its regular-weight label and compact theme-pool menu form one left-aligned control group beneath the existing theme choices, rather than opposite ends of the card. Choices now read **Dark themes**, **Light themes**, and **Any theme**; the menu stays hidden when rotation is off.
+- Removed the font credit from Appearance and preserved its attribution and license information in the Settings footer after Data. No extra card, divider, or instructional subtitle was added. Rotation behavior and stored preferences are unchanged.
+- Verification passed: 103 syntax checks, general UI regressions, and the dropdown/rotation harness across 54 theme/viewport combinations. Checks include trusted keyboard Space, single settings writes, failed-enable/disable rollback, pending guards, reload, and native-select fallback. Actual Graphite and Forest on/off screenshots were inspected.
+- Source-only redesign; no version bump, package rebuild, installation, or personal-data change.

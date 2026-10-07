@@ -43,6 +43,20 @@ function run(assert) {
   })));
   assert(!compare.comparable && compare.deltaPoints === null && /Most tracked time/.test(compare.sentences[0]),
     'weekly comparisons do not imply improvement from mostly Other time');
+  for (const [previous, current, delta, sentence] of [
+    [60, 77, 17, 'Up 17% from last week.'],
+    [77, 60, -17, 'Down 17% from last week.'],
+    [60, 61, 1, 'Up 1% from last week.'],
+    [61, 60, -1, 'Down 1% from last week.'],
+    [60, 60, 0, 'Unchanged from last week at 60%.']
+  ]) {
+    const review = insights.compareWeeks(Array.from({ length: 14 }, (_, index) => ({
+      date: '2026-09-' + String(index + 1).padStart(2, '0'),
+      byCategory: { productive: index < 7 ? previous : current, unproductive: 100 - (index < 7 ? previous : current) }
+    })));
+    assert(review.deltaPoints === delta && review.sentences[0] === sentence,
+      'weekly percentage copy preserves the existing calculation: ' + sentence);
+  }
   assert(WEEK_HISTORY_DAYS === 14, 'weekly comparison uses 14 days');
   assert(goalPrefs({}).goalPct === 80 && !goalPrefs({}).screenEnabled, 'renderer goal preferences use quiet defaults');
   assert(drillSharePercent(700, 100) === 100 && drillSharePercent(50, 0) === null, 'app share stays bounded');
