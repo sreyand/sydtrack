@@ -522,3 +522,18 @@ Run `npm test`, `npm run test:ui`, and `npm run test:profiles-ui`. `npm run benc
 - Shortened release notes and validation documentation, updated the README, and removed its obsolete source-only motion status.
 - Core, full UI, and extracted-package fresh/restart checks passed. The UI suite passed sequentially after an initial dropdown-opening failure during concurrent checks; the validation report records this retry.
 - Manual installer/portable acceptance remains pending. No installation, publication, commit, tag, dependency upgrade, or personal-data change was performed.
+
+## Stable tab transitions — 2026-10-07 (unreleased)
+
+- Removed Week/Month loading-text teardowns, render cached history synchronously, and reuse Month charts. Day refreshes retain timeline insights; Apps range loads retain confirmed charts and correctly labeled totals, with bounded range caches and stale-request guards.
+- Anchored Analytics controls, stabilized tab widths and scrollbar space, and moved loading statuses out of layout. Interrupted tab highlights resume from their actual visible position, including an Apps detour.
+- Patched live app rows by stable activity ID so reordering cannot change the activity under a focused correction button. Cache invalidation and midnight refreshes keep selected-day/range data current.
+- Verification: core suite (107 syntax checks), all eight UI harnesses, and 140 new transition assertions passed with motion on, off, and reduced. Synthetic delays/failures, rapid navigation, timeline insights, row focus, and highlight continuity are covered; Week/Month captures were inspected. Initial old test-fixture expectations were updated for preserved content and date-aware caches.
+- Source-only fix: version stays 2.6.0; setup, portable, and checksum files remain unchanged. No installation, publication, dependency, storage-format, or personal-data change.
+
+## v2.6.1 release preparation — 2026-10-07
+
+- Bumped package and lockfile versions to 2.6.1 without dependency upgrades. Added short patch notes, updated README release references, and prepared a validation report with commit/tag guidance.
+- Built unsigned Windows x64 setup and portable packages containing the tab-flicker fixes. Generated and verified all three artifact checksums; frozen v2.6.0 artifacts remain unchanged.
+- Core suite and 140 transition checks passed at 2.6.1. The full eight-harness UI suite passed for the release source before the version-only bump. Both real extracted apps passed fresh/restart checks, including gated 2.6.1 cached-chart/geometry assertions with motion off/on.
+- Ready for the intended `2.6.1` commit and `v2.6.1` tag after manual acceptance. No commit, tag, push, installation, publication, or personal-data change was performed.

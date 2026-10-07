@@ -1066,9 +1066,11 @@ function infrastructureChecks() {
 async function historyLoadingChecks() {
   const vm = require('vm');
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer/renderer.js'), 'utf8');
+  const chartTarget = () => ({ textContent: 'Confirmed chart', childElementCount: 0, attributes: {},
+    setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this.attributes[name]; } });
   const targets = {
-    'week-chart': {},
-    'month-history': {},
+    'week-chart': chartTarget(),
+    'month-history': chartTarget(),
     'analytics-loading': { classList: { add() {}, remove() {} } }
   };
   const requests = [];
@@ -1076,6 +1078,9 @@ async function historyLoadingChecks() {
   const context = vm.createContext({
     historyRequest: 0, historicalWeek: null, analyticsSegment: 'week',
     fullHistoryCache: null, fullHistoryPromise: null, fullHistoryGeneration: 0, wellbeingStats: null,
+    historyTargets: new WeakMap(), timelineLoadedDate: null, timelineRequest: 0, appsHistoryGeneration: 0, appsHistoryRequest: 0,
+    appsHistoryCache: new Map(), appsHistoryLoads: new Map(), appsHistoryRange: null,
+    patchChartMarkup: (target, markup) => { target.innerHTML = markup; target.childElementCount = 1; },
     $: id => targets[id], renderWeek: () => rendered++, esc: value => String(value).replaceAll('<', '&lt;'), fmtFriendly: String,
     latestGoalSettings: {}, sydtrackGoals: require('../renderer/lib/goals'), fmtDuration: String,
     api: { getHistorySummary: days => new Promise((resolve, reject) => requests.push({ days, resolve, reject })) }
@@ -1085,7 +1090,8 @@ async function historyLoadingChecks() {
   vm.runInContext(wellbeingSource.slice(wellbeingSource.indexOf('function historyWithCurrentDay'), wellbeingSource.indexOf('function renderScoreList')), context);
   vm.runInContext(source.slice(source.indexOf('function setHistoryLoading'), source.indexOf('const ANALYTICS_SUBTITLES')), context);
   const first = context.loadAnalyticsHistory();
-  assert(targets['week-chart'].textContent === 'Loading history…' && requests[0].days === 90, '#9 Analytics loads the 90-day window once');
+  assert(targets['week-chart'].textContent === 'Confirmed chart' && targets['week-chart'].attributes['aria-busy'] === 'true' && requests[0].days === 90,
+    '#9 Analytics reads history once without replacing the confirmed chart');
   context.analyticsSegment = 'month';
   const second = context.loadAnalyticsHistory();
   requests[0].resolve([{ date: '2026-09-01', byCategory: { productive: 1, unproductive: 2, other: 3 } }]);
@@ -1094,7 +1100,9 @@ async function historyLoadingChecks() {
   assert(rendered === 0 && requests.length === 1, '#9 late week responses cannot overwrite a newer segment and reuse the full-history read');
   assert(targets['month-history'].innerHTML.includes('33%'), '#9 month slices the cached 90-day read and calculates focus share excluding Other');
   context.wellbeingStats = { date: '2026-09-01', byCategory: { productive: 3, unproductive: 1, other: 1 } };
-  await context.loadAnalyticsHistory();
+  const cachedLoad = context.loadAnalyticsHistory();
+  assert(targets['month-history'].innerHTML.includes('75%'), 'Cached Analytics renders synchronously without a loading frame');
+  await cachedLoad;
   assert(targets['month-history'].innerHTML.includes('75%') && requests.length === 1,
     'Returning to cached history uses current-day totals without another history read');
   assert(context.fullHistoryCache[0].byCategory.productive === 1, 'Live overlay does not mutate the cached historical snapshot');

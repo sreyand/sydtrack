@@ -1,6 +1,6 @@
 # v2.6.0 rebuild validation — 2026-10-07
 
-Rebuilt setup and portable files include the final UI-motion refinements. These replace the earlier local v2.6.0 packages; no installation or publication was performed.
+Rebuilt setup and portable files include the earlier UI-motion refinements. These replace the earlier local v2.6.0 packages; no installation or publication was performed. Subsequent tab-flicker fixes are included in v2.6.1, not these v2.6.0 files.
 
 ## Artifacts
 

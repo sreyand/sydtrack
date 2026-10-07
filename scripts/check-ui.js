@@ -669,6 +669,7 @@ app.whenReady().then(async () => {
     const centerPadding = Math.min(number.left - center.left, center.right - number.right);
     total.textContent = normal;
     appsRange = 'week'; appsHistoryRange = 'week';
+    appsHistoryDate = lastAppsStats.date;
     appsHistoryDays = [{ date: '2026-09-24', apps: [{ name: 'Chrome', category: 'unproductive', seconds: 3600 }] },
       { date: '2026-09-25', apps: [] }];
     renderAppList(lastAppsStats);

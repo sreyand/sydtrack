@@ -95,7 +95,13 @@
       // Polls and unrelated menus must not restart a highlight already in flight.
       if (state && state.active === active && state.rect && !refresh) return;
       if (!active || !visible(group)) {
-        if (state) { cancel(state.pill); state.pill.hidden = true; state.rect = null; state.active = null; }
+        if (state) {
+          if (!active && visible(group) && !state.pill.hidden) {
+            const pill = state.pill.getBoundingClientRect(), parent = group.getBoundingClientRect();
+            state.parkedRect = { left: pill.left - parent.left, top: pill.top - parent.top, width: pill.width, height: pill.height };
+          } else if (!visible(group)) { state.rect = null; state.parkedRect = null; }
+          cancel(state.pill); state.pill.hidden = true; state.active = null;
+        }
         group.removeAttribute('data-motion-pill');
         return;
       }
@@ -105,7 +111,10 @@
         group.classList.add('ui-motion-segment'); group.prepend(pill);
         state = { pill, rect: null, active: null }; indicators.set(group, state);
       }
-      const old = state.rect && state.pill.getBoundingClientRect();
+      const parent = state.parkedRect && group.getBoundingClientRect();
+      const old = state.parkedRect ? { ...state.parkedRect, left: parent.left + state.parkedRect.left,
+        top: parent.top + state.parkedRect.top } : state.rect && state.pill.getBoundingClientRect();
+      state.parkedRect = null;
       cancel(state.pill);
       group.removeAttribute('data-motion-pill');
       const appearance = getComputedStyle(active);
@@ -116,7 +125,7 @@
       Object.assign(state.pill.style, { left: next.left + 'px', top: next.top + 'px', width: next.width + 'px', height: next.height + 'px' });
       group.setAttribute('data-motion-pill', 'ready');
       const target = state.pill.getBoundingClientRect();
-      if (moving && old && state.rect && Object.keys(next).some(key => next[key] !== state.rect[key])) {
+      if (moving && old && state.rect && ['left', 'top', 'width', 'height'].some(key => Math.abs(old[key] - target[key]) > .25)) {
         animate(state.pill, [{ transform: `translate(${old.left - target.left}px,${old.top - target.top}px) scale(${old.width / target.width},${old.height / target.height})` },
           { transform: 'none' }], 150);
       }

@@ -23,6 +23,10 @@ const has26Features = releaseVersion => {
   const [major, minor] = String(releaseVersion).split('.').map(Number);
   return major > 2 || (major === 2 && minor >= 6);
 };
+const has261Transitions = releaseVersion => {
+  const [major, minor, patch] = String(releaseVersion).split('.').map(Number);
+  return major > 2 || (major === 2 && (minor > 6 || (minor === 6 && patch >= 1)));
+};
 const sha256 = content => crypto.createHash('sha256').update(content).digest('hex');
 
 function filesIn(dir) {
@@ -307,6 +311,70 @@ async function launch(executable, userData, label, existing = false, expectedTot
     await emulateReducedMotion('reduce'); await emulateReducedMotion('no-preference');
     await emulateReducedMotion(null);
     console.log(`${label}: packaged 2.6 motion/rotation/shortcut/custom-select restart passed`);
+  }
+  async function verify261Transitions() {
+    await emulateReducedMotion('no-preference');
+    await renderer('document.fonts.ready');
+    for (const enabled of [false, true]) {
+      await renderer(`document.querySelector('.nav-btn[data-tab="settings"]').click();
+        document.querySelector('[data-settings-tab="tracking"]').click();
+        if (document.getElementById('ui-motion-toggle').checked !== ${enabled}) document.getElementById('ui-motion-toggle').click()`);
+      await waitFor(`!appearanceSaving && latestGoalSettings.uiMotionEnabled === ${enabled} &&
+        document.documentElement.dataset.uiMotion === ${JSON.stringify(enabled ? 'on' : 'off')}`, 'Transition motion preference did not settle');
+      await renderer(`document.querySelector('.nav-btn[data-tab="analytics"]').click(); setAnalyticsSegment('month')`);
+      await waitFor(`fullHistoryCache && document.querySelector('#month-history .pie-chart')`, 'Transition Month cache did not settle');
+      await renderer(`setAnalyticsSegment('week')`);
+      await waitFor(`document.querySelector('#week-chart [data-day]')`, 'Transition Week chart did not settle');
+      await renderer(`(() => {
+        document.querySelector('.main').scrollTop = 0;
+        window.__packagedTransitionWeek = document.querySelector('#week-chart [data-day]');
+        window.__packagedTransitionMonth = document.querySelector('#month-history .pie-chart');
+        window.__packagedTransitionRemoved = [];
+        window.__packagedTransitionRects = () => [...document.querySelectorAll('.analytics-toolbar .segment-control:first-child > .segment-btn')].map(button => {
+          const rect = button.getBoundingClientRect();
+          return { key: button.dataset.segment, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+        });
+        window.__packagedTransitionBaseline = window.__packagedTransitionRects();
+        window.__packagedTransitionState = () => ({
+          week: window.__packagedTransitionWeek === document.querySelector('#week-chart [data-day]') && window.__packagedTransitionWeek.isConnected,
+          month: window.__packagedTransitionMonth === document.querySelector('#month-history .pie-chart') && window.__packagedTransitionMonth.isConnected,
+          loading: ['week-chart', 'month-history'].some(id => document.getElementById(id).textContent.includes('Loading')) ||
+            !document.getElementById('analytics-loading').classList.contains('hidden'),
+          stable: window.__packagedTransitionRects().every((rect, index) => rect.key === window.__packagedTransitionBaseline[index].key &&
+            ['left','top','width','height'].every(key => Math.abs(rect[key] - window.__packagedTransitionBaseline[index][key]) <= 0.5)),
+          removed: window.__packagedTransitionRemoved.slice()
+        });
+        window.__packagedTransitionObserver = new MutationObserver(records => {
+          for (const record of records) for (const node of record.removedNodes) {
+            if (node === window.__packagedTransitionWeek || node.contains?.(window.__packagedTransitionWeek)) window.__packagedTransitionRemoved.push('week');
+            if (node === window.__packagedTransitionMonth || node.contains?.(window.__packagedTransitionMonth)) window.__packagedTransitionRemoved.push('month');
+          }
+        });
+        window.__packagedTransitionObserver.observe(document.getElementById('view-analytics'), { subtree: true, childList: true });
+      })()`);
+      try {
+        for (const segment of ['week', 'month', 'month', 'week', 'day', 'week', 'month']) {
+          const checks = await renderer(`(async () => {
+            document.querySelector('[data-segment=${JSON.stringify(segment)}]').click();
+            const synchronous = window.__packagedTransitionState();
+            await Promise.resolve(); await Promise.resolve();
+            return [synchronous, window.__packagedTransitionState()];
+          })()`);
+          for (const [index, check] of checks.entries()) assert(check.week && check.month && !check.loading && check.stable && check.removed.length === 0,
+            `${label}: 2.6.1 motion ${enabled ? 'on' : 'off'} ${segment} ${index ? 'after microtasks' : 'synchronous'} retains charts/loading/tab geometry: ${JSON.stringify(check)}`);
+        }
+        const revisit = await renderer(`(async () => {
+          document.querySelector('.nav-btn[data-tab="home"]').click();
+          document.querySelector('.nav-btn[data-tab="analytics"]').click();
+          await Promise.resolve(); await Promise.resolve();
+          return window.__packagedTransitionState();
+        })()`);
+        assert(revisit.week && revisit.month && !revisit.loading && revisit.stable && revisit.removed.length === 0,
+          `${label}: 2.6.1 motion ${enabled ? 'on' : 'off'} sidebar revisit preserves cached charts and Analytics tab geometry: ${JSON.stringify(revisit)}`);
+      } finally { await renderer('window.__packagedTransitionObserver.disconnect()'); }
+    }
+    await emulateReducedMotion(null);
+    console.log(`${label}: packaged 2.6.1 cached Week/Month charts, same-tab/sidebar revisit, no loading replacement, and stable Analytics tab geometry passed with motion off/on`);
   }
   async function verify25Settings() {
     await renderer(`document.querySelector('.nav-btn[data-tab="settings"]').click();
@@ -604,6 +672,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
     const packagedVersion = await evaluate(`process.mainModule.require(globalThis.__packagedElectron.app.getAppPath() + '/package.json').version`);
     const features25 = has25Features(packagedVersion);
     const features26 = has26Features(packagedVersion);
+    const transitions261 = has261Transitions(packagedVersion);
     assert.equal(state.stats.settings.trackingPaused, true, 'Actual tracking stays paused before feature checks');
     const rendererModules = await renderer(`(() => ({
       page: location.href,
@@ -733,6 +802,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
       assert.deepEqual(undone.stats.byCategory, expectedTotals, 'Analytics Undo restores fixture totals');
       if (features26) await verify26Restart(state);
       if (features25) await verify25ScoreNavigation(historicalDate);
+      if (transitions261) await verify261Transitions();
     }
     if (features26) {
       const finalState = await renderer('window.sydtrack.getState()');

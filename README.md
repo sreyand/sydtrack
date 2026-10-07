@@ -5,12 +5,12 @@
     <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
-    <a href="docs/release-notes-2.6.0.md">What’s new in v2.6.0</a>
+    <a href="docs/release-notes-2.6.1.md">What’s new in v2.6.1</a>
   </p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
-    <img alt="Version 2.6.0" src="https://img.shields.io/badge/version-2.6.0-8B7CF6?style=flat-square">
+    <img alt="Version 2.6.1" src="https://img.shields.io/badge/version-2.6.1-8B7CF6?style=flat-square">
     <img alt="GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-EF6A6A?style=flat-square">
   </p>
 </div>
@@ -71,12 +71,12 @@ Changing profiles affects future tracking; it does not rewrite history. Analytic
 
 sydtrack currently targets **Windows 10/11 x64**.
 
-- `sydtrack-2.6.0-setup.exe` — standard installer
-- `sydtrack-2.6.0-portable.exe` — run without installation
+- `sydtrack-2.6.1-setup.exe` — standard installer
+- `sydtrack-2.6.1-portable.exe` — run without installation
 
-Version 2.6.0 is prepared and automatically checked locally; manual acceptance and publication are pending. Its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds. The [release validation report](docs/release-validation-2.6.0.md) records package checks and remaining manual acceptance.
+Version 2.6.1 is packaged and checked locally; manual acceptance and publication are pending. Downloads become available after publication. The [release validation report](docs/release-validation-2.6.1.md) records checks and remaining manual acceptance.
 
-**In v2.6.0:** daily theme rotation, optional UI motion, a show/hide shortcut, steadier analytics, and cleaner controls.
+**In v2.6.1:** flicker-free analytics transitions and steadier layout, with UI motion on or off.
 
 Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
 
@@ -91,7 +91,15 @@ Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/r
 
 On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memory** and an estimated **~1% total CPU** with the 3-second tracking cadence. The short Windows foreground probe accounts for most of that CPU time; results will vary with the machine and other activity.
 
-## What’s new in v2.6.0
+## What’s new in v2.6.1
+
+- Analytics keeps existing charts, timelines, and app lists visible during tab changes and loading.
+- Tab highlights transition continuously; headers, loading indicators, and scrollbars keep the layout stable.
+- Activity updates preserve keyboard focus and ignore outdated responses. Classification, Focus Share, and storage formats are unchanged.
+
+Read the [v2.6.1 release notes](docs/release-notes-2.6.1.md) for upgrade details.
+
+## What changed in v2.6.0
 
 - **Daily theme rotation**, off by default, uses the two-arrow icon at the right of **Settings → Tracking → Appearance**. While enabled, the adjacent moon, sun, or **ALL** control cycles **Night → Day → ALL → Night**: dark themes, light themes, or both. Themes follow a predictable sequence for each local calendar day across restarts, sleep, and skipped days. Picking a theme manually turns rotation off.
 - **Enable UI motion**, off by default, adds gentle press feedback, uninterrupted tab transitions, quick menu entrances, and a clockwise pie-chart draw. It respects reduced motion and does not replay on live updates. The rebuilt packages include the lighter transitions and removal of FocusBoost's delayed second press.

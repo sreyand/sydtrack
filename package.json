@@ -1,6 +1,6 @@
 {
   "name": "sydtrack",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "Desktop productivity tracker — active window time, classification, and focus reminders",
   "main": "src/main.js",
   "author": "sydtrack",
@@ -18,7 +18,8 @@
     "sync:profiles": "node scripts/sync-focus-presets.js",
     "benchmark:storage": "node scripts/benchmark-storage.js",
     "benchmark:classification": "node scripts/benchmark-classification.js",
-    "test:ui": "node scripts/check-ui.js && node scripts/check-score-navigation.js && node scripts/check-pause-menu.js && node scripts/check-schedule-time.js && node scripts/check-select-menu.js && node scripts/check-ui-motion.js && node scripts/check-dom-patch.js",
+    "test:ui": "node scripts/check-ui.js && node scripts/check-score-navigation.js && node scripts/check-pause-menu.js && node scripts/check-schedule-time.js && node scripts/check-select-menu.js && node scripts/check-ui-motion.js && node scripts/check-tab-transitions.js && node scripts/check-dom-patch.js",
+    "test:tab-transitions": "node scripts/check-tab-transitions.js",
     "test:ui-motion": "node scripts/check-ui-motion.js",
     "test:select-menu": "node scripts/check-select-menu.js",
     "test:dom-patch": "node scripts/check-dom-patch.js",

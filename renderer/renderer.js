@@ -300,6 +300,7 @@ let latestGoalSettings = null;
 let timelineDayData = null;
 let timelineRequest = 0;
 let timelineLastRefresh = 0;
+let timelineLoadedDate = null;
 let liveDayDate = null;
 let timelineFollowsToday = true;
 let timelineProfileNames = {};
@@ -368,7 +369,7 @@ function renderTimeline() {
     $('timeline-footer').classList.add('hidden');
     visual.classList.add('hidden');
     $('timeline-legend').classList.add('hidden');
-    $('timeline-text').innerHTML = '<li>No precise segments for this day.</li>';
+    patchChartMarkup($('timeline-text'), '<li>No precise segments for this day.</li>');
     return;
   }
   visual.classList.remove('hidden');
@@ -407,16 +408,16 @@ function renderTimeline() {
     return ['<span class="timeline-block ' + segment.kind + '" style="left:' + ((from - start) / (end - start) * 100) +
       '%;width:' + ((to - from) / (end - start) * 100) + '%" title="' + esc(label) + '"></span>'];
   });
-  visual.innerHTML = '<div class="timeline-track">' + blocks.join('') + '</div>' +
-    '<div class="timeline-axis" aria-hidden="true">' + timelineAxis(start, end) + '</div>';
+  patchChartMarkup(visual, '<div class="timeline-track">' + blocks.join('') + '</div>' +
+    '<div class="timeline-axis" aria-hidden="true">' + timelineAxis(start, end) + '</div>');
   visual.setAttribute('aria-label', 'Timeline for ' + date + '. ' + precision.textContent +
     ' Showing ' + timelineTime(start) + ' to ' + timelineTime(end) + '. ' + data.visible.length +
     ' recorded segments. Pinch to zoom, or press plus and minus. Press zero to reset. Text list follows.');
   const entries = data.visible.map(segment => timelineTime(segment.start) + '–' + timelineTime(segment.end) +
     ': ' + labels[segment.kind] + (segment.profileId ? ' · ' + (timelineProfileNames[segment.profileId] || segment.profileId) : ''));
-  $('timeline-text').innerHTML = entries.length
+  patchChartMarkup($('timeline-text'), entries.length
     ? entries.map(entry => '<li>' + esc(entry) + '</li>').join('')
-    : '<li>No segments match these filters.</li>';
+    : '<li>No segments match these filters.</li>');
 }
 
 const timelineRecenter = $('timeline-recenter');
@@ -462,19 +463,21 @@ if (timelineVisual) {
   });
 }
 
-async function loadTimelineDay() {
+async function loadTimelineDay(force = false) {
   const dateInput = $('timeline-date');
   if (!dateInput || !dateInput.value) return;
   const date = dateInput.value;
+  if (!force && timelineLoadedDate === date && timelineDayData?.date === date && Date.now() - timelineLastRefresh < 15000) return;
   const request = ++timelineRequest;
   if (!timelineDayData || timelineDayData.date !== date) {
+    timelineLoadedDate = null;
     timelineDayData = { date, timeline: [], byHour: [], byCategory: {} };
     renderTimeline();
     if (analyticsSegment === 'day') renderDay(timelineDayData);
+    $('timeline-precision').textContent = 'Loading activity…';
   }
-  $('timeline-precision').textContent = 'Loading activity…';
-  $('timeline-longest').classList.add('hidden');
-  $('timeline-longest').textContent = '';
+  // Same-day refreshes keep the confirmed timeline and insights on screen.
+  $('timeline-visual').setAttribute('aria-busy', 'true');
   try {
     const [day, profiles] = await Promise.all([api.getTimelineDay(date), api.getProfiles()]);
     if (request !== timelineRequest || dateInput.value !== date) return;
@@ -485,8 +488,11 @@ async function loadTimelineDay() {
     const status = $('focus-score-status');
     if (status && analyticsSegment === 'day') status.textContent = 'Day Analytics loaded for ' + date + '.';
     timelineLastRefresh = Date.now();
+    timelineLoadedDate = date;
   } catch (_) {
     if (request === timelineRequest) $('timeline-precision').textContent = 'Could not load this day.';
+  } finally {
+    if (request === timelineRequest) $('timeline-visual').removeAttribute('aria-busy');
   }
 }
 
@@ -508,10 +514,12 @@ let historicalWeek = null;
 let fullHistoryCache = null;
 let fullHistoryPromise = null;
 let fullHistoryGeneration = 0;
+const historyTargets = new WeakMap();
 
 function setHistoryLoading(on, message) {
   const el = $('analytics-loading');
   if (!el) return;
+  if (!['week', 'month'].includes(analyticsSegment)) { el.classList.add('hidden'); return; }
   if (on) {
     el.textContent = message || 'Loading history…';
     el.classList.remove('hidden');
@@ -527,13 +535,19 @@ function invalidateHistoryViews() {
   fullHistoryCache = null;
   fullHistoryPromise = null;
   historicalWeek = null;
+  timelineRequest++;
+  timelineLoadedDate = null;
+  appsHistoryGeneration++;
+  appsHistoryRequest++;
+  appsHistoryCache.clear();
+  appsHistoryLoads.clear();
+  appsHistoryRange = null;
 }
 
 async function ensureFullHistory(fetchHistory = api && api.getHistorySummary) {
   if (fullHistoryCache) return fullHistoryCache;
   if (!fetchHistory) return null;
   if (!fullHistoryPromise) {
-    setHistoryLoading(true, 'Loading history…');
     const generation = fullHistoryGeneration;
     fullHistoryPromise = Promise.resolve(fetchHistory(90)).then((days) => {
       if (generation !== fullHistoryGeneration) return null;
@@ -555,16 +569,33 @@ async function loadAnalyticsHistory(fetchHistory = api && api.getHistorySummary)
   const request = ++historyRequest;
   const segment = analyticsSegment;
   const target = segment === 'week' ? $('week-chart') : $('month-history');
-  if (target) target.textContent = 'Loading history…';
+  if (target) { target.setAttribute('aria-busy', 'true'); historyTargets.set(target, request); }
+  if (!fullHistoryCache) setHistoryLoading(true, 'Loading history…');
+  else setHistoryLoading(false);
   try {
-    const all = await ensureFullHistory(fetchHistory);
+    // Cached tabs render in the click itself, without a loading-text teardown.
+    const all = fullHistoryCache || await ensureFullHistory(fetchHistory);
     if (request !== historyRequest || analyticsSegment !== segment) return;
+    if (!all) return;
     const days = historyWithCurrentDay(all).slice(segment === 'week' ? -7 : -30);
     if (segment === 'week') { historicalWeek = days; renderWeek({ week: days }); }
-    else if (target) target.innerHTML = monthMarkup(days);
+    else if (target) renderMonthHistory(days);
     if (segment === 'week' && typeof renderWeekWellbeing === 'function') await renderWeekWellbeing();
     if (segment === 'month' && typeof renderMonthFocusScores === 'function') renderMonthFocusScores(days);
-  } catch (_) { if (request === historyRequest && target) target.textContent = 'Could not load history. Reopen this tab to retry.'; }
+  } catch (_) {
+    if (request === historyRequest) setHistoryLoading(false, 'Could not load history. Reopen this tab to retry.');
+  } finally {
+    if (target && historyTargets.get(target) === request) target.removeAttribute('aria-busy');
+  }
+}
+
+let lastMonthMarkup = null;
+function renderMonthHistory(days) {
+  const markup = monthMarkup(days);
+  // Unchanged data must not discard a chart's in-flight entrance decoration.
+  if (markup === lastMonthMarkup && $('month-history').childElementCount) return;
+  patchChartMarkup($('month-history'), markup);
+  lastMonthMarkup = markup;
 }
 
 function monthMarkup(days) {
@@ -628,12 +659,12 @@ function renderLifetime(summary) {
     ? fmtGoalShort(summary.longestDay.seconds) + ' · ' + lifetimeDate(summary.longestDay.date)
     : '—';
   const pieces = [['productive', 'Productive'], ['unproductive', 'Unproductive'], ['other', 'Other']];
-  $('lifetime-breakdown').innerHTML = pieces.map(([key, label]) => {
+  patchChartMarkup($('lifetime-breakdown'), pieces.map(([key, label]) => {
     const seconds = Math.max(0, Number(totals[key]) || 0);
     const percentage = total ? Math.round(seconds / total * 100) : 0;
     return '<div class="lifetime-category"><div class="lifetime-category-label"><span><i class="month-dot ' + key + '"></i>' + label + '</span><strong>' + fmtGoalShort(seconds) + '</strong></div>' +
       '<div class="lifetime-track"><span class="' + key + '" style="width:' + percentage + '%"></span></div></div>';
-  }).join('');
+  }).join(''));
 }
 
 async function loadLifetime() {
@@ -668,9 +699,14 @@ function setAnalyticsSegment(segment, preserveScoreReturn = false) {
   });
   if ($('apps-range')) $('apps-range').classList.toggle('hidden', segment !== 'apps');
   const sub = $('analytics-subtitle');
-  if (sub) sub.textContent = ANALYTICS_SUBTITLES[segment] || ANALYTICS_SUBTITLES.day;
+  if (sub) {
+    const date = segment === 'day' && $('timeline-date')?.value;
+    sub.textContent = date ? (date === liveDayDate ? 'Today’s activity · ' : 'Activity · ') + date
+      : ANALYTICS_SUBTITLES[segment] || ANALYTICS_SUBTITLES.day;
+  }
   historyRequest++;
   const historyLoad = loadAnalyticsHistory();
+  if (!['week', 'month'].includes(segment)) setHistoryLoading(false);
   if (segment === 'lifetime') loadLifetime();
   if (segment === 'day') loadTimelineDay();
   if (segment === 'apps' && appsRange !== 'day') setAppsRange(appsRange);
@@ -2222,7 +2258,7 @@ function renderStats(stats) {
   }
   if ($('timeline-date') && $('timeline-date').value === stats.date) {
     renderDay(stats);
-    if (analyticsSegment === 'day' && Date.now() - timelineLastRefresh > 15000) loadTimelineDay();
+    if (analyticsSegment === 'day' && (timelineLoadedDate !== stats.date || Date.now() - timelineLastRefresh > 15000)) loadTimelineDay();
   }
   renderRoundup(stats);
   // Overlay today's confirmed totals on cached score grids without refetching
@@ -2240,6 +2276,7 @@ function renderStats(stats) {
   }
   renderAppList(stats);
   if (dayChanged && ['week', 'month'].includes(analyticsSegment)) loadAnalyticsHistory();
+  if (dayChanged && analyticsSegment === 'apps' && appsRange !== 'day') setAppsRange(appsRange);
 }
 
 let lastAppsStats = null;
@@ -2249,6 +2286,9 @@ let appsHistoryDays = [];
 let appsHistoryRange = null;
 let appsHistoryDate = null;
 let appsHistoryRequest = 0;
+let appsHistoryGeneration = 0;
+const appsHistoryCache = new Map();
+const appsHistoryLoads = new Map();
 const appDuration = seconds => seconds < 60 ? Math.round(seconds) + 's' : fmtDuration(seconds);
 const appsPeriodLabel = () => appsRange === 'day' ? 'Today' : appsRange === 'week' ? 'Last 7 days' : 'Last 30 days';
 
@@ -2259,7 +2299,7 @@ function renderAppsOverview(entries) {
   $('apps-total').textContent = appDuration(total);
   donut.style.backgroundImage = total ? 'conic-gradient(' + window.sydtrackAppsAnalytics.conicStops(slices, total) + ')' : 'none';
   donut.setAttribute('aria-label', total ? 'App time, ' + appsPeriodLabel().toLowerCase() + ': ' + slices.map(slice => slice.name + ', ' + appDuration(slice.seconds)).join('; ') : 'No app time tracked yet');
-  legend.innerHTML = total ? slices.map((slice, index) => {
+  patchChartMarkup(legend, total ? slices.map((slice, index) => {
     const percent = Math.round(slice.seconds / total * 100);
     const mixed = slice.byCategory && Object.values(slice.byCategory).filter(seconds => seconds > 0).length > 1;
     return '<li>' +
@@ -2267,7 +2307,7 @@ function renderAppsOverview(entries) {
       '<span class="apps-legend-name" title="' + esc(slice.name) + '">' + esc(slice.name) + (mixed ? ' <small>mixed</small>' : '') + '</span>' +
       '<span class="apps-legend-percent">' + percent + '%</span>' +
       '<span class="apps-legend-time">' + appDuration(slice.seconds) + '</span></li>';
-  }).join('') : '<li class="empty">No apps tracked yet</li>';
+  }).join('') : '<li class="empty">No apps tracked yet</li>');
   $('apps-overview-title').textContent = appCount ? 'Where your time went' : 'App time';
   $('apps-overview-note').classList.toggle('hidden', !appCount);
   $('apps-period-label').textContent = appsPeriodLabel() + ' · active app time';
@@ -2301,15 +2341,15 @@ function renderAppsPeriod() {
   $('apps-detail-description').textContent = '';
   $('apps-detail-note').classList.add('hidden');
   $('apps-correction-status').textContent = '';
-  $('app-list').innerHTML = model.apps.length ? model.apps.slice(0, 10).map(app =>
-    '<li class="app-group">' + appGroupSummary(app) + '</li>').join('') :
-    '<li class="empty">No app time in this period</li>';
+  patchChartMarkup($('app-list'), model.apps.length ? model.apps.slice(0, 10).map(app =>
+    '<li class="app-group" data-group-name="' + esc(encodeURIComponent(app.name)) + '" data-app-key="group:' + esc(encodeURIComponent(app.name)) + '">' + appGroupSummary(app) + '</li>').join('') :
+    '<li class="empty">No app time in this period</li>', 'data-app-key');
 }
 
 function renderAppList(stats) {
   lastAppsStats = stats;
   if (appsRange !== 'day') {
-    if (appsHistoryRange === appsRange) renderAppsPeriod();
+    if (appsHistoryRange === appsRange && appsHistoryDate === (stats && stats.date)) renderAppsPeriod();
     return;
   }
   renderAppsOverview(stats && stats.appBreakdown);
@@ -2322,7 +2362,7 @@ function renderAppList(stats) {
   const rows = (stats && (stats.activityRows || stats.topApps)) || [];
   document.querySelector('.apps-detail-card').classList.toggle('hidden', !rows.length);
   if (!rows.length) {
-    list.innerHTML = '<li class="empty">No time logged yet</li>';
+    patchChartMarkup(list, '<li class="empty">No time logged yet</li>');
     return;
   }
   const groups = new Map();
@@ -2334,28 +2374,28 @@ function renderAppList(stats) {
     group.byCategory[row.category] = (group.byCategory[row.category] || 0) + row.seconds;
     if (row.category !== 'ignored') group.seconds += row.seconds;
   }
-  list.innerHTML = [...groups.values()].map(group => {
+  patchChartMarkup(list, [...groups.values()].map(group => {
     const categories = [['productive', 'P', 'Productive'], ['unproductive', 'U', 'Unproductive'], ['other', 'O', 'Other'], ['ignored', 'I', 'Ignore']];
     const activeTypes = categories.filter(([value]) => group.rows.some(row => row.category === value));
     const groupKey = encodeURIComponent(group.name);
     const open = openGroups.has(groupKey);
-    return '<li class="app-group" data-group-name="' + encodeURIComponent(group.name) + '">' +
+    return '<li class="app-group" data-group-name="' + encodeURIComponent(group.name) + '" data-app-key="group:' + encodeURIComponent(group.name) + '">' +
       '<details class="app-group-details"' + (open ? ' open' : '') + '><summary>' + appGroupSummary(group, false) + '</summary>' +
       '<div class="app-group-activities"><p class="app-group-hint">Changes apply today only.</p>' +
       activeTypes.map(([value]) => {
         const typeRows = group.rows.filter(row => row.category === value).sort((a, b) => b.seconds - a.seconds);
-        return '<div class="app-activity-type" role="group" aria-label="' + value + ' activity">' +
+        return '<div class="app-activity-type" data-app-key="type:' + value + '" role="group" aria-label="' + value + ' activity">' +
           typeRows.map(row => {
             const unrecognized = isBrowserApp(row.name) && window.sydtrackBrowserRules.isUnrecognizedReason(row.reason);
             const explanation = unrecognized ? 'These pages have no shared rule. Add a specific title keyword in Focus Tags.' : '';
-            return '<div class="app-activity" data-unrecognized="' + unrecognized + '" data-row-id="' + encodeURIComponent(row.id || '') + '">' +
+            return '<div class="app-activity" data-app-key="row:' + encodeURIComponent(row.id || row.reason || '') + '" data-unrecognized="' + unrecognized + '" data-row-id="' + encodeURIComponent(row.id || '') + '">' +
             '<div class="app-activity-row"><span class="app-activity-reason" title="' + explanation + '">' + esc(appReason(row.reason, row.name)) + '</span>' +
             '<span class="app-activity-time">' + appDuration(row.seconds) + '</span>' +
             (row.id ? '<span class="app-activity-actions" role="group" tabindex="' + (unrecognized ? '0' : '-1') + '" aria-label="' + esc(group.name) + ', ' + esc(appReason(row.reason, row.name)) + ': ' + esc(row.category) + ' today. ' + explanation + '">' +
               categories.map(([category, letter, name]) => '<button type="button" class="app-activity-category" data-app-command="choose" data-category="' + category + '" aria-label="' + name + '" aria-pressed="' + (row.category === category) + '" title="' + (unrecognized ? explanation : name + (row.category === category ? ' (current)' : ' for today')) + '"' + (row.category === category || (unrecognized && category !== 'other') ? ' disabled' : '') + '>' + letter + '</button>').join('') + '</span>' : '') + '</div></div>';
           }).join('') + '</div>';
       }).join('') + '</div></details></li>';
-  }).join('');
+  }).join(''), 'data-app-key');
 }
 
 async function setAppsRange(range) {
@@ -2368,27 +2408,46 @@ async function setAppsRange(range) {
   });
   const request = ++appsHistoryRequest;
   const status = $('apps-range-status');
-  if (range === 'day') { status.textContent = ''; renderAppList(lastAppsStats); return; }
-  if (appsHistoryRange === range && appsHistoryDate === (lastAppsStats && lastAppsStats.date)) {
-    status.textContent = ''; renderAppsPeriod(); return;
+  const panel = $('panel-apps');
+  const date = lastAppsStats && lastAppsStats.date;
+  if (range === 'day') { panel.removeAttribute('aria-busy'); status.textContent = ''; renderAppList(lastAppsStats); return; }
+  const cached = appsHistoryCache.get(range);
+  const confirmed = cached && cached.date === date ? cached.days
+    : appsHistoryRange === range && appsHistoryDate === date ? appsHistoryDays
+      : fullHistoryCache ? fullHistoryCache.slice(range === 'week' ? -7 : -30) : null;
+  if (confirmed) {
+    appsHistoryDays = confirmed; appsHistoryRange = range; appsHistoryDate = date;
+    panel.removeAttribute('aria-busy'); status.textContent = ''; renderAppsPeriod(); return;
   }
-  status.textContent = 'Loading app time…';
+  status.textContent = 'Loading ' + (range === 'week' ? 'last 7 days' : 'last 30 days') + '…';
+  panel.setAttribute('aria-busy', 'true');
   appsHistoryRange = null;
-  renderAppsOverview([]);
-  $('app-list').innerHTML = '<li class="empty">Loading app time…</li>';
+  // Keep the confirmed chart and its existing period label until data arrives.
   try {
     if (!api || !api.getHistorySummary) throw new Error('History unavailable');
-    const days = await api.getHistorySummary(range === 'week' ? 7 : 30);
-    if (request !== appsHistoryRequest) return;
+    let pending = appsHistoryLoads.get(range);
+    if (!pending || pending.date !== date) {
+      const generation = appsHistoryGeneration;
+      pending = { date };
+      pending.promise = Promise.resolve().then(() => api.getHistorySummary(range === 'week' ? 7 : 30)).then(days => {
+        if (generation === appsHistoryGeneration) appsHistoryCache.set(range, { date, days });
+        return days;
+      }).finally(() => { if (appsHistoryLoads.get(range) === pending) appsHistoryLoads.delete(range); });
+      appsHistoryLoads.set(range, pending);
+    }
+    const days = await pending.promise;
+    if (request !== appsHistoryRequest || date !== (lastAppsStats && lastAppsStats.date)) return;
     appsHistoryDays = days;
     appsHistoryRange = range;
-    appsHistoryDate = lastAppsStats && lastAppsStats.date;
+    appsHistoryDate = date;
     status.textContent = '';
     renderAppsPeriod();
   } catch (err) {
     if (request !== appsHistoryRequest) return;
     appsHistoryRange = null;
     status.textContent = 'Could not load app time. Select this range to retry.';
+  } finally {
+    if (request === appsHistoryRequest) panel.removeAttribute('aria-busy');
   }
 }
 
