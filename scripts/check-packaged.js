@@ -19,6 +19,10 @@ const has25Features = releaseVersion => {
   const [major, minor] = String(releaseVersion).split('.').map(Number);
   return major > 2 || (major === 2 && minor >= 5);
 };
+const has26Features = releaseVersion => {
+  const [major, minor] = String(releaseVersion).split('.').map(Number);
+  return major > 2 || (major === 2 && minor >= 6);
+};
 const sha256 = content => crypto.createHash('sha256').update(content).digest('hex');
 
 function filesIn(dir) {
@@ -43,6 +47,9 @@ function verifyPayload(dir) {
   // palette or a blanket assertion against frozen pre-2.5 release payloads.
   if (has25Features(packaged.version)) releaseFiles.push('renderer/schedule-time-ui.js', 'renderer/schedule-time.css',
     'renderer/wellbeing-ui.js', 'renderer/lib/goals.js', 'renderer/lib/day-timeline.js', 'src/timed-pause.js');
+  if (has26Features(packaged.version)) releaseFiles.push('renderer/select-menu-ui.js', 'renderer/select-menu.css',
+    'renderer/ui-motion.js', 'renderer/ui-motion.css', 'renderer/dom-patch.js',
+    'src/profile-shortcut.js', 'src/window-shortcut.js', 'src/theme-rotation.js');
   for (const file of releaseFiles) assert(entries.includes('/' + file), `Release feature included: ${file}`);
   const html = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
   assert(html.includes('<script src="../src/classification-explanation.js"></script>'), 'Shared explanation formatter loaded');
@@ -50,6 +57,14 @@ function verifyPayload(dir) {
   if (has25Features(packaged.version)) {
     assert(html.includes('<script src="schedule-time-ui.js"></script>'), 'Exact-minute schedule picker loaded');
     assert(html.includes('<link rel="stylesheet" href="schedule-time.css" />'), 'Schedule picker stylesheet loaded');
+  }
+  if (has26Features(packaged.version)) {
+    for (const file of ['select-menu-ui.js', 'ui-motion.js', 'dom-patch.js']) {
+      assert(html.includes(`<script src="${file}"></script>`), `2.6 renderer module loaded: ${file}`);
+    }
+    for (const file of ['select-menu.css', 'ui-motion.css']) {
+      assert(html.includes(`<link rel="stylesheet" href="${file}" />`), `2.6 renderer stylesheet loaded: ${file}`);
+    }
   }
   const sourceFiles = ['src', 'renderer'].flatMap(folder => filesIn(path.join(workspace, folder)));
   for (const file of sourceFiles) {
@@ -168,6 +183,130 @@ async function launch(executable, userData, label, existing = false, expectedTot
       await pause(30);
     }
     throw new Error(`${label}: ${message}`);
+  }
+  async function emulateReducedMotion(value) {
+    await evaluate(`(async () => {
+      const debuggerApi = globalThis.__packagedElectron.BrowserWindow.getAllWindows()[0].webContents.debugger;
+      if (!debuggerApi.isAttached()) debuggerApi.attach('1.3');
+      await debuggerApi.sendCommand('Emulation.setEmulatedMedia', { features: ${JSON.stringify(value ? [{ name: 'prefers-reduced-motion', value }] : [])} });
+    })()`);
+    await waitFor(`document.documentElement.dataset.uiMotion ===
+      (latestGoalSettings.uiMotionEnabled === true && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'on' : 'off')`,
+    'Motion runtime did not honor the current reduced-motion preference');
+    if (value) assert.equal(await renderer(`matchMedia('(prefers-reduced-motion: reduce)').matches`), value === 'reduce');
+  }
+  async function verify26Rotation(mode, enabled) {
+    const names = { dark: ['Night', 'Day'], light: ['Day', 'All'], any: ['All', 'Night'] };
+    const [name, next] = names[mode];
+    await waitFor(`!appearanceSaving && latestGoalSettings.themeRotationEnabled === ${enabled} &&
+      latestGoalSettings.themeRotationMode === ${JSON.stringify(mode)} && !document.getElementById('theme-rotation-toggle').disabled`,
+    'Packaged rotation state did not settle');
+    const checks = await renderer(`(() => {
+      const card = document.getElementById('settings-appearance-card'), header = card.querySelector('.appearance-head');
+      const rotate = document.getElementById('theme-rotation-toggle'), cycle = document.getElementById('theme-rotation-cycle');
+      const icons = [...cycle.querySelectorAll('[data-rotation-icon]')].filter(icon => getComputedStyle(icon).display !== 'none');
+      const head = header.getBoundingClientRect(), a = rotate.getBoundingClientRect(), b = cycle.getBoundingClientRect();
+      return { button: rotate.tagName === 'BUTTON' && rotate.type === 'button' && rotate.getAttribute('aria-pressed') === ${JSON.stringify(String(enabled))} &&
+          rotate.getAttribute('aria-label').length > 5 && rotate.title.length > 5,
+        visible: !cycle.hidden === ${enabled} && (cycle.getClientRects().length > 0) === ${enabled},
+        names: cycle.getAttribute('aria-label') === ${JSON.stringify('Rotation themes: ' + name + '. Switch to ' + next + '.')} &&
+          cycle.title === ${JSON.stringify(name + ' themes · click for ' + next)},
+        icon: cycle.dataset.rotationMode === ${JSON.stringify(mode)} && icons.length === 1 && icons[0].dataset.rotationIcon === ${JSON.stringify(mode)} &&
+          (${JSON.stringify(mode)} !== 'any' || icons[0].tagName === 'SPAN' && icons[0].textContent === 'ALL' &&
+            parseFloat(getComputedStyle(icons[0]).fontSize) <= 12 && getComputedStyle(icons[0]).fontFamily.includes('Satoshi') &&
+            new DOMMatrix(getComputedStyle(icons[0]).transform).m42 === 1),
+        header: header.contains(rotate) && header.contains(cycle) && Math.abs(a.right - head.right) <= 1 &&
+          Math.abs((a.top + a.bottom - head.top - head.bottom) / 2) <= 2 &&
+          (!${enabled} || b.right < a.left && Math.abs((a.top + a.bottom - b.top - b.bottom) / 2) <= 2) &&
+          card.querySelector('.theme-swatches').getBoundingClientRect().top >= head.bottom + 12,
+        clean: !document.getElementById('theme-rotation-mode') && !card.querySelector('.font-credit'),
+        quiet: getComputedStyle(rotate).backgroundColor === 'rgba(0, 0, 0, 0)' && getComputedStyle(rotate).borderTopWidth === '0px' };
+    })()`);
+    for (const [name, passed] of Object.entries(checks)) assert.equal(passed, true, `${label}: packaged rotation ${mode}/${enabled} ${name}`);
+  }
+  async function verify26Settings() {
+    await renderer(`document.querySelector('.nav-btn[data-tab="settings"]').click(); document.querySelector('[data-settings-tab="tracking"]').click()`);
+    const structure = await renderer(`(() => ({
+      selectModule: typeof window.sydtrackSelectMenuUI?.create === 'function' && typeof settingsSelectMenu?.sync === 'function',
+      motionModule: typeof window.sydtrackUIMotion?.create === 'function' && typeof uiMotion?.setEnabled === 'function',
+      patchModule: typeof window.sydtrackDOM?.patchChildren === 'function',
+      styles: ['select-menu.css', 'ui-motion.css'].every(file => [...document.styleSheets].some(sheet =>
+        sheet.href === 'sydtrack://app/renderer/' + file && sheet.cssRules.length > 0)),
+      inputs: [...document.querySelectorAll('#view-settings select')].map(input => {
+        const trigger = document.getElementById(input.id + '-select-trigger'), list = document.getElementById(input.id + '-select-listbox');
+        return { id: input.id, hidden: input.hidden && input.getClientRects().length === 0,
+          active: trigger?.getClientRects().length > 0 && !trigger.disabled,
+          semantics: trigger?.tagName === 'BUTTON' && trigger.type === 'button' && trigger.getAttribute('aria-haspopup') === 'listbox' &&
+            trigger.getAttribute('aria-controls') === list?.id && list?.getAttribute('role') === 'listbox' &&
+            trigger.getAttribute('aria-label').length > 5 && [...list.children].every(option => option.tagName === 'BUTTON' && option.getAttribute('role') === 'option') };
+      })
+    }))()`);
+    for (const name of ['selectModule', 'motionModule', 'patchModule', 'styles']) assert.equal(structure[name], true, `2.6 ${name} actually runs through production protocol`);
+    assert.deepEqual(structure.inputs.map(input => input.id), ['poll-mode', 'profile-shortcut', 'window-shortcut']);
+    for (const input of structure.inputs) for (const name of ['hidden', 'active', 'semantics']) assert.equal(input[name], true, `Packaged select ${input.id} ${name}`);
+    for (const [id, value, key, savedValue] of [['poll-mode', '1000', 'pollMs', 1000],
+      ['profile-shortcut', 'Alt+B', 'profileShortcut', 'Alt+B'], ['window-shortcut', 'CommandOrControl+Shift+S', 'windowShortcut', 'CommandOrControl+Shift+S']]) {
+      await renderer(`document.getElementById('${id}-select-trigger').scrollIntoView({block:'center'})`);
+      await pause(60); // Drain page scroll before opening the real production menu.
+      assert.equal(await renderer(`(() => {
+        const trigger = document.getElementById('${id}-select-trigger'), list = document.getElementById('${id}-select-listbox');
+        trigger.click(); if (list.hidden) return false;
+        const option = [...list.children].find(option => option.dataset.selectValue === ${JSON.stringify(value)});
+        if (!option) return false; option.click(); return true;
+      })()`), true, 'Production custom select opens and commits an exact option');
+      await waitFor(`document.getElementById('${id}-select-trigger').dataset.selectValue === ${JSON.stringify(value)} &&
+        !document.getElementById('${id}-select-trigger').disabled && latestGoalSettings.${key} === ${JSON.stringify(savedValue)}`, 'Packaged select commit did not settle');
+      assert.equal((await renderer('window.sydtrack.getState()')).stats.settings[key], savedValue, 'Custom select reaches the real preload and settings IPC');
+    }
+    const shortcutState = await renderer('window.sydtrack.getState()');
+    assert.equal(shortcutState.profileShortcutRegistered, true); assert.equal(shortcutState.windowShortcutRegistered, true);
+    assert.deepEqual(await evaluate(`[...globalThis.__packagedShortcuts.keys()].sort()`), ['Alt+B', 'CommandOrControl+Shift+S'], 'Native registrations intercepted without claiming personal OS shortcuts');
+    await emulateReducedMotion('no-preference');
+    await renderer(`document.getElementById('ui-motion-toggle').click()`);
+    await waitFor(`!appearanceSaving && latestGoalSettings.uiMotionEnabled === true && document.documentElement.dataset.uiMotion === 'on' && uiMotion.enabled`, 'Opt-in motion did not save/enable');
+    assert.equal((await renderer('window.sydtrack.getState()')).stats.settings.uiMotionEnabled, true);
+    await emulateReducedMotion('reduce');
+    assert.equal(await renderer(`document.getElementById('ui-motion-toggle').checked && !uiMotion.enabled &&
+      !document.getAnimations().some(animation => animation.id === 'sydtrack-ui-motion' && animation.playState === 'running') &&
+      getComputedStyle(document.getElementById('theme-rotation-toggle')).transitionDuration.split(',').every(duration => parseFloat(duration) === 0)`), true,
+    'System reduced-motion cancels runtime/style animation without clearing the saved preference');
+    await emulateReducedMotion('no-preference');
+    await renderer(`document.getElementById('theme-rotation-toggle').click()`);
+    await verify26Rotation('dark', true);
+    for (const mode of ['light', 'any', 'dark']) {
+      await renderer(`document.getElementById('theme-rotation-cycle').click()`);
+      await verify26Rotation(mode, true);
+      const saved = (await renderer('window.sydtrack.getState()')).stats.settings;
+      assert.equal(saved.themeRotationMode, mode, 'Night → Day → All → Night cycle reaches production settings');
+      assert.equal(saved.themeRotationEnabled, true);
+    }
+    await renderer(`document.querySelector('[data-theme-id="forest"]').click()`);
+    await verify26Rotation('dark', false);
+    assert.equal((await renderer('window.sydtrack.getState()')).stats.settings.theme, 'forest', 'Manual chip disables rotation and saves its theme');
+    await renderer(`document.getElementById('theme-rotation-toggle').click()`);
+    await verify26Rotation('dark', true);
+    const persisted = (await renderer('window.sydtrack.getState()')).stats.settings;
+    assert.equal(persisted.theme, 'forest'); assert.equal(persisted.themeRotationAnchorTheme, 'forest');
+    assert.equal(persisted.uiMotionEnabled, true); assert.equal(persisted.trackingPaused, true); assert.equal(persisted.trackingPauseUntil, 0);
+    await emulateReducedMotion(null);
+    console.log(`${label}: packaged 2.6 Settings passed: instantiated protocol modules, three custom selects, isolated shortcuts, saved/reduced motion, header icons and Night→Day→All cycle`);
+  }
+  async function verify26Restart(state) {
+    const settings = state.stats.settings;
+    assert.equal(settings.pollMs, 1000); assert.equal(settings.profileShortcut, 'Alt+B'); assert.equal(settings.windowShortcut, 'CommandOrControl+Shift+S');
+    assert.equal(settings.uiMotionEnabled, true); assert.equal(settings.themeRotationEnabled, true); assert.equal(settings.themeRotationMode, 'dark');
+    assert.equal(settings.themeRotationAnchorTheme, 'forest');
+    assert.equal(state.profileShortcutRegistered, true); assert.equal(state.windowShortcutRegistered, true);
+    assert.deepEqual(await evaluate(`[...globalThis.__packagedShortcuts.keys()].sort()`), ['Alt+B', 'CommandOrControl+Shift+S'], 'Returning fixture re-registers only intercepted shortcuts');
+    await renderer(`document.querySelector('.nav-btn[data-tab="settings"]').click(); document.querySelector('[data-settings-tab="tracking"]').click()`);
+    assert.equal(await renderer(`['poll-mode','profile-shortcut','window-shortcut'].every(id => {
+      const input = document.getElementById(id), trigger = document.getElementById(id + '-select-trigger');
+      return input.hidden && trigger.dataset.selectValue === input.value && !trigger.disabled;
+    }) && document.getElementById('ui-motion-toggle').checked`), true, 'Restart initializes custom controls and motion preference from persisted settings');
+    await verify26Rotation('dark', true);
+    await emulateReducedMotion('reduce'); await emulateReducedMotion('no-preference');
+    await emulateReducedMotion(null);
+    console.log(`${label}: packaged 2.6 motion/rotation/shortcut/custom-select restart passed`);
   }
   async function verify25Settings() {
     await renderer(`document.querySelector('.nav-btn[data-tab="settings"]').click();
@@ -426,13 +565,26 @@ async function launch(executable, userData, label, existing = false, expectedTot
         const noStartupWrites = () => {};
         e.app.setLoginItemSettings = noStartupWrites;
         if (e.app.setLoginItemSettings !== noStartupWrites) throw Error('Cannot isolate startup writes');
+        // Persist shortcut settings through real main/preload IPC, but never
+        // claim a key combination from the user's running desktop apps.
+        const shortcuts = e.globalShortcut, registered = new Map();
+        const register = (key, callback) => { registered.set(key, callback); return true; };
+        const unregister = key => registered.delete(key), unregisterAll = () => registered.clear();
+        const isRegistered = key => registered.has(key);
+        shortcuts.register = register;
+        shortcuts.unregister = unregister;
+        shortcuts.unregisterAll = unregisterAll;
+        shortcuts.isRegistered = isRegistered;
+        if (shortcuts.register !== register || shortcuts.unregister !== unregister || shortcuts.unregisterAll !== unregisterAll ||
+          shortcuts.isRegistered !== isRegistered) throw Error('Cannot isolate OS shortcut writes');
+        globalThis.__packagedShortcuts = registered;
         globalThis.__packagedElectron = e;
         return e.app.getPath('userData');
       })()`
     });
     assert(!isolated.exceptionDetails, JSON.stringify(isolated.exceptionDetails));
     assert.equal(isolated.result.value, userData, 'Data isolation confirmed before app starts');
-    console.log(`${label}: data and startup writes isolated before execution`);
+    console.log(`${label}: data, startup writes, and OS shortcut registration isolated before execution`);
     await inspector.request('Debugger.resume');
     for (let i = 0; i < 100; i++) {
       const ready = await evaluate(`(() => {
@@ -451,6 +603,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
     console.log(`${label}: production preload and state IPC responded`);
     const packagedVersion = await evaluate(`process.mainModule.require(globalThis.__packagedElectron.app.getAppPath() + '/package.json').version`);
     const features25 = has25Features(packagedVersion);
+    const features26 = has26Features(packagedVersion);
     assert.equal(state.stats.settings.trackingPaused, true, 'Actual tracking stays paused before feature checks');
     const rendererModules = await renderer(`(() => ({
       page: location.href,
@@ -472,6 +625,20 @@ async function launch(executable, userData, label, existing = false, expectedTot
       }
       assert.equal(await renderer(`typeof window.sydtrackScheduleTimeUI?.sync === 'function' &&
         typeof openFocusScoreDay === 'function' && typeof renderMonthFocusScores === 'function'`), true, '2.5 modules actually execute through production protocol');
+    }
+    if (features26) {
+      for (const file of ['renderer/select-menu-ui.js', 'renderer/ui-motion.js', 'renderer/dom-patch.js']) {
+        assert(rendererModules.scripts.includes('sydtrack://app/' + file), `2.6 renderer script uses production protocol: ${file}`);
+      }
+      if (!existing) {
+        assert.equal(state.stats.settings.uiMotionEnabled, false, 'Motion defaults off in the production store');
+        assert.equal(state.stats.settings.themeRotationEnabled, false, 'Daily rotation defaults off in the production store');
+        assert.equal(state.stats.settings.themeRotationMode, 'dark', 'Night is the default rotation pool');
+        assert.equal(state.stats.settings.windowShortcut, '', 'Show/hide shortcut defaults off');
+        assert.equal(await renderer(`document.documentElement.dataset.uiMotion === 'off' && !document.getElementById('ui-motion-toggle').checked &&
+          document.getElementById('theme-rotation-toggle').getAttribute('aria-pressed') === 'false' && document.getElementById('theme-rotation-cycle').hidden`), true,
+        'Fresh renderer exposes default-off motion/rotation before interaction');
+      }
     }
     assert.equal(state.stats.settings.onboardingComplete, existing, 'Fresh/returning onboarding state');
     assert.equal(state.stats.settings.updateChecksEnabled, false, 'Network checks default off');
@@ -524,12 +691,23 @@ async function launch(executable, userData, label, existing = false, expectedTot
       await renderer(`window.sydtrack.undoCorrection(${JSON.stringify(correction.undoToken)})`);
       assert(!(await renderer(`window.sydtrack.getRules()`)).productive.includes('release smoke example'));
       if (features25) await verify25Settings();
+      if (features26) await verify26Settings();
       const network = await renderer(`window.sydtrack.checkUpdates()`);
       assert.equal(network.currentVersion, version);
       assert(['current', 'available', 'unavailable'].includes(network.phase));
       console.log(`${label}: manual update check:`, JSON.stringify(network));
     } else {
-      assert.equal(state.stats.settings.theme, features25 ? 'forest' : 'linen', 'Theme survives packaged restart');
+      // An enabled rotation may cross local midnight during a long diagnostic.
+      // Derive the day's expected theme using the archive's own pure resolver.
+      const expectedTheme = features26 ? await evaluate(`(() => {
+        const root = globalThis.__packagedElectron.app.getAppPath(), requireFile = file => process.mainModule.require(root + file);
+        const patch = requireFile('/src/theme-rotation.js').resolveDailyTheme({
+          theme: 'forest', themeRotationEnabled: true, themeRotationMode: 'dark',
+          themeRotationAnchorDate: ${JSON.stringify(state.stats.settings.themeRotationAnchorDate)}, themeRotationAnchorTheme: 'forest'
+        }, requireFile('/src/store.js').todayKey());
+        return patch.theme || 'forest';
+      })()`) : features25 ? 'forest' : 'linen';
+      assert.equal(state.stats.settings.theme, expectedTheme, 'Theme survives packaged restart and its archived daily rotation');
       assert.equal(state.stats.settings.trackingPaused, true, 'Pause survives packaged restart');
       if (features25) {
         assert.equal(state.stats.settings.trackingPauseUntil, 0, 'Indefinite pause survives packaged restart');
@@ -538,7 +716,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
         assert.equal(state.stats.settings.focusBoostScheduleEnabled, false, 'Schedule disabled state survives packaged restart');
         assert.equal(state.stats.settings.breakReminderMinutes, 75, 'Break minutes survive packaged restart');
         assert.equal(state.stats.settings.breakReminderEnabled, false, 'Break disabled state survives packaged restart');
-        assert.equal(await renderer(`document.documentElement.dataset.theme === 'forest' &&
+        assert.equal(await renderer(`document.documentElement.dataset.theme === ${JSON.stringify(expectedTheme)} &&
           ['start', 'end'].every(which => document.getElementById('fb-schedule-' + which).hidden &&
             !document.getElementById('fb-schedule-' + which + '-trigger').hidden &&
             document.getElementById('fb-schedule-' + which + '-trigger').disabled &&
@@ -553,7 +731,18 @@ async function launch(executable, userData, label, existing = false, expectedTot
       assert.equal(corrected.stats.byCategory.other, expectedTotals.other, 'Unrelated browser time is unchanged');
       const undone = await renderer(`window.sydtrack.undoCorrection(${JSON.stringify(corrected.undoToken)})`);
       assert.deepEqual(undone.stats.byCategory, expectedTotals, 'Analytics Undo restores fixture totals');
+      if (features26) await verify26Restart(state);
       if (features25) await verify25ScoreNavigation(historicalDate);
+    }
+    if (features26) {
+      const finalState = await renderer('window.sydtrack.getState()');
+      assert.equal(finalState.stats.settings.trackingPaused, true, 'Tracking remains paused at diagnostic completion');
+      assert.equal(await evaluate('globalThis.__packagedElectron.BrowserWindow.getAllWindows()[0].isVisible()'), false, 'Diagnostic never exposes the production window');
+      console.log(`${label}: real packaged ${existing ? 'returning' : 'fresh'} settings:`, JSON.stringify({
+        currentVersion: packagedVersion, theme: finalState.stats.settings.theme, uiMotionEnabled: finalState.stats.settings.uiMotionEnabled,
+        themeRotationEnabled: finalState.stats.settings.themeRotationEnabled, themeRotationMode: finalState.stats.settings.themeRotationMode,
+        profileShortcut: finalState.stats.settings.profileShortcut, windowShortcut: finalState.stats.settings.windowShortcut,
+        trackingPaused: finalState.stats.settings.trackingPaused, trackingPauseUntil: finalState.stats.settings.trackingPauseUntil }));
     }
     console.log(`${label}: ${existing ? 'restart persistence' : 'fresh onboarding, sandbox, preload IPC, rules, Undo'} passed`);
     await evaluate('globalThis.__packagedElectron.app.quit()').catch(() => {});

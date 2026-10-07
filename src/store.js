@@ -17,6 +17,7 @@ const { normalizeRotationMode } = require('./theme-rotation');
 function sanitizeDesktopPreferences(value) {
   return { ...value,
     theme: normalizeTheme(value.theme),
+    uiMotionEnabled: value.uiMotionEnabled === true,
     windowShortcut: WINDOW_SHORTCUTS.includes(value.windowShortcut) ? value.windowShortcut : '',
     themeRotationEnabled: value.themeRotationEnabled === true,
     themeRotationMode: normalizeRotationMode(value.themeRotationMode),
@@ -279,6 +280,7 @@ function defaultSettings() {
     notificationsEnabled: true,
     updateChecksEnabled: false,
     theme: 'midnight',
+    uiMotionEnabled: false,
     themeRotationEnabled: false,
     themeRotationMode: 'dark',
     themeRotationAnchorDate: '',

@@ -27,7 +27,7 @@ app.whenReady().then(async () => {
   const date = require('../src/store').todayKey();
   let settings = { onboardingComplete: true, trackingPaused: true, trackingPauseUntil: 0,
     launchAtStartup: false, updateChecksEnabled: false, notificationsEnabled: false, theme: 'midnight',
-    pollMs: 3000, profileShortcut: '', windowShortcut: '', themeRotationEnabled: false, themeRotationMode: 'dark',
+    pollMs: 3000, profileShortcut: '', windowShortcut: '', themeRotationEnabled: false, themeRotationMode: 'dark', uiMotionEnabled: false,
     themeRotationAnchorDate: '', themeRotationAnchorTheme: '', thresholdSec: 600, focusBoost: false, focusBoostScheduleEnabled: false,
     focusBoostScheduleStart: '09:07', focusBoostScheduleEnd: '23:59', focusShareGoalPct: 80, focusShareIncludeOther: false };
   const stats = () => ({ date, settings: { ...settings }, byCategory: { productive: 0, unproductive: 0, other: 0 },
@@ -35,8 +35,8 @@ app.whenReady().then(async () => {
   const profile = { id: 'default', name: 'Synthetic profile', productive: [], unproductive: [], other: [], ignore: [] };
   const writes = [];
   let win, failNext = false, heldWrite = null;
-  const selectKeys = ['pollMs', 'profileShortcut', 'windowShortcut', 'themeRotationMode'];
-  const appearanceKeys = ['theme', 'themeRotationEnabled', 'themeRotationMode'];
+  const selectKeys = ['pollMs', 'profileShortcut', 'windowShortcut'];
+  const appearanceKeys = ['theme', 'themeRotationEnabled', 'themeRotationMode', 'uiMotionEnabled'];
   const selectWrites = () => writes.filter(partial => selectKeys.some(key => Object.hasOwn(partial, key)));
   const appearanceWrites = () => writes.filter(partial => appearanceKeys.some(key => Object.hasOwn(partial, key)));
   const publish = () => win.webContents.send('tracker:update', { stats: stats(), now: null, lastFocused: null, session: null });
@@ -132,18 +132,60 @@ app.whenReady().then(async () => {
       document.getElementById('theme-rotation-toggle').focus({preventScroll:true})`);
     await key('Space');
   }
+  async function rotationState() {
+    return render(`(() => {
+      const toggle = document.getElementById('theme-rotation-toggle'), cycle = document.getElementById('theme-rotation-cycle');
+      return { enabled: toggle.getAttribute('aria-pressed') === 'true', disabled: toggle.disabled,
+        visible: cycle.getClientRects().length > 0, cycleDisabled: cycle.disabled, label: cycle.getAttribute('aria-label'),
+        title: cycle.title, mode: latestGoalSettings.themeRotationMode, theme: document.documentElement.dataset.theme,
+        iconMode: cycle.dataset.rotationMode,
+        allText: cycle.querySelector('[data-rotation-icon="any"]')?.textContent.trim(),
+        allTag: cycle.querySelector('[data-rotation-icon="any"]')?.tagName,
+        allFontSize: parseFloat(getComputedStyle(cycle.querySelector('[data-rotation-icon="any"]')).fontSize),
+        icons: [...cycle.querySelectorAll('[data-rotation-icon]')].filter(icon => getComputedStyle(icon).display !== 'none').map(icon => icon.dataset.rotationIcon) };
+    })()`);
+  }
+  async function rotationSettled(mode, enabled = true) {
+    await wait(`!appearanceSaving && latestGoalSettings.themeRotationMode === ${JSON.stringify(mode)} &&
+      latestGoalSettings.themeRotationEnabled === ${enabled} && !document.getElementById('theme-rotation-toggle').disabled`, 'Appearance icon save did not settle');
+    const rotation = await rotationState();
+    assert.equal(rotation.enabled, enabled); assert.equal(rotation.visible, enabled);
+    assert.equal(rotation.iconMode, mode); assert.deepEqual(rotation.icons, [mode], 'Only the confirmed Day/Night/All icon is shown');
+    if (mode === 'any') {
+      assert.equal(rotation.allTag, 'SPAN'); assert.equal(rotation.allText, 'ALL');
+      assert(rotation.allFontSize <= 12, 'All pool is tiny literal ALL, not a split-circle icon');
+    }
+    const name = { dark: 'Night', light: 'Day', any: 'All' }[mode];
+    const nextName = { dark: 'Day', light: 'All', any: 'Night' }[mode];
+    assert(rotation.label?.includes(name) && rotation.title.includes(name), 'Cycle icon names its confirmed pool: ' + name);
+    assert(rotation.label.includes('Switch to ' + nextName + '.') && rotation.title.includes('click for ' + nextName), 'Cycle icon names the next pool in Night → Day → All order');
+  }
+  async function cycleRotation(mode) {
+    const before = appearanceWrites().length;
+    await render(`document.getElementById('theme-rotation-cycle').click()`);
+    await rotationSettled(mode);
+    assert.equal(appearanceWrites().length, before + 1, 'One pool cycle click makes one existing IPC write');
+    assert.deepEqual(appearanceWrites()[before], { themeRotationMode: mode });
+    assert(require('../src/theme-rotation').poolForMode(mode).includes(settings.theme), 'Confirmed theme belongs to its rotation pool');
+  }
   async function dimensions(width, height) {
     win.setSize(width, height);
     const [w, h] = win.getContentSize();
     await wait(`Math.abs(innerWidth - ${w}) <= 2 && Math.abs(innerHeight - ${h}) <= 2`, 'Hidden viewport did not resize');
     await new Promise(resolve => setTimeout(resolve, 45));
   }
+  async function settlePresentation() {
+    // Exact token/geometry assertions describe the final frame. Opt-in motion
+    // may still be interpolating button colors or the newly revealed list.
+    await wait(`document.getElementById('view-settings').getAnimations({subtree:true}).every(animation => animation.playState !== 'running')`, 'Settings presentation did not settle');
+  }
   try {
     await win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
     await wait(`typeof window.sydtrackSelectMenuUI?.create === 'function' && document.getElementById('poll-mode-select-trigger')`, 'Select bridge did not initialize');
     await show();
     assert.equal(await render(`(() => {
-      return [...document.querySelectorAll('#view-settings select')].every(input => {
+      const inputs = [...document.querySelectorAll('#view-settings select')];
+      return inputs.length === 3 && inputs.every(input => {
         const trigger = document.getElementById(input.id + '-select-trigger'), list = document.getElementById(input.id + '-select-listbox');
         return input.hidden && input.getClientRects().length === 0 && trigger.tagName === 'BUTTON' && trigger.type === 'button' &&
           trigger.getAttribute('aria-haspopup') === 'listbox' && trigger.getAttribute('aria-controls') === list.id &&
@@ -225,73 +267,76 @@ app.whenReady().then(async () => {
 
     assert.equal(settings.themeRotationEnabled, false, 'Daily rotation defaults off');
     assert.equal(await render(`(() => {
-      const toggle = document.getElementById('theme-rotation-toggle'), label = toggle.closest('.appearance-rotation-switch');
-      return toggle.tagName === 'INPUT' && toggle.type === 'checkbox' && toggle.getAttribute('role') === 'switch' &&
-        !toggle.checked && !toggle.hasAttribute('aria-pressed') && label?.tagName === 'LABEL' && label.textContent.trim() === 'Rotate daily' &&
-        document.getElementById('theme-rotation-options').classList.contains('hidden') &&
-        [...document.getElementById('theme-rotation-mode').options].map(option => option.textContent).join('|') === 'Dark themes|Light themes|Any theme';
-    })()`), true, 'Compact labelled native switch and clear theme pool choices');
+      const toggle = document.getElementById('theme-rotation-toggle'), cycle = document.getElementById('theme-rotation-cycle');
+      const header = document.querySelector('#settings-appearance-card .appearance-head');
+      return toggle.tagName === 'BUTTON' && toggle.type === 'button' && toggle.getAttribute('aria-pressed') === 'false' &&
+        toggle.getAttribute('aria-label')?.length > 5 && toggle.title.length > 5 && toggle.querySelector('svg[aria-hidden="true"]') &&
+        cycle.tagName === 'BUTTON' && cycle.type === 'button' && cycle.getAttribute('aria-label')?.includes('Night') && cycle.title.includes('Night') &&
+        header.contains(toggle) && header.contains(cycle) && cycle.getClientRects().length === 0 &&
+        !document.getElementById('theme-rotation-mode') && !document.getElementById('theme-rotation-options');
+    })()`), true, 'Accessible header icon buttons replace the rotation switch and mode dropdown');
     const beforeSwitchKeyboard = appearanceWrites().length;
     failNext = true; await toggleRotationWithSpace();
     await wait(`!appearanceSaving && document.getElementById('appearance-status').textContent.includes('Could not save')`, 'Failed rotation toggle did not report/settle');
     assert.equal(settings.themeRotationEnabled, false);
-    assert.equal(await render(`document.getElementById('theme-rotation-options').classList.contains('hidden') && !document.getElementById('theme-rotation-toggle').checked && !document.getElementById('theme-rotation-toggle').disabled`), true, 'Failed Space enabling restores unchecked switch and hidden preferences');
+    await rotationSettled('dark', false);
     assert.equal(appearanceWrites().length, beforeSwitchKeyboard + 1, 'Native Space makes one attempted write');
     await toggleRotationWithSpace();
-    await wait(`!appearanceSaving && latestGoalSettings.themeRotationEnabled === true && !document.getElementById('theme-rotation-options').classList.contains('hidden')`, 'Daily rotation did not enable/reveal preferences');
-    assert.equal(await render(`document.getElementById('theme-rotation-toggle').checked`), true, 'Trusted Space retry checks the native switch');
+    await rotationSettled('dark');
     assert.equal(appearanceWrites().length, beforeSwitchKeyboard + 2, 'One Space retry makes one existing settings write');
-    assert.equal((await state('theme-rotation-mode')).confirmed, 'dark'); assert.equal(settings.themeRotationMode, 'dark');
+    assert.equal(settings.themeRotationMode, 'dark', 'Rotation starts in its default Night pool');
     failNext = true; await toggleRotationWithSpace();
     await wait(`!appearanceSaving && document.getElementById('appearance-status').textContent.includes('Could not save')`, 'Failed Space disabling did not report/settle');
     assert.equal(settings.themeRotationEnabled, true);
-    assert.equal(await render(`document.getElementById('theme-rotation-toggle').checked && !document.getElementById('theme-rotation-options').classList.contains('hidden')`), true, 'Failed disabling restores checked switch and enabled preferences');
-    await choose('theme-rotation-mode', 'light'); await settled('theme-rotation-mode', 'light');
-    assert.equal(settings.themeRotationEnabled, true); assert.equal(settings.themeRotationMode, 'light');
-    assert(require('../src/theme-rotation').poolForMode('light').includes(settings.theme), 'Light pool initializes an appropriate confirmed theme');
-    await choose('theme-rotation-mode', 'any'); await settled('theme-rotation-mode', 'any');
-    assert.equal(settings.themeRotationMode, 'any');
+    await rotationSettled('dark');
+    await cycleRotation('light'); await cycleRotation('any'); await cycleRotation('dark');
     let beforeAppearanceHeld = appearanceWrites().length;
     heldWrite = new Promise(resolve => { releaseHeld = resolve; });
     await render(`document.querySelector('[data-theme-id="forest"]').click()`);
-    await wait(`appearanceSaving && document.getElementById('theme-rotation-mode-select-trigger').disabled`, 'Manual chip pending save did not disable the rotation trigger');
-    await render(`document.getElementById('theme-rotation-mode-select-trigger').click(); document.getElementById('theme-rotation-toggle').click()`);
-    assert.equal((await state('theme-rotation-mode')).visible, false);
+    await wait(`appearanceSaving && document.getElementById('theme-rotation-cycle').disabled && document.getElementById('theme-rotation-toggle').disabled`, 'Manual chip pending save did not disable both rotation icons');
+    await render(`document.getElementById('theme-rotation-cycle').click(); document.getElementById('theme-rotation-toggle').click()`);
     assert.equal(appearanceWrites().length, beforeAppearanceHeld + 1, 'Held manual theme change cannot start a rotation save');
     heldWrite = null; releaseHeld();
     await wait(`!appearanceSaving && latestGoalSettings.theme === 'forest' && latestGoalSettings.themeRotationEnabled === false`, 'Manual theme choice did not disable rotation');
-    assert.equal(await render(`document.documentElement.dataset.theme === 'forest' && document.getElementById('theme-rotation-options').classList.contains('hidden')`), true);
+    await rotationSettled('dark', false); assert.equal((await rotationState()).theme, 'forest');
     failNext = true; await render(`document.querySelector('[data-theme-id="graphite"]').click()`);
     await wait(`!appearanceSaving && document.getElementById('appearance-status').textContent.includes('Could not save')`, 'Failed appearance save did not report/settle');
     assert.equal(settings.theme, 'forest'); assert.equal(settings.themeRotationEnabled, false);
-    assert.equal(await render(`document.documentElement.dataset.theme === 'forest' && !document.getElementById('theme-rotation-toggle').checked`), true, 'Failed theme save restores confirmed theme and unchecked rotation switch');
+    await rotationSettled('dark', false); assert.equal((await rotationState()).theme, 'forest', 'Failed theme save restores confirmed theme and rotation icons');
     await render(`document.getElementById('theme-rotation-toggle').click()`);
-    await wait('!appearanceSaving && latestGoalSettings.themeRotationEnabled === true', 'Rotation retry did not enable');
+    await rotationSettled('dark');
     beforeAppearanceHeld = appearanceWrites().length;
     heldWrite = new Promise(resolve => { releaseHeld = resolve; });
     await render(`document.getElementById('theme-rotation-toggle').click()`);
-    await wait(`appearanceSaving && document.getElementById('theme-rotation-mode-select-trigger').disabled`, 'Disabling toggle pending save did not disable the rotation trigger');
-    await render(`document.getElementById('theme-rotation-mode-select-trigger').click(); document.querySelector('[data-theme-id="graphite"]').click()`);
-    assert.equal((await state('theme-rotation-mode')).visible, false);
+    await wait(`appearanceSaving && document.getElementById('theme-rotation-cycle').disabled`, 'Disabling rotation pending save did not disable the cycle icon');
+    await render(`document.getElementById('theme-rotation-cycle').click(); document.querySelector('[data-theme-id="graphite"]').click()`);
     assert.equal(appearanceWrites().length, beforeAppearanceHeld + 1, 'Held rotation toggle cannot start another mode or manual-theme save');
     heldWrite = null; releaseHeld();
-    await wait('!appearanceSaving && latestGoalSettings.themeRotationEnabled === false', 'Held rotation disabling did not settle');
+    await rotationSettled('dark', false);
     await render(`document.getElementById('theme-rotation-toggle').click()`);
-    await wait('!appearanceSaving && latestGoalSettings.themeRotationEnabled === true', 'Rotation did not reenable after held toggle');
-    await choose('theme-rotation-mode', 'dark'); await settled('theme-rotation-mode', 'dark');
-    failNext = true; await choose('theme-rotation-mode', 'light');
-    await wait(`!appearanceSaving && document.getElementById('theme-rotation-mode-select-status').textContent.includes('Could not save') && !document.getElementById('theme-rotation-mode-select-trigger').disabled`, 'Failed rotation option did not rollback/settle');
+    await rotationSettled('dark');
+    const beforeCycleFailure = appearanceWrites().length;
+    failNext = true; await render(`document.getElementById('theme-rotation-cycle').click()`);
+    await wait(`!appearanceSaving && document.getElementById('appearance-status').textContent.includes('Could not save') && !document.getElementById('theme-rotation-cycle').disabled`, 'Failed pool cycle did not rollback/report through Appearance status');
     assert.equal(settings.theme, 'forest'); assert.equal(settings.themeRotationMode, 'dark');
-    assert.equal((await state('theme-rotation-mode')).value, 'dark');
-    await open('theme-rotation-mode'); assert.equal((await state('theme-rotation-mode')).active, 'light'); await key('Escape');
+    await rotationSettled('dark'); assert.equal((await rotationState()).theme, 'forest');
+    assert.equal(appearanceWrites().length, beforeCycleFailure + 1, 'Failed cycle makes only one attempted write');
     const beforeRotationHeld = appearanceWrites().length;
     heldWrite = new Promise(resolve => { releaseHeld = resolve; });
-    await choose('theme-rotation-mode', 'any');
-    await wait(`appearanceSaving && document.getElementById('theme-rotation-toggle').disabled && [...document.querySelectorAll('.select-menu-trigger')].every(button => button.disabled)`, 'Held rotation save did not guard all custom selects/toggle');
+    await render(`document.getElementById('theme-rotation-cycle').click()`);
+    await wait(`appearanceSaving && document.getElementById('theme-rotation-toggle').disabled && document.getElementById('theme-rotation-cycle').disabled && document.getElementById('ui-motion-toggle').disabled &&
+      [...document.querySelectorAll('[data-theme-id]')].every(button => button.disabled)`, 'Held pool cycle did not guard all Appearance actions');
     await render(`document.getElementById('theme-rotation-toggle').click(); document.querySelector('[data-theme-id="graphite"]').click();
-      document.querySelector('#theme-rotation-mode-select-listbox [data-select-value="light"]').click()`);
-    assert.equal(appearanceWrites().length, beforeRotationHeld + 1, 'Rapid rotation/options/manual-theme clicks make no duplicate writes');
-    heldWrite = null; releaseHeld(); await settled('theme-rotation-mode', 'any');
+      document.getElementById('theme-rotation-cycle').click(); document.getElementById('ui-motion-toggle').click()`);
+    assert.equal(appearanceWrites().length, beforeRotationHeld + 1, 'Rapid rotation/cycle/manual-theme clicks make no duplicate writes');
+    heldWrite = null; releaseHeld(); await rotationSettled('light');
+    assert(require('../src/theme-rotation').poolForMode('light').includes(settings.theme), 'Held Night → Day retry confirms a light theme');
+    await cycleRotation('any');
+    // Preserve the existing exact Forest/All reload fixture through normal UI
+    // saves after the Day pool correctly replaces the prior dark theme.
+    await render(`document.querySelector('[data-theme-id="forest"]').click()`);
+    await rotationSettled('any', false);
+    await toggleRotationWithSpace(); await rotationSettled('any');
     assert.equal(settings.themeRotationEnabled, true); assert.equal(settings.theme, 'forest');
     assert.equal(await render(`(() => {
       const credit = document.querySelector('#settings-panel-tracking > .font-credit');
@@ -319,9 +364,14 @@ app.whenReady().then(async () => {
       await dimensions(width, height); await show();
       for (const theme of THEME_IDS) {
         await render(`applySettingsInputs({...latestGoalSettings, theme: ${JSON.stringify(theme)}, themeRotationEnabled:true, themeRotationMode:'any'})`);
-        for (const id of ['poll-mode', 'profile-shortcut', 'window-shortcut', 'theme-rotation-mode']) {
+        for (const id of ['poll-mode', 'profile-shortcut', 'window-shortcut']) {
           await render(`document.getElementById(${JSON.stringify(trigger(id))}).scrollIntoView({block:'center'})`);
-          await new Promise(resolve => setTimeout(resolve, 20)); await open(id);
+          // Yield from the main process so page-scroll dismissal notifications
+          // precede the next menu; hidden-window animation frames may throttle.
+          await new Promise(resolve => setTimeout(resolve, 50));
+          await settlePresentation();
+          await open(id);
+          await settlePresentation();
           const geometry = await render(`(() => {
             const trigger = document.getElementById(${JSON.stringify(trigger(id))}), list = document.getElementById(${JSON.stringify(listbox(id))});
             const rect = list.getBoundingClientRect(), inside = rect => rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1;
@@ -333,34 +383,38 @@ app.whenReady().then(async () => {
               details: { hidden: list.hidden, viewport: [innerWidth,innerHeight], list: [rect.left,rect.top,rect.width,rect.height], trigger: [t.left,t.top,t.width,t.height] } };
           })()`);
           assert.equal(geometry.contained, true, `${width}×${height}/${theme}/${id}: dropdown contained ${JSON.stringify(geometry.details)}`);
-          assert.equal(geometry.themed, true); assert.equal(geometry.overflow, false); await key('Escape');
+          assert.equal(geometry.themed, true, `${width}×${height}/${theme}/${id}: final dropdown colors match theme tokens`);
+          assert.equal(geometry.overflow, false); await key('Escape');
         }
         const rotationGeometry = await render(`(() => {
           const card = document.getElementById('settings-appearance-card'), header = card.querySelector('.appearance-head');
-          const chips = card.querySelector('.theme-swatches'), footer = card.querySelector('.appearance-rotation');
-          const toggle = document.getElementById('theme-rotation-toggle'), label = card.querySelector('.appearance-rotation-switch');
-          const preferences = document.getElementById('theme-rotation-options');
-          const head = header.getBoundingClientRect(), row = footer.getBoundingClientRect(), swatches = chips.getBoundingClientRect();
-          const a = label.getBoundingClientRect(), b = preferences.getBoundingClientRect(), control = toggle.getBoundingClientRect();
-          const gap = b.left - a.right, centerDifference = Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2);
-          const overlap = Math.min(a.right,b.right) > Math.max(a.left,b.left) + 1 && Math.min(a.bottom,b.bottom) > Math.max(a.top,b.top) + 1;
-          return { cohesive: header.children.length === 1 && header.firstElementChild.tagName === 'H3' && !header.contains(toggle) &&
-            footer.contains(label) && label.contains(toggle) && footer.contains(preferences) && !preferences.classList.contains('hidden') && head.width > 0 &&
-            swatches.top >= head.bottom + 12 && row.top >= swatches.bottom + 12 &&
-            Math.abs(a.left - row.left) <= 1 && gap >= 6 && gap <= 20 && centerDifference <= 2 &&
-            a.height <= 44 && row.height <= 44 && control.width > 0 && control.width <= 48 && control.height <= 28 &&
-            b.right - a.left <= 360 && a.top >= row.top - 1 && b.right <= row.right + 1 && b.bottom <= row.bottom + 1 &&
-            !overlap && card.scrollWidth <= card.clientWidth + 1,
-            details: { gap, centerDifference, groupWidth: b.right - a.left, rowHeight: row.height, switch: [control.width,control.height] } };
+          const chips = card.querySelector('.theme-swatches'), toggle = document.getElementById('theme-rotation-toggle');
+          const cycle = document.getElementById('theme-rotation-cycle'), motion = document.getElementById('ui-motion-row');
+          const input = motion.querySelector('input[type="checkbox"]'), label = motion.querySelector('.switch-title') || motion.firstElementChild;
+          const head = header.getBoundingClientRect(), swatches = chips.getBoundingClientRect(), title = header.querySelector('h3').getBoundingClientRect();
+          const a = toggle.getBoundingClientRect(), b = cycle.getBoundingClientRect(), row = motion.getBoundingClientRect();
+          const control = input.getBoundingClientRect(), text = label.getBoundingClientRect();
+          const gap = a.left - b.right, centers = Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2);
+          return { cohesive: header.contains(toggle) && header.contains(cycle) && a.width > 0 && a.width <= 44 && a.height <= 44 &&
+            toggle.getAttribute('aria-pressed') === 'true' && b.width > 0 && b.width <= 44 && b.height <= 44 &&
+            Math.abs(a.right - head.right) <= 1 && Math.abs((a.top + a.bottom - head.top - head.bottom) / 2) <= 2 &&
+            gap >= 4 && gap <= 16 && centers <= 2 && b.left >= title.right + 12 && swatches.top >= head.bottom + 12 &&
+            input.type === 'checkbox' && motion.textContent.includes('Enable UI motion') && row.width > 0 &&
+            Math.abs(row.left - head.left) <= 1 && Math.abs(row.right - head.right) <= 1 &&
+            Math.abs(text.left - row.left) <= 1 && Math.abs(control.right - row.right) <= 1 &&
+            Math.abs((text.top + text.bottom - control.top - control.bottom) / 2) <= 2 &&
+            control.left >= text.right + 12 && row.top >= swatches.bottom + 12 && card.scrollWidth <= card.clientWidth + 1,
+            details: { gap, centers, header: [head.left,head.right], rotate: [a.left,a.right,a.width,a.height],
+              motion: [row.left,row.right], input: [control.left,control.right] } };
         })()`);
-        assert.equal(rotationGeometry.cohesive, true, `${width}×${height}/${theme}: compact adjacent rotation controls ${JSON.stringify(rotationGeometry.details)}`);
+        assert.equal(rotationGeometry.cohesive, true, `${width}×${height}/${theme}: adjacent top-right icons and full-width motion row ${JSON.stringify(rotationGeometry.details)}`);
         await render(`applySettingsInputs({...latestGoalSettings, themeRotationEnabled:false})`);
         assert.equal(await render(`(() => {
-          const toggle = document.getElementById('theme-rotation-toggle'), preferences = document.getElementById('theme-rotation-options');
-          const row = document.querySelector('.appearance-rotation');
-          return !toggle.checked && preferences.classList.contains('hidden') && preferences.getClientRects().length === 0 &&
-            row.getBoundingClientRect().height <= 44 && row.scrollWidth <= row.clientWidth + 1;
-        })()`), true, `${width}×${height}/${theme}: rotation off keeps a compact switch with no detached preference control`);
+          const toggle = document.getElementById('theme-rotation-toggle'), cycle = document.getElementById('theme-rotation-cycle');
+          const head = document.querySelector('.appearance-head').getBoundingClientRect(), rect = toggle.getBoundingClientRect();
+          return toggle.getAttribute('aria-pressed') === 'false' && cycle.getClientRects().length === 0 &&
+            Math.abs(rect.right - head.right) <= 1 && Math.abs((rect.top + rect.bottom - head.top - head.bottom) / 2) <= 2;
+        })()`), true, `${width}×${height}/${theme}: disabled rotation hides the cycle without moving its header anchor`);
         layouts++;
       }
     }
@@ -383,8 +437,8 @@ app.whenReady().then(async () => {
       await render('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
       assert.equal(await render(`[...document.querySelectorAll('.select-menu-listbox')].every(list => list.hidden)`), true, 'Appearance screenshot has no popup');
       assert.equal(await render(`document.documentElement.dataset.theme === ${JSON.stringify(theme)} &&
-        document.getElementById('theme-rotation-toggle').checked === ${enabled} &&
-        document.getElementById('theme-rotation-options').classList.contains('hidden') === ${!enabled}`), true, 'Appearance screenshot shows its actual theme and on/off state');
+        document.getElementById('theme-rotation-toggle').getAttribute('aria-pressed') === ${JSON.stringify(String(enabled))} &&
+        (document.getElementById('theme-rotation-cycle').getClientRects().length > 0) === ${enabled}`), true, 'Appearance screenshot shows its actual theme and on/off state');
       const file = path.join(temporary, 'appearance-' + theme + '-' + (enabled ? 'on' : 'off') + '.png');
       fs.writeFileSync(file, (await win.webContents.capturePage(undefined, {stayHidden:true, stayAwake:true})).toPNG());
       console.log('Appearance screenshot:', file);
@@ -393,23 +447,29 @@ app.whenReady().then(async () => {
     await wait(`document.readyState === 'complete' && document.getElementById('poll-mode-select-trigger')?.dataset.selectValue === '3000' &&
       document.getElementById('profile-shortcut-select-trigger')?.dataset.selectValue === 'Alt+B' &&
       document.getElementById('window-shortcut-select-trigger')?.dataset.selectValue === 'CommandOrControl+Shift+S' &&
-      document.getElementById('theme-rotation-mode-select-trigger')?.dataset.selectValue === 'any' && latestGoalSettings.themeRotationEnabled === true && latestGoalSettings.theme === 'forest'`, 'Confirmed select/appearance values did not survive renderer reload');
+      latestGoalSettings.themeRotationMode === 'any' && document.getElementById('theme-rotation-toggle').getAttribute('aria-pressed') === 'true' &&
+      latestGoalSettings.themeRotationEnabled === true && latestGoalSettings.theme === 'forest'`, 'Confirmed select/appearance values did not survive renderer reload');
     await show();
+    await rotationSettled('any');
+    await cycleRotation('dark'); await cycleRotation('light'); await cycleRotation('any');
     const moduleUrl = require('url').pathToFileURL(path.join(__dirname, '..', 'renderer', 'select-menu-ui.js')).href;
     win.webContents.session.webRequest.onBeforeRequest({ urls: [moduleUrl] }, (_details, callback) => callback({ cancel: true }));
     await new Promise(resolve => { win.webContents.once('did-finish-load', resolve); win.webContents.reload(); });
     await wait(`document.readyState === 'complete' && !window.sydtrackSelectMenuUI && !document.getElementById('poll-mode').hidden`, 'Missing module did not preserve native fallback');
     await render(`document.querySelector('.nav-btn[data-tab="settings"]').click(); document.querySelector('[data-settings-tab="tracking"]').click()`);
-    assert.equal(await render(`['poll-mode','profile-shortcut','window-shortcut','theme-rotation-mode'].every(id => document.getElementById(id).getClientRects().length > 0) && !document.querySelector('.select-menu-trigger')`), true);
+    assert.equal(await render(`['poll-mode','profile-shortcut','window-shortcut'].every(id => document.getElementById(id).getClientRects().length > 0) && !document.querySelector('.select-menu-trigger')`), true);
     const beforeFallback = selectWrites().length;
     await render(`document.getElementById('poll-mode').value='5000'; document.getElementById('poll-mode').dispatchEvent(new Event('change',{bubbles:true}))`);
     await wait('latestGoalSettings.pollMs === 5000', 'Native fallback did not save through existing change handler');
     assert.equal(selectWrites().length, beforeFallback + 1);
-    await render(`document.getElementById('theme-rotation-mode').value='light'; document.getElementById('theme-rotation-mode').dispatchEvent(new Event('change',{bubbles:true}))`);
-    await wait(`!appearanceSaving && latestGoalSettings.themeRotationMode === 'light'`, 'Native rotation fallback did not save');
-    assert.equal(settings.themeRotationMode, 'light'); assert.equal(settings.themeRotationEnabled, true);
+    await render(`document.getElementById('profile-shortcut').value=''; document.getElementById('profile-shortcut').dispatchEvent(new Event('change',{bubbles:true}))`);
+    await wait(`latestGoalSettings.profileShortcut === ''`, 'Native profile shortcut fallback did not save');
+    await render(`document.getElementById('window-shortcut').value=''; document.getElementById('window-shortcut').dispatchEvent(new Event('change',{bubbles:true}))`);
+    await wait(`latestGoalSettings.windowShortcut === ''`, 'Native window shortcut fallback did not save');
+    assert.equal(selectWrites().length, beforeFallback + 3, 'Each of the three native fallback selects saves exactly once');
+    await cycleRotation('dark'); assert.equal(settings.themeRotationEnabled, true);
     assert.deepEqual(errors, [], 'No unexpected renderer errors');
-    console.log(`Select menu checks passed: native keyboard, exact shortcut/settings saves, rotation/manual-theme/failure/reload, shared pending guard, sync/dismissal/fallback, and ${layouts} four-control theme/viewport cases`);
+    console.log(`Select menu checks passed: native keyboard, exact shortcut/settings saves, rotation icons/cycle/manual-theme/failure/reload, shared pending guard, sync/dismissal/fallback, and ${layouts} three-control theme/viewport cases`);
     win.destroy(); app.quit();
   } catch (error) {
     console.error(error); win.destroy(); app.exit(1);

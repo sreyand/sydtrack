@@ -1,0 +1,46 @@
+/* Opt-in interaction motion; no animation controls application state. */
+html:not([data-ui-motion="on"]) *, html:not([data-ui-motion="on"]) *::before,
+html:not([data-ui-motion="on"]) *::after { transition: none !important; animation: none !important; }
+
+@media (prefers-reduced-motion: no-preference) {
+  html[data-ui-motion="on"] button:not(:disabled) {
+    transition: scale 120ms cubic-bezier(.22,1,.36,1), background-color 90ms ease, border-color 90ms ease, color 90ms ease;
+  }
+  html[data-ui-motion="on"] button:not(:disabled):active { scale: .985; transition-duration: 50ms; }
+  /* Stable menu anchors and text rows use highlight feedback, not compression. */
+  html[data-ui-motion="on"] button:is(.nav-btn, .segment-btn, .select-menu-trigger, .select-menu-option,
+    .schedule-time-trigger, .schedule-time-option, .pause-settings-trigger, .pause-duration-choice, .profile-trigger, .profile-choice):not(:disabled) {
+    scale: 1; transition: background-color 90ms ease, border-color 90ms ease, color 90ms ease;
+  }
+  html[data-ui-motion="on"] .ui-motion-segment > button.segment-btn {
+    transition: color 90ms ease;
+  }
+  /* Snap structural layout instead of reflowing the whole page on collapse. */
+  html[data-ui-motion="on"] .rail,
+  html[data-ui-motion="on"] .rail :is(.logo-copy, .nav-label, .tiny, .status-pill) { transition: none; }
+  html[data-ui-motion="on"] .session-play:active { transform: none; }
+  html[data-ui-motion="on"] .switch-row input[type="checkbox"] { transition: background-color 120ms ease, border-color 120ms ease; }
+  html[data-ui-motion="on"] .switch-row input[type="checkbox"]::after { transition: transform 130ms cubic-bezier(.22,1,.36,1); }
+  html[data-ui-motion="on"] :is(.day-stack, .day-seg) { transition: height 150ms cubic-bezier(.22,1,.36,1); }
+}
+
+.ui-motion-segment { position: relative; isolation: isolate; }
+.ui-motion-segment > .segment-btn { position: relative; z-index: 1; }
+.ui-motion-indicator { position: absolute; box-sizing: border-box; pointer-events: none; z-index: 0; transform-origin: 0 0; }
+.ui-motion-indicator[hidden] { display: none; }
+html[data-ui-motion="on"] [data-motion-pill="ready"] > .segment-btn.active {
+  background: transparent !important; border-color: transparent !important; box-shadow: none !important;
+}
+.ui-motion-chart { position: relative; }
+.ui-motion-pie-cover {
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  -webkit-mask-image: conic-gradient(transparent 0deg var(--ui-motion-sweep), #000 var(--ui-motion-sweep) 360deg);
+  mask-image: conic-gradient(transparent 0deg var(--ui-motion-sweep), #000 var(--ui-motion-sweep) 360deg);
+}
+.ui-motion-chart > .pie-center { z-index: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui-motion="on"] *, html[data-ui-motion="on"] *::before, html[data-ui-motion="on"] *::after {
+    transition: none !important; animation: none !important;
+  }
+}

@@ -5,12 +5,12 @@
     <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
-    <a href="docs/release-notes-2.5.0.md">What’s new in v2.5.0</a>
+    <a href="docs/release-notes-2.6.0.md">What’s new in v2.6.0</a>
   </p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
-    <img alt="Version 2.5.0" src="https://img.shields.io/badge/version-2.5.0-8B7CF6?style=flat-square">
+    <img alt="Version 2.6.0" src="https://img.shields.io/badge/version-2.6.0-8B7CF6?style=flat-square">
     <img alt="GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-EF6A6A?style=flat-square">
   </p>
 </div>
@@ -29,7 +29,7 @@ sydtrack watches the app in front of you, classifies the time, and turns the res
 | **Daily goals** | Set a productive-time share target and, if useful, a limit for total active screen time. |
 | **Optional break nudges** | A configurable notification after a long stretch of active tracking, off by default. |
 | **Flexible pauses** | Pause for 15 minutes, 30 minutes, or an hour, with automatic resume—or pause until you choose to resume. |
-| **Nine appearances** | Choose a built-in palette, including Forest, with choices arranged from dark to light. |
+| **Nine appearances** | Choose a built-in palette, including Forest, or enable daily rotation through dark, light, or all themes. Optional UI motion respects your system's reduced-motion preference. |
 | **Simple first run** | Choose a starting profile and decide whether sydtrack opens at sign-in. Tracking stays paused until you press Start. |
 
 ## Built to work on day one
@@ -71,12 +71,12 @@ Changing profiles affects future tracking; it does not rewrite history. Analytic
 
 sydtrack currently targets **Windows 10/11 x64**.
 
-- `sydtrack-2.5.0-setup.exe` — standard installer
-- `sydtrack-2.5.0-portable.exe` — run without installation
+- `sydtrack-2.6.0-setup.exe` — standard installer
+- `sydtrack-2.6.0-portable.exe` — run without installation
 
-Version 2.5.0 is prepared and automatically checked locally; manual acceptance and publication are pending. Its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds. The [release validation report](docs/release-validation-2.5.0.md) records package checks and remaining manual acceptance.
+Version 2.6.0 is prepared and automatically checked locally; manual acceptance and publication are pending. Its downloads become available after the release is published. Until then, GitHub Releases contains the previously published builds. The [release validation report](docs/release-validation-2.6.0.md) records package checks and remaining manual acceptance.
 
-**In v2.5.0:** clickable focusscore days connect the big picture to Day Analytics, flexible pauses keep breaks simple, and Forest plus cleaner Settings make the everyday controls feel more consistent.
+**In v2.6.0:** daily theme rotation, optional UI motion, a show/hide shortcut, steadier analytics, and cleaner controls.
 
 Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
 
@@ -91,7 +91,18 @@ Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/r
 
 On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memory** and an estimated **~1% total CPU** with the 3-second tracking cadence. The short Windows foreground probe accounts for most of that CPU time; results will vary with the machine and other activity.
 
-## What’s new in v2.5.0
+## What’s new in v2.6.0
+
+- **Daily theme rotation**, off by default, uses the two-arrow icon at the right of **Settings → Tracking → Appearance**. While enabled, the adjacent moon, sun, or **ALL** control cycles **Night → Day → ALL → Night**: dark themes, light themes, or both. Themes follow a predictable sequence for each local calendar day across restarts, sleep, and skipped days. Picking a theme manually turns rotation off.
+- **Enable UI motion**, off by default, adds gentle press feedback, uninterrupted tab transitions, quick menu entrances, and a clockwise pie-chart draw. It respects reduced motion and does not replay on live updates. The rebuilt packages include the lighter transitions and removal of FocusBoost's delayed second press.
+- **Show/hide sydtrack** adds an optional shortcut under **Settings → Tracking**: **Off** (default), **Ctrl+Alt+S**, **Ctrl+Shift+S**, or **Alt+S**. Hide the focused window or bring sydtrack forward. If a shortcut is unavailable, the previous working choice is preserved.
+- **Polling mode**, **Focus profile hotswap**, and **Show/hide sydtrack** use themed dropdowns with keyboard access and native controls as a fallback.
+- Charts and focusscore day buttons stay in place during live updates, preserving keyboard focus and hover. Active Week and Month grids keep today's values fresh. Returning from Day Analytics restores focus and scroll without leaving a tile selected.
+- Expanded sidebar controls align consistently. Week comparisons use **Up/Down …% from last week** wording; the calculation remains the difference between the two periods' Focus Share percentages.
+
+Read the [v2.6.0 release notes](docs/release-notes-2.6.0.md) for upgrade details and [ITERATION.md](ITERATION.md) for the implementation handoff and remaining limitations.
+
+## What changed in v2.5.0
 
 - Click a day in Week or Month focusscore to open Analytics for that exact date. **Back to focusscore**, below the day’s information, restores the original grid, focused day, and scroll position.
 - **Pause for…** offers 15 minutes, 30 minutes, 1 hour, or **Until I resume**. The same Settings control becomes **Resume** while paused; the sidebar shows a timed-pause countdown, and the tray offers the three timed durations.
@@ -101,14 +112,7 @@ On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memo
 
 Read the [v2.5.0 release notes](docs/release-notes-2.5.0.md) for upgrade details and [ITERATION.md](ITERATION.md) for the implementation handoff and remaining limitations.
 
-## Development updates (unreleased)
-
-These changes are available in the current source only. The prepared v2.5.0 installer and portable files have not been rebuilt and do not include them.
-
-- **Rotate daily**, off by default, lives in **Settings → Tracking → Appearance**. Enable the switch and choose **Dark themes** (the default mode), **Light themes**, or **Any theme** beside it. Themes follow a predictable sequence for each local calendar day, consistent across restarts, sleep, and skipped days. Picking a theme manually turns rotation off.
-- **Show/hide sydtrack** adds an optional shortcut under **Settings → Tracking**: **Off** (default), **Ctrl/⌘+Alt+S**, **Ctrl/⌘+Shift+S**, or **Alt+S**. Hide the focused window or bring sydtrack forward. If a shortcut is unavailable, the previous working choice is preserved.
-- Settings dropdowns use themed menus while retaining their native controls as a fallback.
-- Charts and focusscore day buttons stay in place during live updates. Active Week and Month grids keep today's values fresh using cached history, preserving keyboard focus and hover state.
+The [v2.5.0 release validation report](docs/release-validation-2.5.0.md) records checks and remaining acceptance for those frozen builds.
 
 ## What changed in v2.4.0
 

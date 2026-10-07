@@ -129,6 +129,7 @@ function showNameTip(ev) {
 
 
 const api = window.sydtrack;
+const uiMotion = window.sydtrackUIMotion?.create();
 let applying = false;
 let pauseUiSettings = null;
 let pauseActionBusy = false;
@@ -1628,15 +1629,31 @@ function syncPauseUi(settings) {
   renderPauseRemaining();
 }
 
+const ROTATION_CYCLE = { dark: { name: 'Night', next: 'light' }, light: { name: 'Day', next: 'any' }, any: { name: 'All', next: 'dark' } };
 function syncAppearanceUi(settings = latestGoalSettings || {}) {
   const enabled = settings.themeRotationEnabled === true;
-  if ($('theme-rotation-toggle')) $('theme-rotation-toggle').checked = enabled;
-  $('theme-rotation-options')?.classList.toggle('hidden', !enabled);
-  if ($('theme-rotation-mode')) {
-    $('theme-rotation-mode').value = ['dark', 'light', 'any'].includes(settings.themeRotationMode) ? settings.themeRotationMode : 'dark';
-    $('theme-rotation-mode').disabled = appearanceSaving || !enabled;
+  if ($('ui-motion-toggle')) {
+    $('ui-motion-toggle').checked = settings.uiMotionEnabled === true;
+    $('ui-motion-toggle').disabled = appearanceSaving;
   }
-  if ($('theme-rotation-toggle')) $('theme-rotation-toggle').disabled = appearanceSaving;
+  uiMotion?.setEnabled(settings.uiMotionEnabled === true);
+  const rotate = $('theme-rotation-toggle'), cycle = $('theme-rotation-cycle');
+  if (rotate) {
+    rotate.setAttribute('aria-pressed', String(enabled));
+    rotate.title = enabled ? 'Turn off daily theme rotation' : 'Turn on daily theme rotation';
+    rotate.disabled = appearanceSaving;
+  }
+  if (cycle) {
+    const mode = Object.hasOwn(ROTATION_CYCLE, settings.themeRotationMode) ? settings.themeRotationMode : 'dark';
+    const choice = ROTATION_CYCLE[mode], next = ROTATION_CYCLE[choice.next];
+    const wasFocused = document.activeElement === cycle;
+    cycle.hidden = !enabled;
+    cycle.disabled = appearanceSaving || !enabled;
+    cycle.dataset.rotationMode = mode;
+    cycle.setAttribute('aria-label', 'Rotation themes: ' + choice.name + '. Switch to ' + next.name + '.');
+    cycle.title = choice.name + ' themes · click for ' + next.name;
+    if (!enabled && wasFocused && rotate && !rotate.disabled && rotate.getClientRects().length) rotate.focus({ preventScroll: true });
+  }
   document.querySelectorAll('[data-theme-id]').forEach(btn => { btn.disabled = appearanceSaving; });
 }
 
@@ -1645,8 +1662,9 @@ async function saveAppearance(partial) {
   appearanceSaving = true;
   // Busy state only: do not confirm the select's optimistic value before saving.
   $('theme-rotation-toggle').disabled = true;
+  $('ui-motion-toggle').disabled = true;
   document.querySelectorAll('[data-theme-id]').forEach(btn => { btn.disabled = true; });
-  $('theme-rotation-mode').disabled = true;
+  $('theme-rotation-cycle').disabled = true;
   settingsSelectMenu?.refresh();
   const status = $('appearance-status');
   status.textContent = '';
@@ -1656,10 +1674,8 @@ async function saveAppearance(partial) {
     return await pushSettings(partial);
   } catch (err) {
     applyTheme(latestGoalSettings?.theme);
-    if (!Object.hasOwn(partial, 'themeRotationMode') || !settingsSelectMenu) {
-      status.textContent = 'Could not save appearance. Try again.';
-      status.classList.remove('hidden');
-    }
+    status.textContent = 'Could not save appearance. Try again.';
+    status.classList.remove('hidden');
     throw err;
   } finally {
     appearanceSaving = false;
@@ -1728,42 +1744,6 @@ function syncFocusBoostScheduleUi(settings) {
   if (end) end.disabled = !enabled;
   window.sydtrackScheduleTimeUI?.sync();
 }
-
-function playBoostKick() {
-  if (reduceMotion) return;
-  let kick = $('boost-kick');
-  if (!kick) {
-    kick = document.createElement('div');
-    kick.id = 'boost-kick';
-    kick.className = 'boost-kick';
-    kick.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(kick);
-  }
-  kick.classList.remove('play');
-  void kick.offsetWidth;
-  kick.classList.add('play');
-  window.setTimeout(() => kick.classList.remove('play'), 520);
-}
-
-/** Physical button feedback: hard hit on arm, soft settle on disarm. */
-function playFocusBoostFeel(arming) {
-  if (reduceMotion) return;
-  const btn = $('focusboost-btn');
-  if (btn) {
-    btn.classList.remove('fb-hit', 'fb-settle');
-    void btn.offsetWidth;
-    btn.classList.add(arming ? 'fb-hit' : 'fb-settle');
-    window.setTimeout(
-      () => btn.classList.remove('fb-hit', 'fb-settle'),
-      arming ? 480 : 320
-    );
-  }
-  if (arming) {
-    // Overlay "FOCUS BOOST" flash removed — keep kick + button punch only.
-    playBoostKick();
-  }
-}
-
 
 function hourLabel(h) {
   const end = (h + 1) % 24;
@@ -2513,7 +2493,6 @@ if ($('launch-startup-toggle')) {
 }
 async function saveSettingsSelect(input, value) {
   if (!api) throw new Error('Settings are unavailable');
-  if (input.id === 'theme-rotation-mode') return saveAppearance({ themeRotationMode: value });
   const field = { 'poll-mode': 'pollMs', 'profile-shortcut': 'profileShortcut', 'window-shortcut': 'windowShortcut' }[input.id];
   if (!field) throw new Error('Unknown settings control');
   const status = $(input.id + '-status');
@@ -2530,7 +2509,7 @@ async function saveSettingsSelect(input, value) {
     throw err;
   }
 }
-for (const id of ['poll-mode', 'profile-shortcut', 'window-shortcut', 'theme-rotation-mode']) {
+for (const id of ['poll-mode', 'profile-shortcut', 'window-shortcut']) {
   $(id)?.addEventListener('change', () => {
     saveSettingsSelect($(id), $(id).value).catch(() => {});
   });
@@ -2728,7 +2707,6 @@ async function toggleFocusBoost() {
         focusBoostSec: boostSec
       }
     );
-    playFocusBoostFeel(true);
   } else {
     const restore =
       Number(settings.focusBoostRestoreSec) || thresholdBeforeBoost || 600;
@@ -2743,7 +2721,6 @@ async function toggleFocusBoost() {
         focusBoostSec: boostSec
       }
     );
-    playFocusBoostFeel(false);
   }
 }
 
@@ -2940,8 +2917,16 @@ document.querySelectorAll('[data-theme-id]').forEach((btn) => {
     try { await saveAppearance({ theme, themeRotationEnabled: false }); } catch (_) {}
   });
 });
-$('theme-rotation-toggle')?.addEventListener('change', async (event) => {
-  try { await saveAppearance({ themeRotationEnabled: event.currentTarget.checked }); } catch (_) {}
+$('theme-rotation-toggle')?.addEventListener('click', async () => {
+  try { await saveAppearance({ themeRotationEnabled: latestGoalSettings?.themeRotationEnabled !== true }); } catch (_) {}
+});
+$('theme-rotation-cycle')?.addEventListener('click', async () => {
+  if (appearanceSaving || latestGoalSettings?.themeRotationEnabled !== true) return;
+  const mode = Object.hasOwn(ROTATION_CYCLE, latestGoalSettings.themeRotationMode) ? latestGoalSettings.themeRotationMode : 'dark';
+  try { await saveAppearance({ themeRotationMode: ROTATION_CYCLE[mode].next }); } catch (_) {}
+});
+$('ui-motion-toggle')?.addEventListener('change', async (event) => {
+  try { await saveAppearance({ uiMotionEnabled: event.currentTarget.checked }); } catch (_) {}
 });
 
 if ($('ignore-reset')) {

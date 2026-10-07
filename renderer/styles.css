@@ -3578,30 +3578,33 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
   padding-top: 0;
 }
 .theme-swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.appearance-head { margin-bottom: 16px; }
+.appearance-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .appearance-head h3 { margin: 0; }
-.appearance-rotation {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px 16px;
-  margin-top: 20px;
+.appearance-controls { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.appearance-icon-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: 0;
+  background: transparent; color: var(--color-ink-muted); cursor: pointer;
+  font-family: var(--font-sans);
 }
-#view-settings .appearance-rotation-switch {
-  justify-content: flex-start;
-  flex: 0 0 auto;
-  gap: 10px;
-  min-height: 38px;
-  padding: 0;
-  border: 0;
-  cursor: pointer;
-  font: var(--body);
-}
-.appearance-rotation-switch input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
-.appearance-rotation-switch:has(input:disabled) { cursor: default; opacity: .5; }
-.appearance-rotation .select-menu-control { width: 144px; }
-#theme-rotation-mode { width: 144px; padding: 8px 10px; }
+.appearance-icon-button[hidden] { display: none; }
+.appearance-icon-button svg { width: 18px; height: 18px; pointer-events: none; }
+.appearance-icon-button .appearance-rotate-icon { width: 20px; height: 20px; }
+.appearance-icon-button:hover:not(:disabled) { color: var(--color-ink); }
+.appearance-icon-button[aria-pressed="true"] { color: var(--color-accent); }
+.appearance-icon-button:disabled { cursor: default; opacity: .5; }
+.appearance-cycle [data-rotation-icon] { display: none; }
+.appearance-cycle svg { width: 16px; height: 16px; }
+/* Center Satoshi's capital-letter ink, rather than its taller line box. */
+.appearance-all-icon { font-size: 10px; line-height: 1; font-weight: 700; letter-spacing: .06em; transform: translateY(1px); }
+.appearance-cycle[data-rotation-mode="light"] [data-rotation-icon="light"],
+.appearance-cycle[data-rotation-mode="dark"] [data-rotation-icon="dark"],
+.appearance-cycle[data-rotation-mode="any"] [data-rotation-icon="any"] { display: block; }
+#view-settings #ui-motion-row { margin-top: 20px; padding: 0; min-height: 44px; border: 0; cursor: pointer; }
+#ui-motion-row .switch-title { margin: 0; }
+#ui-motion-row input { flex: 0 0 auto; margin: 0; }
+@media (pointer: coarse) { .appearance-icon-button { width: 44px; height: 44px; } }
 #settings-panel-tracking > .font-credit { margin: 0; padding: 0 2px; }
 .settings-inline-field > .select-menu-control { width: 168px; flex: 0 0 168px; }
 .day-stack, .day-seg { transition: height 180ms ease-out; }

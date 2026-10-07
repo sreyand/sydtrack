@@ -280,6 +280,7 @@ const SETTINGS = {
     return value;
   },
   themeRotationEnabled: bool,
+  uiMotionEnabled: bool,
   themeRotationMode: (value) => {
     if (!['dark', 'light', 'any'].includes(value)) invalid();
     return value;
