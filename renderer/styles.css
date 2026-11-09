@@ -917,11 +917,11 @@ h4.unprod { color: var(--unprod); }
   padding: 12px 2px 0;
   border-radius: var(--radius-sm);
   border: 0;
-  /* Mid gridline + baseline above x-ticks (bottom 22px) */
+  /* Theme-aware midline and stronger baseline above the x-axis labels. */
   background-color: transparent;
   background-image:
-    linear-gradient(to right, rgba(255,255,255,0.08), rgba(255,255,255,0.08)),
-    linear-gradient(to right, rgba(255,255,255,0.16), rgba(255,255,255,0.16));
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border-strong), var(--color-border-strong));
   background-size: 100% 1px, 100% 1px;
   background-position: left calc(12px + (100% - 34px) / 2), left calc(100% - 22px);
   background-repeat: no-repeat;

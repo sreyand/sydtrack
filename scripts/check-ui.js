@@ -29,7 +29,7 @@ app.whenReady().then(async () => {
     style.textContent = '* { transition: none !important; animation: none !important; }';
     document.head.append(style);
   })()`);
-  const contrastChecks = await win.webContents.executeJavaScript(`(() => {
+  const { contrastChecks, guideChecks } = await win.webContents.executeJavaScript(`(() => {
     const parse = value => {
       const parts = String(value).match(/[\\d.]+/g) || [];
       // Chromium returns color-mix() as color(srgb ...) with channels in 0–1.
@@ -73,9 +73,20 @@ app.whenReady().then(async () => {
     categoryProbe.className = 'last-focused';
     categoryProbe.innerHTML = ['prod', 'unprod', 'other', 'ignore'].map(kind => '<button class="btn-mini selected ' + kind + '">P</button>').join('');
     document.querySelector('.card').append(categoryProbe);
-    const checks = [];
+    const checks = [], guides = [];
     for (const theme of ${JSON.stringify(THEME_IDS)}) {
       applyTheme(theme);
+      for (const id of ['day-chart', 'week-chart']) {
+        const chart = document.getElementById(id);
+        const style = getComputedStyle(chart);
+        const colors = style.backgroundImage.match(/rgba?\\([^)]+\\)/g) || [];
+        const bg = effectiveBackground(chart);
+        const midline = colors.length === 4 ? ratio(colors[0], bg) : 0;
+        const baseline = colors.length === 4 ? ratio(colors[2], bg) : 0;
+        // Decorative guides should be visible without competing with data or text.
+        guides.push({ theme, id, midline, baseline,
+          visible: style.backgroundSize === '100% 1px, 100% 1px' && midline >= 1.15 && baseline > midline });
+      }
       const samples = [
         ['body', document.body, document.body],
         ['phrase title', document.getElementById('quick-rule-title'), document.getElementById('last-focused')],
@@ -123,8 +134,11 @@ app.whenReady().then(async () => {
     categoryProbe.remove();
     tip.classList.add('hidden');
     profileMenu.innerHTML = '';
-    return checks;
+    return { contrastChecks: checks, guideChecks: guides };
   })()`);
+  const missingGuides = guideChecks.filter(check => !check.visible);
+  if (missingGuides.length) throw new Error('Low-contrast Analytics guides: ' + JSON.stringify(missingGuides));
+  console.log('Analytics guide contrast passed:', guideChecks.length, 'chart/theme combinations');
   console.log('Theme contrast checks:', JSON.stringify(THEME_IDS.map(theme => ({ theme,
     samples: contrastChecks.filter(check => check.theme === theme).length,
     minRatio: Math.min(...contrastChecks.filter(check => check.theme === theme).map(check => check.ratio)) }))));
@@ -718,6 +732,33 @@ app.whenReady().then(async () => {
       overflow: panel.scrollWidth > panel.clientWidth + 1 };
   })()`);
   console.log('Lifetime checks:', JSON.stringify(lifetimeChecks));
+  const peakTimeChecks = await win.webContents.executeJavaScript(`(() => {
+    const at = hour => new Date(2026, 0, 15, hour).getTime();
+    const normalize = text => text.replace(/\\s+/g, '');
+    const renderPeak = hour => {
+      const stats = { date: '2026-01-15', byCategory: { productive: hour == null ? 0 : 1200, unproductive: 1800 },
+        byHour: Array.from({ length: 24 }, (_, i) => ({ productive: i === hour ? 1200 : 0, unproductive: i === 10 ? 1800 : 0 })) };
+      renderDay(stats);
+      renderRoundup(stats);
+      const roundup = document.getElementById('ru-peak');
+      return { day: document.getElementById('day-peak-sub').textContent, dayValue: document.getElementById('day-peak-value').textContent,
+        roundup: roundup.textContent, roundupFull: roundup.dataset.full };
+    };
+    const ranges = [15, 23].map(hour => {
+      const expected = timelineTime(at(hour)) + '–' + timelineTime(at(hour + 1));
+      const actual = renderPeak(hour);
+      if ([actual.day, actual.roundup, actual.roundupFull].some(text => normalize(text) !== normalize(expected))) {
+        throw new Error('Peak hour does not match Activity timeline: ' + JSON.stringify({ hour, expected, actual }));
+      }
+      return expected;
+    });
+    const empty = renderPeak(null);
+    if (empty.day !== 'No productive time yet' || empty.dayValue !== '—' || empty.roundup !== '—' || empty.roundupFull !== '') {
+      throw new Error('Unproductive-only day displayed a peak hour: ' + JSON.stringify(empty));
+    }
+    return { ranges, noProductivePeak: true };
+  })()`);
+  console.log('Peak time checks:', JSON.stringify(peakTimeChecks));
   const roundupEvidence = await win.webContents.executeJavaScript(`(() => {
     const stats = { date: '2026-09-25', byCategory: { productive: 120, unproductive: 90, other: 60 },
       topApps: [

@@ -313,8 +313,8 @@ function localDateKey() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
-function timelineTime(ms) {
-  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+function timelineTime(ms, timeZone) {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone });
 }
 
 function timelineAxis(start, end) {
@@ -1782,9 +1782,9 @@ function syncFocusBoostScheduleUi(settings) {
 }
 
 function hourLabel(h) {
-  const end = (h + 1) % 24;
-  const pad = (n) => String(n).padStart(2, '0');
-  return pad(h) + ':00–' + pad(end) + ':00';
+  // These are clock-hour buckets, not timestamps to convert to local time.
+  const atHour = (hour) => timelineTime(Date.UTC(2000, 0, 1, hour), 'UTC');
+  return atHour(h) + '–' + atHour(h + 1);
 }
 
 function topAppsFromByApp(byApp, limit) {
