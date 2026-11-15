@@ -31,7 +31,7 @@ app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   const at = new Date();
   const date = at.getFullYear() + '-' + String(at.getMonth() + 1).padStart(2, '0') + '-' + String(at.getDate()).padStart(2, '0');
-  let settings = { onboardingComplete: true, trackingPaused: false, trackingPauseUntil: 0,
+  let settings = { onboardingComplete: true, trackingPaused: false, trackingPauseUntil: 0, resumeTrackingNextDay: false,
     launchAtStartup: false, updateChecksEnabled: false, notificationsEnabled: true, demoMode: false,
     theme: 'midnight', pollMs: 3000, thresholdSec: 600, focusBoost: false,
     focusBoostScheduleEnabled: false, focusShareGoalPct: 80, focusShareIncludeOther: false };
@@ -140,25 +140,27 @@ app.whenReady().then(async () => {
       const definitions = [
         ['launch-startup-row', '#launch-startup-toggle'],
         ['pause', '#pause-settings-btn'],
+        ['resume-tracking-next-day-row', '#resume-tracking-next-day-toggle'],
         ['session-history-row', '#session-history-toggle']
       ];
       const center = rect => (rect.top + rect.bottom) / 2;
       const rows = definitions.map(([id, selector]) => {
         const row = id === 'pause' ? document.querySelector('.pause-settings-row') : document.getElementById(id);
         const rect = row.getBoundingClientRect();
-        const title = row.querySelector('.switch-title').getBoundingClientRect();
+        const copy = row.firstElementChild.getBoundingClientRect();
         const control = row.querySelector(selector).getBoundingClientRect();
         return { id, height: rect.height, top: rect.top, bottom: rect.bottom,
-          titleCenter: center(title), controlCenter: center(control),
+          copyCenter: center(copy), controlCenter: center(control),
           borderBottom: parseFloat(getComputedStyle(row).borderBottomWidth) || 0 };
       });
       const polling = document.getElementById('polling-settings');
       const pollingRect = polling.getBoundingClientRect();
-      const upperDivider = rows[1].bottom - rows[1].borderBottom / 2;
+      const history = rows.at(-1), previous = rows.at(-2);
+      const upperDivider = previous.bottom - previous.borderBottom / 2;
       const lowerDivider = pollingRect.top + (parseFloat(getComputedStyle(polling).borderTopWidth) || 0) / 2;
       return { rows, statusHidden: document.getElementById('pause-until-status').classList.contains('hidden'),
-        historyAbove: rows[2].controlCenter - upperDivider,
-        historyBelow: lowerDivider - rows[2].controlCenter };
+        historyAbove: history.controlCenter - upperDivider,
+        historyBelow: lowerDivider - history.controlCenter };
     })()`);
   }
   function assertTrackerGeometry(geometry, label) {
@@ -166,8 +168,8 @@ app.whenReady().then(async () => {
     const heights = geometry.rows.map(row => row.height);
     assert(Math.max(...heights) - Math.min(...heights) <= 1.01,
       'Live Tracker rows have uniform heights: ' + label + ' ' + JSON.stringify(geometry));
-    assert(geometry.rows.every(row => Math.abs(row.titleCenter - row.controlCenter) <= 1.01),
-      'Tracker titles center with their controls: ' + label + ' ' + JSON.stringify(geometry));
+    assert(geometry.rows.every(row => Math.abs(row.copyCenter - row.controlCenter) <= 1.01),
+      'Tracker text centers with its controls: ' + label + ' ' + JSON.stringify(geometry));
     assert(geometry.historyAbove > 0 && geometry.historyBelow > 0 && Math.abs(geometry.historyAbove - geometry.historyBelow) <= 1.01,
       'History control is centered between its upper divider and Polling divider: ' + label + ' ' + JSON.stringify(geometry));
   }
@@ -227,6 +229,27 @@ app.whenReady().then(async () => {
     assert.deepEqual(structure.choices.map(item => item.minutes), [15, 30, 60, 0]);
     assert(structure.choices.every(item => item.native && item.role === 'menuitem'));
     assert.equal(await render('typeof window.sydtrack.pauseForMinutes'), 'function', 'New timed-pause bridge exists');
+
+    const nextDay = `document.getElementById('resume-tracking-next-day-toggle')`;
+    const untimed = `document.querySelector('#pause-settings-menu [data-pause-minutes="0"]')`;
+    assert.equal(await render(`${nextDay}.checked`), false, 'Next-day resume starts off');
+    assert.equal(await render(`${untimed}.textContent`), 'Until I resume');
+    const beforePreference = writes.length;
+    await render(`${nextDay}.focus({ preventScroll: true })`);
+    await key('Space');
+    await waitFor(`${nextDay}.checked && !${nextDay}.disabled`, 'Next-day resume did not turn on');
+    assert.deepEqual(writes.slice(beforePreference), [{ channel: 'settings:update', partial: { resumeTrackingNextDay: true } }]);
+    assert.equal(settings.trackingPaused, false, 'Changing the preference does not pause live tracking');
+    assert.equal(await render(`${untimed}.textContent`), 'Until tomorrow');
+    failedSettings = true;
+    await render(`${nextDay}.click()`);
+    await waitFor(`${nextDay}.checked && !${nextDay}.disabled && !document.getElementById('resume-tracking-next-day-status').classList.contains('hidden')`,
+      'Failed preference save did not restore the persisted state');
+    assert.equal(await render(`${untimed}.textContent`), 'Until tomorrow', 'Failed save does not change the pause option');
+    await render(`${nextDay}.click()`);
+    await waitFor(`!${nextDay}.checked && !${nextDay}.disabled && ${untimed}.textContent === 'Until I resume'`, 'Next-day resume did not turn off');
+    assert.equal(settings.resumeTrackingNextDay, false);
+    console.log('Next-day resume: opt-in keyboard toggle, conditional pause label, and save rollback passed.');
 
     for (const minutes of [15, 30, 60]) {
       const before = writes.length, started = Date.now();

@@ -642,7 +642,6 @@
         </article>
         <article class="card" id="settings-tracker-card">
           <h3>Tracker</h3>
-          <!-- Toggles first: Pause → session history → focusboost schedule (last) -->
           <div class="settings-toggles">
             <label class="switch-row" id="launch-startup-row">
               <div>
@@ -667,6 +666,14 @@
                 </div>
               </div>
             </div>
+            <label class="switch-row" id="resume-tracking-next-day-row" title="Untimed pauses end at local midnight, or on the next launch after midnight.">
+              <div>
+                <div class="switch-title" id="resume-tracking-next-day-title">Resume tracking the next day</div>
+                <div id="resume-tracking-next-day-hint" class="screen-reader-only">New untimed pauses end at local midnight, or on the next launch after midnight.</div>
+                <div id="resume-tracking-next-day-status" class="muted tiny hidden" role="status"></div>
+              </div>
+              <input type="checkbox" id="resume-tracking-next-day-toggle" aria-labelledby="resume-tracking-next-day-title" aria-describedby="resume-tracking-next-day-hint" />
+            </label>
             <label class="switch-row" id="session-history-row">
               <div>
                 <div class="switch-title">Keep session history</div>

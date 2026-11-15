@@ -100,7 +100,7 @@ function sessionRows(sessions) {
 
 function settingRows(settings) {
   return Object.entries(settings || {})
-    .filter(([key, value]) => value != null && !['__proto__', 'constructor', 'prototype'].includes(key))
+    .filter(([key, value]) => value != null && !['__proto__', 'constructor', 'prototype', 'trackingPauseDate'].includes(key))
     .map(([key, value]) => ['setting', '', key, '', '', '', '', '', '', '', '', '', '', '', '', '', typeof value === 'object' ? JSON.stringify(value) : value]);
 }
 
@@ -230,6 +230,7 @@ function importCsv(store, text, opts) {
         return result;
       }
       const raw = cell(row, columns, 'value');
+      if (key === 'trackingPauseDate') continue;
       if (raw === 'true' || raw === 'false') settings[key] = raw === 'true';
       else if (raw !== '' && Number.isFinite(Number(raw)) && String(Number(raw)) === raw.trim()) settings[key] = Number(raw);
       else settings[key] = raw;
@@ -306,7 +307,7 @@ function importCsv(store, text, opts) {
   }
   if (Object.keys(settings).length && options.applySettings !== false) {
     if (options.onSettings) options.onSettings(settings);
-    else store.updateSettings(settings);
+    else store.updateSettings({ ...settings, trackingPauseDate: '' });
   }
   if ((rules.productive.length || rules.unproductive.length || rules.other.length) && options.onRules) options.onRules(rules);
   if (ignore.length && options.onIgnore) options.onIgnore(ignore);

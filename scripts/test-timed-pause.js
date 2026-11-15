@@ -6,8 +6,10 @@ const os = require('os');
 const path = require('path');
 const { pauseForMinutes, pauseFor15Minutes, createTimedPause } = require('../src/timed-pause');
 const { validateIpcPayload } = require('../src/ipc-validate');
-const { createStore } = require('../src/store');
+const { createStore, todayKey } = require('../src/store');
 const { createTracker } = require('../src/tracker');
+const { buildExport } = require('../src/backup');
+const { buildCsvExport } = require('../src/data-export');
 
 for (const minutes of [15, 30, 60]) {
   assert.deepStrictEqual(pauseForMinutes(minutes, 1_000_000), {
@@ -93,10 +95,135 @@ settings = pauseFor15Minutes(clock);
 timer.sync();
 timer.dispose();
 assert.strictEqual(nextTimer, null, 'quit cancels the in-memory timer');
+
+function nextDayPauseChecks() {
+  const evening = new Date(2026, 2, 7, 23, 59, 58).getTime();
+  const midnight = new Date(2026, 2, 8).getTime();
+  const morning = new Date(2026, 2, 8, 8).getTime();
+  const pause = {
+    trackingPaused: true, trackingPauseUntil: 0,
+    resumeTrackingNextDay: true, trackingPauseDate: todayKey(evening)
+  };
+  let at = evening, current = { ...pause }, pending, attempts = 0, fail = false;
+  const controller = createTimedPause({
+    getSettings: () => current,
+    onExpire: () => {
+      attempts++;
+      if (fail) return false;
+      current = { ...current, trackingPaused: false, trackingPauseUntil: 0, trackingPauseDate: '' };
+    },
+    now: () => at,
+    setTimer: (fn, delay) => { pending = { fn, delay }; return pending; },
+    clearTimer: handle => { if (pending === handle) pending = null; }
+  });
+  const fire = () => {
+    const handle = pending;
+    pending = null;
+    handle.fn();
+  };
+
+  controller.sync();
+  assert.strictEqual(pending.delay, midnight - evening, 'automatic resume targets local midnight');
+  at = midnight - 1;
+  fire();
+  assert.strictEqual(attempts, 0, 'no restart before the local date changes');
+  assert.strictEqual(pending.delay, 1, 'recheck reaches the local day boundary');
+  at = midnight;
+  fire();
+  assert.strictEqual(attempts, 1, 'resumes at the start of the next local day');
+  assert.strictEqual(current.trackingPaused, false);
+  assert.strictEqual(pending, null);
+  controller.sync();
+  assert.strictEqual(attempts, 1, 'resumes exactly once');
+
+  at = morning;
+  current = { ...pause };
+  controller.sync();
+  assert.strictEqual(attempts, 2, 'a skipped midnight resumes on the next sync after wake or relaunch');
+
+  at = new Date(2026, 2, 6, 23, 59, 59).getTime();
+  current = { ...pause };
+  controller.sync();
+  assert.strictEqual(attempts, 2, 'clock rollback to an earlier local date does not resume');
+  assert(current.trackingPaused);
+
+  at = evening;
+  current = { ...pause, ...pauseForMinutes(15, at) };
+  controller.sync();
+  at = midnight;
+  controller.sync();
+  assert.strictEqual(attempts, 2, 'a timed pause is not shortened by midnight');
+  at = current.trackingPauseUntil;
+  fire();
+  assert.strictEqual(attempts, 3, 'the timed deadline still resumes normally');
+
+  at = evening;
+  current = { ...pause };
+  controller.sync();
+  assert(pending, 'the opted-in pause has a scheduled check');
+  current.resumeTrackingNextDay = false;
+  controller.sync();
+  assert.strictEqual(pending, null, 'disabling the option cancels the automatic resume');
+  at = morning;
+  for (const override of [
+    { resumeTrackingNextDay: false }, { resumeTrackingNextDay: 'true' },
+    { trackingPauseDate: '' }, { trackingPauseDate: '2026-02-30' }, { onboardingComplete: false }
+  ]) {
+    current = { ...pause, ...override };
+    controller.sync();
+    assert.strictEqual(attempts, 3, 'only a valid, opted-in manual pause can expire');
+    assert.strictEqual(pending, null);
+    assert(current.trackingPaused);
+  }
+
+  current = { ...pause };
+  fail = true;
+  controller.sync();
+  assert.strictEqual(attempts, 4, 'a failed resume is attempted only once in the current check');
+  assert(current.trackingPaused, 'failed resume stays paused');
+  assert(pending && pending.delay > 0 && pending.delay <= 60_000, 'failed resume retries after a bounded delay');
+  fail = false;
+  at += pending.delay;
+  fire();
+  assert.strictEqual(attempts, 5, 'retry can resume once persistence returns');
+  assert.strictEqual(current.trackingPaused, false);
+  controller.dispose();
+}
+
+nextDayPauseChecks();
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-timed-pause-'));
 async function persistedPauseChecks() {
   let tracker, persistedTimer;
   try {
+    const nextDayDir = path.join(root, 'next-day');
+    const nextDayStore = createStore(nextDayDir);
+    assert.strictEqual(nextDayStore.getSettings().resumeTrackingNextDay, false, 'daily resume is opt-in');
+    for (const value of [true, false]) {
+      assert.deepStrictEqual(validateIpcPayload('settings:update', { resumeTrackingNextDay: value }), { resumeTrackingNextDay: value });
+    }
+    for (const value of ['true', 1, null, {}]) {
+      assert.throws(() => validateIpcPayload('settings:update', { resumeTrackingNextDay: value }), /Invalid IPC payload/);
+    }
+    const pauseDate = todayKey();
+    assert.throws(() => validateIpcPayload('settings:update', { trackingPauseDate: pauseDate }), /Invalid IPC payload/);
+    nextDayStore.updateSettings({ resumeTrackingNextDay: true, trackingPaused: true, trackingPauseUntil: 0, trackingPauseDate: pauseDate });
+    const restarted = createStore(nextDayDir);
+    assert.strictEqual(restarted.getSettings().resumeTrackingNextDay, true, 'the preference survives a restart');
+    assert.strictEqual(restarted.getSettings().trackingPauseDate, pauseDate, 'a manual pause date survives a restart');
+    const backup = buildExport(restarted, { includeSettings: true });
+    assert.strictEqual(backup.settings.resumeTrackingNextDay, true);
+    assert(!Object.hasOwn(backup.settings, 'trackingPauseDate'), 'JSON exports exclude the device-local pause date');
+    const csv = buildCsvExport(restarted, { includeSettings: true });
+    assert(csv.includes('resumeTrackingNextDay') && !csv.includes('trackingPauseDate'), 'CSV exports retain only the preference');
+    const importedDay = '2026-01-01';
+    restarted.applyImportedSettings({ trackingPauseDate: importedDay });
+    assert.strictEqual(restarted.getSettings().trackingPauseDate, '', 'importing settings clears the local marker and cannot arm from the imported marker');
+    restarted.applyImportedSettings({ resumeTrackingNextDay: true, trackingPaused: true, trackingPauseUntil: 0, trackingPauseDate: importedDay });
+    assert.strictEqual(restarted.getSettings().trackingPauseDate, '', 'an imported pause cannot arm an automatic resume');
+    restarted.updateSettings({ resumeTrackingNextDay: 'true', trackingPauseDate: '2026-02-30' });
+    assert.strictEqual(restarted.getSettings().resumeTrackingNextDay, false, 'nonboolean settings cannot opt in');
+    assert.strictEqual(restarted.getSettings().trackingPauseDate, '', 'invalid persisted dates cannot arm an automatic resume');
+
     for (const minutes of [15, 30, 60]) {
       const dataDir = path.join(root, String(minutes));
       const store = createStore(dataDir);
@@ -162,7 +289,7 @@ async function persistedPauseChecks() {
     at += 1000;
     await tracker.poll();
     assert.strictEqual(store.snapshot().byCategory.productive, earned + 1, 'ordinary tracking restarts from the resume boundary');
-    console.log('timed-pause checks passed: supported durations, validation, durable restart/expiry, cancellation, and private tracking boundaries');
+    console.log('pause checks passed: timed durations, opt-in local-day resume, restart/expiry, import safety, retry, cancellation, and private tracking boundaries');
   } finally {
     if (persistedTimer) persistedTimer.dispose();
     if (tracker) tracker.stop();

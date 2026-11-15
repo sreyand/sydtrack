@@ -1575,6 +1575,8 @@ function applySettingsInputs(settings) {
   if ($('launch-startup-toggle') && document.activeElement !== $('launch-startup-toggle')) {
     $('launch-startup-toggle').checked = settings.launchAtStartup !== false;
   }
+  const resumeNextDay = $('resume-tracking-next-day-toggle');
+  if (resumeNextDay && !resumeNextDay.disabled) resumeNextDay.checked = settings.resumeTrackingNextDay === true;
   if ($('poll-mode') && document.activeElement !== $('poll-mode')) {
     const pollMs = Number(settings.pollMs);
     $('poll-mode').value = pollMs === 1000 || pollMs === 5000 ? String(pollMs) : '3000';
@@ -1630,6 +1632,8 @@ function syncNotifUi(settings) {
 
 function syncPauseUi(settings) {
   const paused = !!(settings && settings.trackingPaused);
+  const untimedChoice = document.querySelector('#pause-settings-menu [data-pause-minutes="0"]');
+  if (untimedChoice) untimedChoice.textContent = settings?.resumeTrackingNextDay === true ? 'Until tomorrow' : 'Until I resume';
   const pauseUntil = paused ? Number(settings.trackingPauseUntil) || 0 : 0;
   const untilLabel = pauseUntil > 0 ? new Date(pauseUntil).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
   const applyPauseBtn = (btn) => {
@@ -2550,6 +2554,26 @@ if ($('launch-startup-toggle')) {
     pushSettings({ launchAtStartup: $('launch-startup-toggle').checked === true });
   });
 }
+const resumeNextDayToggle = $('resume-tracking-next-day-toggle');
+resumeNextDayToggle?.addEventListener('change', async () => {
+  if (resumeNextDayToggle.disabled) return;
+  const restoreFocus = document.activeElement === resumeNextDayToggle;
+  const status = $('resume-tracking-next-day-status');
+  resumeNextDayToggle.disabled = true;
+  status.classList.add('hidden');
+  status.textContent = '';
+  try {
+    if (!api) throw new Error('Settings are unavailable');
+    await pushSettings({ resumeTrackingNextDay: resumeNextDayToggle.checked });
+  } catch (_) {
+    status.textContent = 'Could not save this setting. Try again.';
+    status.classList.remove('hidden');
+  } finally {
+    resumeNextDayToggle.checked = latestGoalSettings?.resumeTrackingNextDay === true;
+    resumeNextDayToggle.disabled = false;
+    if (restoreFocus && document.activeElement === document.body) resumeNextDayToggle.focus({ preventScroll: true });
+  }
+});
 async function saveSettingsSelect(input, value) {
   if (!api) throw new Error('Settings are unavailable');
   const field = { 'poll-mode': 'pollMs', 'profile-shortcut': 'profileShortcut', 'window-shortcut': 'windowShortcut' }[input.id];

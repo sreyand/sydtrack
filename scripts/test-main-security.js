@@ -14,6 +14,7 @@ let updateRequests = 0;
 const releasePagesOpened = [];
 let trackerCreates = 0, trackerStarts = 0, pauseBoundaries = 0;
 let expireTimedPause = null;
+let pauseClock;
 
 let failed = 0;
 function assert(cond, msg) {
@@ -175,7 +176,7 @@ Module._load = function load(request, parent, isMain) {
     const storeModule = originalLoad.call(this, request, parent, isMain);
     return { ...storeModule,
       createStore(...args) { mainStore = storeModule.createStore(...args); return mainStore; },
-      todayKey(at) { return appearanceToday && at === undefined ? appearanceToday : storeModule.todayKey(at); }
+      todayKey(at) { return appearanceToday && at === undefined ? appearanceToday : storeModule.todayKey(at ?? pauseClock); }
     };
   }
   if (request === './settings-service' && parent.filename === path.join(__dirname, '..', 'src', 'main.js')) {
@@ -202,7 +203,7 @@ Module._load = function load(request, parent, isMain) {
     const timedPause = originalLoad.call(this, request, parent, isMain);
     return { ...timedPause, createTimedPause: options => {
       expireTimedPause = options.onExpire;
-      return timedPause.createTimedPause(options);
+      return timedPause.createTimedPause({ ...options, now: () => pauseClock ?? Date.now() });
     } };
   }
   if (request === './updates' && parent.filename === path.join(__dirname, '..', 'src', 'main.js')) {
@@ -353,6 +354,23 @@ async function run() {
   expireTimedPause();
   assert(pauseBoundaries === boundaries + 4 && trackerCreates === 1 && trackerStarts === 1,
     'automatic expiry resumes the same tracker and marks both transition boundaries');
+
+  pauseClock = new Date(2026, 10, 15, 23, 50).getTime();
+  await handlers.get('settings:update')(goodEvent, { resumeTrackingNextDay: true, trackingPaused: true });
+  assert(mainStore.getSettings().trackingPauseDate === '2026-11-15', 'manual pause persists the current local date in main');
+  for (const resume of powerListeners.get('resume')) resume();
+  assert(mainStore.getSettings().trackingPaused, 'same-day wake preserves a manual pause');
+  pauseClock = new Date(2026, 10, 16, 7).getTime();
+  const beforeDailyResume = pauseBoundaries;
+  for (const resume of powerListeners.get('resume')) resume();
+  const daily = mainStore.getSettings();
+  assert(!daily.trackingPaused && daily.trackingPauseDate === '' && daily.resumeTrackingNextDay === true &&
+      pauseBoundaries === beforeDailyResume + 1 && trackerCreates === 1 && trackerStarts === 1,
+    'next-day wake clears the manual pause on the same tracker and marks the resume boundary');
+  assert(sentMessages.some(({ channel, payload }) => channel === 'tracker:update' && payload?.stats?.settings?.resumeTrackingNextDay === true &&
+    payload.stats.settings.trackingPaused === false), 'automatic resume notifies the renderer');
+  pauseClock = undefined;
+  await handlers.get('settings:update')(goodEvent, { resumeTrackingNextDay: false });
 
   await handlers.get('settings:update')(goodEvent, { windowShortcut: 'CommandOrControl+Alt+S' });
   assert(registeredShortcuts.has('CommandOrControl+Alt+S') &&

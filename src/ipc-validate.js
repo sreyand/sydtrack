@@ -286,6 +286,7 @@ const SETTINGS = {
     return value;
   },
   trackingPaused: bool,
+  resumeTrackingNextDay: bool,
   notificationsEnabled: bool,
   updateChecksEnabled: bool,
   focusBoostScheduleEnabled: bool,

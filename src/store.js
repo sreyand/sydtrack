@@ -16,6 +16,9 @@ const { normalizeRotationMode } = require('./theme-rotation');
 
 function sanitizeDesktopPreferences(value) {
   return { ...value,
+    resumeTrackingNextDay: value.resumeTrackingNextDay === true,
+    trackingPauseDate: value.trackingPaused === true && value.onboardingComplete !== false &&
+      value.trackingPauseUntil === 0 && validDateKey(value.trackingPauseDate) ? value.trackingPauseDate : '',
     theme: normalizeTheme(value.theme),
     uiMotionEnabled: value.uiMotionEnabled === true,
     windowShortcut: WINDOW_SHORTCUTS.includes(value.windowShortcut) ? value.windowShortcut : '',
@@ -257,6 +260,8 @@ function defaultSettings() {
     onboardingComplete: true,
     trackingPaused: false,
     trackingPauseUntil: 0,
+    resumeTrackingNextDay: false,
+    trackingPauseDate: '',
     reminderCooldownSec: 90,
     breakReminderEnabled: false,
     breakReminderMinutes: 60,
@@ -355,7 +360,7 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
   settings = sanitizeDesktopPreferences(settings);
   const dropRetiredSettings = !!(savedSettings && ['decompressBreaksPerDay', 'decompressBreakMinutes', 'gamificationEnabled', 'duckEnabled']
     .some((key) => Object.prototype.hasOwnProperty.call(savedSettings, key)));
-  if (settingsRecovered) settings.trackingPaused = true;
+  if (settingsRecovered) Object.assign(settings, { trackingPaused: true, trackingPauseUntil: 0, trackingPauseDate: '' });
   if (firstRun || settingsRecovered || needsPollMigration || needsGoalMigration || dropRetiredSettings) persistSettings();
 
   function archiveDay(day) {
@@ -853,6 +858,8 @@ function createStore(dataDir, { onRecovery = () => {}, onboardingForNewInstall =
 
   function applyImportedSettings(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...settings };
+    // Imported preferences can opt in, but an old pause may not arm this device.
+    raw = { ...raw, trackingPauseDate: '' };
     const previous = settings;
     if (needsGoalSettingsMigration(raw)) {
       if (fs.existsSync(settingsPath)) backupSettingsFile(settingsPath);

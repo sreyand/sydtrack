@@ -392,7 +392,10 @@ function fireReminder(payload) {
 function reportRecovery({ filePath, recoveryPath }) {
   const settingsReset = path.basename(filePath) === 'settings.json';
   const profilesReset = path.basename(filePath) === 'focus-profiles.json';
-  if (profilesReset && store) store.updateSettings({ trackingPaused: true });
+  if (profilesReset && store) {
+    store.updateSettings({ trackingPaused: true, trackingPauseUntil: 0, trackingPauseDate: '' });
+    syncTrackingPause();
+  }
   dialog.showMessageBox({
     type: 'warning',
     title: 'sydtrack data recovery',
@@ -432,11 +435,16 @@ function startServices() {
   timedPause = createTimedPause({
     getSettings: () => store.getSettings(),
     onExpire: () => {
-      applySettings({ trackingPaused: false, trackingPauseUntil: 0 });
-      sendCurrentSettingsToRenderer();
+      try {
+        applySettings({ trackingPaused: false, trackingPauseUntil: 0 });
+        sendCurrentSettingsToRenderer();
+      } catch (err) {
+        console.warn('[tracking] could not save automatic resume:', err.message);
+        return false;
+      }
     }
   });
-  timedPause.sync();
+  syncTrackingPause();
 
   // Force real tracking on Windows/macOS unless user opted into demo
   if ((process.platform === 'win32' || process.platform === 'darwin') && process.env.SYDTRACK_DEMO == null) {
@@ -578,6 +586,8 @@ app.whenReady().then(() => {
   if (!windowShortcut.set(savedWindowShortcut || '').ok) console.warn('[shortcut] show/hide shortcut is unavailable');
   powerMonitor.on('resume', syncDailyAppearance);
   powerMonitor.on('unlock-screen', syncDailyAppearance);
+  powerMonitor.on('resume', syncTrackingPause);
+  powerMonitor.on('unlock-screen', syncTrackingPause);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else if (mainWindow && !mainWindow.isDestroyed()) {
@@ -607,6 +617,8 @@ app.on('before-quit', () => {
   themeRotationTimer = null;
   powerMonitor.removeListener('resume', syncDailyAppearance);
   powerMonitor.removeListener('unlock-screen', syncDailyAppearance);
+  powerMonitor.removeListener('resume', syncTrackingPause);
+  powerMonitor.removeListener('unlock-screen', syncTrackingPause);
   if (timedPause) timedPause.dispose();
   if (updateChecker) updateChecker.dispose();
   if (quickCorrections) quickCorrections.clear();
@@ -872,13 +884,25 @@ function syncDailyAppearance() {
   }
 }
 
-function applySettings(partial, { automaticAppearance = false } = {}) {
+function syncTrackingPause() {
+  if (timedPause && !isQuitting) timedPause.sync();
+}
+
+function applySettings(partial, { automaticAppearance = false, imported = false } = {}) {
   const previous = store.getSettings();
   const wasPaused = !!previous.trackingPaused;
   let changes = partial && Object.prototype.hasOwnProperty.call(partial, 'trackingPaused') &&
     !Object.prototype.hasOwnProperty.call(partial, 'trackingPauseUntil')
     ? { ...partial, trackingPauseUntil: 0 }
     : { ...partial };
+  if (imported) {
+    changes.trackingPauseDate = '';
+  } else if (Object.hasOwn(changes, 'trackingPaused')) {
+    changes.trackingPauseDate = changes.trackingPaused === true && changes.trackingPauseUntil === 0 ? todayKey() : '';
+  } else if (changes.resumeTrackingNextDay === true && previous.resumeTrackingNextDay !== true && previous.trackingPauseDate) {
+    // Turning this back on schedules a future midnight, not an immediate resume.
+    changes.trackingPauseDate = todayKey();
+  }
   if (!automaticAppearance) {
     if (Object.hasOwn(changes, 'theme')) changes.themeRotationEnabled = false;
     const merged = { ...previous, ...changes };
@@ -921,7 +945,7 @@ function applySettings(partial, { automaticAppearance = false } = {}) {
   if (partial && partial.onboardingComplete === true && !next.trackingPaused) {
     ensureTrackerStarted();
   }
-  if (timedPause) timedPause.sync();
+  syncTrackingPause();
   if (updateChecker) updateChecker.sync();
   if (!automaticAppearance) syncDailyAppearance();
   return store.getSettings();
@@ -1005,7 +1029,7 @@ ipcMain.handle('data:import', async (event, payload) => {
         sessionManager,
         focusProfiles,
         onSettings: (settings) => {
-          const next = applySettings(settings, { automaticAppearance: true });
+          const next = applySettings(settings, { automaticAppearance: true, imported: true });
           syncDailyAppearance();
           return next;
         },
@@ -1059,6 +1083,7 @@ ipcMain.handle('data:import', async (event, payload) => {
       syncDailyAppearance();
       applyNativeAppearance(store.getSettings().theme);
       if (appTray && typeof appTray.refresh === 'function') appTray.refresh();
+      syncTrackingPause();
     },
     onRules: (rules) => {
       if (!obj.profiles) focusProfiles.save('default', { productive: rules.productive, unproductive: rules.unproductive, other: rules.other || [] });
@@ -1191,6 +1216,7 @@ ipcMain.handle('data:deleteAll', async (event, payload) => {
   loadBrowserKeywordFile();
   quickCorrections.clear();
   updateChecker.reset();
+  syncTrackingPause();
   if (tracker) tracker.invalidateClassification();
   return {
     ...deleted,

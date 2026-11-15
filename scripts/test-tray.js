@@ -152,6 +152,12 @@ async function main() {
   assert.equal(h.timers.size, 0);
   h.tray.menu.find(item => item.label === 'Resume tracking').click();
   assert.equal(h.tray.image.name, 'standard', 'resume does not reuse the pre-pause sample');
+  h.setPrefs({ resumeTrackingNextDay: true }); h.refresh();
+  h.tray.menu.find(item => item.label === 'Pause until tomorrow').click();
+  assert.equal(h.store.getSettings().trackingPaused, true);
+  assert.equal(h.store.getSettings().trackingPauseUntil, 0, 'next-day tray pause is not a timed pause');
+  h.tray.menu.find(item => item.label === 'Resume tracking').click();
+  h.setPrefs({ resumeTrackingNextDay: false }); h.refresh();
   const realNow = Date.now;
   let pauseStartedAt = realNow();
   try {

@@ -1,5 +1,8 @@
 'use strict';
 
+const { validDateKey } = require('./json-file');
+const { todayKey } = require('./store');
+
 const RECHECK_MS = 60 * 1000;
 
 function pauseForMinutes(minutes, now = Date.now()) {
@@ -18,12 +21,21 @@ function createTimedPause({ getSettings, onExpire, now = Date.now, setTimer = se
     if (timer !== null) clearTimer(timer);
     timer = null;
     const settings = getSettings();
-    const until = Number(settings && settings.trackingPauseUntil) || 0;
-    if (!settings || !settings.trackingPaused || until <= 0) return;
-    const remaining = until - now();
+    if (!settings || settings.trackingPaused !== true || settings.onboardingComplete === false) return;
+    const until = settings.trackingPauseUntil ?? 0;
+    const at = now();
+    let remaining;
+    if (until > 0) {
+      remaining = until - at;
+    } else if (until === 0 && settings.resumeTrackingNextDay === true && validDateKey(settings.trackingPauseDate)) {
+      // Compare local dates, not elapsed hours, so DST and sleep don't extend the pause.
+      const nextMidnight = new Date(at);
+      nextMidnight.setHours(24, 0, 0, 0);
+      remaining = todayKey(at) > settings.trackingPauseDate ? 0 : nextMidnight.getTime() - at;
+    } else return;
     if (remaining <= 0) {
-      onExpire();
-      return;
+      if (onExpire() !== false) return;
+      remaining = RECHECK_MS; // A failed settings write must not unpause or spin.
     }
     timer = setTimer(sync, Math.min(remaining, RECHECK_MS));
     if (timer && typeof timer.unref === 'function') timer.unref();

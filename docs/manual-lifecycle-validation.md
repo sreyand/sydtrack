@@ -25,9 +25,15 @@ Allow about 10–15 minutes, plus an optional natural hour/midnight check. These
 
 ## 3. Manual pause survives wake (about one minute)
 
-- Pause tracking in Home and note the chosen app's total.
+- With **Resume tracking the next day** off, pause tracking in Home and note the chosen app's total.
 - Sleep/wake the PC, unlock, and use that app for 20 seconds.
 - Pass: sydtrack still says Paused and the app total is unchanged. Resume manually; activity then grows again.
+
+### 3a. Opt-in next-day resume
+
+- Enable **Settings → Tracking → Resume tracking the next day** and choose **Until tomorrow**. Confirm a same-day restart stays paused.
+- Let local midnight pass while sydtrack is running; repeat with the PC asleep or sydtrack closed. Pass: tracking becomes enabled at midnight or on wake/next launch. Locked, sleeping, and previously paused time is not counted.
+- Repeat with a timed pause that crosses midnight. Pass: it lasts the selected duration. Turn the option off to restore indefinite pauses.
 
 ## 4. Reminder streak restarts after an interruption
 

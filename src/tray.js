@@ -172,7 +172,7 @@ function createAppTray(deps) {
       },
       { type: 'separator' },
       {
-        label: s.trackingPaused ? 'Resume tracking' : 'Pause tracking',
+        label: s.trackingPaused ? 'Resume tracking' : s.resumeTrackingNextDay === true && ready ? 'Pause until tomorrow' : 'Pause tracking',
         enabled: ready,
         click: () => togglePause()
       },

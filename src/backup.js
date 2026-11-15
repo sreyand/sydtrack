@@ -35,7 +35,8 @@ function buildExport(store, opts) {
   };
 
   if (includeSettings) {
-    payload.settings = store.getSettings();
+    const { trackingPauseDate, ...preferences } = store.getSettings();
+    payload.settings = preferences;
   }
   if (includeRules && options.rules) {
     payload.rules = {
