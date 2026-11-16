@@ -44,6 +44,43 @@
       for (const target of [...animations.keys()]) if (target === element || element.contains(target)) cancel(target);
       for (const chart of waitingCharts) if (element.contains(chart)) waitingCharts.delete(chart);
     }
+    function toggleSidebar(change) {
+      const rail = enabled && root.querySelector('.rail');
+      const toggle = rail && rail.querySelector('.nav-toggle');
+      if (!toggle || !visible(toggle) || typeof rail.animate !== 'function') { change(); return; }
+
+      const duration = 170;
+      const anchors = [...rail.querySelectorAll('.logo-mark, .nav-toggle, .nav-btn, .notif-toggle, .pause-power')];
+      const labels = [...rail.querySelectorAll('.logo-copy, .nav-label, .notif-label')];
+      const anchorRect = element => {
+        const icon = element.querySelector('.nav-ico') || [...element.querySelectorAll('.notif-ico')].find(visible);
+        return (icon || element).getBoundingClientRect();
+      };
+      const startWidth = rail.getBoundingClientRect().width;
+      const start = anchors.map(anchorRect);
+      for (const element of [rail, ...anchors, ...labels]) cancel(element);
+      change(); // Apply the true layout and accessibility state before decorating it.
+      const endWidth = rail.getBoundingClientRect().width;
+      const end = anchors.map(anchorRect);
+      if (Math.abs(startWidth - endWidth) > .25) {
+        animate(rail, [{ width: startWidth + 'px' }, { width: endWidth + 'px' }], duration, () => {
+          queueMicrotask(() => {
+            if (!animations.has(rail)) root.dispatchEvent(new Event('sydtrack:sidebar-settled'));
+          });
+        });
+      }
+      anchors.forEach((element, index) => {
+        const from = start[index], to = end[index];
+        const dx = from.left + from.width / 2 - to.left - to.width / 2;
+        const dy = from.top + from.height / 2 - to.top - to.height / 2;
+        if (Math.abs(dx) > .25 || Math.abs(dy) > .25) {
+          animate(element, [{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], duration);
+        }
+      });
+      if (!document.body.classList.contains('nav-collapsed')) {
+        for (const label of labels) animate(label, [{ opacity: 0 }, { opacity: 0, offset: .2 }, { opacity: 1 }], duration);
+      }
+    }
     function reveal(element) {
       const popup = element.matches(popups);
       // A later-loading child should not fade again inside a moving page.
@@ -225,6 +262,7 @@
     document.fonts?.addEventListener('loadingdone', resize);
     const api = {
       setEnabled(value) { if (disposed) return; requested = value === true; sync(); },
+      toggleSidebar,
       get enabled() { return enabled; },
       dispose() {
         if (disposed) return;

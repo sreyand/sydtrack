@@ -112,7 +112,7 @@ body {
 
 .shell {
   display: grid;
-  /* auto column follows .rail width so collapse can animate (grid tracks often snap) */
+  /* Auto column follows the rail, leaving the main view unscaled. */
   grid-template-columns: auto 1fr;
   min-height: 100vh;
   height: 100vh;
@@ -1548,7 +1548,7 @@ body.nav-collapsed .rail-foot .status-pill {
   border: 0;
   box-shadow: none;
 }
-body.nav-collapsed .nav-toggle { transform: scaleX(-1); }
+body.nav-collapsed .nav-caret { transform: rotate(180deg); }
 }
 
 /* —— FocusBoost compact (Home top-right) —— */
@@ -3630,9 +3630,10 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
 .appearance-cycle[data-rotation-mode="light"] [data-rotation-icon="light"],
 .appearance-cycle[data-rotation-mode="dark"] [data-rotation-icon="dark"],
 .appearance-cycle[data-rotation-mode="any"] [data-rotation-icon="any"] { display: block; }
-#view-settings #ui-motion-row { margin-top: 20px; padding: 0; min-height: 44px; border: 0; cursor: pointer; }
-#ui-motion-row .switch-title { margin: 0; }
-#ui-motion-row input { flex: 0 0 auto; margin: 0; }
+#view-settings :is(#ui-motion-row, #ui-glisten-row) { padding: 0; min-height: 44px; border: 0; cursor: pointer; }
+#view-settings #ui-motion-row { margin-top: 20px; }
+:is(#ui-motion-row, #ui-glisten-row) .switch-title { margin: 0; }
+:is(#ui-motion-row, #ui-glisten-row) input { flex: 0 0 auto; margin: 0; }
 @media (pointer: coarse) { .appearance-icon-button { width: 44px; height: 44px; } }
 #settings-panel-tracking > .font-credit { margin: 0; padding: 0 2px; }
 .settings-inline-field > .select-menu-control { width: 168px; flex: 0 0 168px; }
@@ -3693,7 +3694,15 @@ input[type="text"], input[type="number"], input[type="time"], select, textarea, 
 }
 
 @media (min-width: 901px) {
-  body.nav-collapsed .rail { width: 72px; padding: var(--space-4) var(--space-2); }
+  .rail { --rail-content-width: calc(240px - 2 * var(--space-4) - 1px); }
+  body.nav-collapsed .rail {
+    --rail-content-width: calc(72px - 2 * var(--space-2) - 1px);
+    width: 72px;
+    padding: var(--space-4) var(--space-2);
+  }
+  /* Keep the icon column anchored while the outer rail clips/reveals its contents. */
+  .rail > :is(.logo, .nav, .rail-foot) { width: var(--rail-content-width); }
+  body.nav-collapsed .nav-toggle { align-self: flex-start; margin-inline-start: calc((var(--rail-content-width) - 32px) / 2); }
 }
 
 @media (max-width: 900px) {

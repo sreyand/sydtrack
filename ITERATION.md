@@ -537,3 +537,9 @@ Run `npm test`, `npm run test:ui`, and `npm run test:profiles-ui`. `npm run benc
 - Built unsigned Windows x64 setup and portable packages containing the tab-flicker fixes. Generated and verified all three artifact checksums; frozen v2.6.0 artifacts remain unchanged.
 - Core suite and 140 transition checks passed at 2.6.1. The full eight-harness UI suite passed for the release source before the version-only bump. Both real extracted apps passed fresh/restart checks, including gated 2.6.1 cached-chart/geometry assertions with motion off/on.
 - Ready for the intended `2.6.1` commit and `v2.6.1` tag after manual acceptance. No commit, tag, push, installation, publication, or personal-data change was performed.
+
+## v2.7.0 release preparation — 2026-11-16
+
+- Packaged opt-in next-day tracking resume, UI glisten, reversible sidebar motion, and Analytics guide/time-format fixes. Timed pauses and classification are unchanged.
+- Aligned the package version, lockfile and README; added short release notes and verified checksums for unsigned Windows x64 setup and portable. The v2.6.1 files are unchanged.
+- Core, full UI and extracted-package fresh/restart checks passed. See `docs/release-validation-2.7.0.md` for the artifacts and remaining manual checks. No installation, commit, tag, or publication was performed.

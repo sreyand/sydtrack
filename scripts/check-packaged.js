@@ -27,6 +27,10 @@ const has261Transitions = releaseVersion => {
   const [major, minor, patch] = String(releaseVersion).split('.').map(Number);
   return major > 2 || (major === 2 && (minor > 6 || (minor === 6 && patch >= 1)));
 };
+const has27Features = releaseVersion => {
+  const [major, minor] = String(releaseVersion).split('.').map(Number);
+  return major > 2 || (major === 2 && minor >= 7);
+};
 const sha256 = content => crypto.createHash('sha256').update(content).digest('hex');
 
 function filesIn(dir) {
@@ -54,6 +58,7 @@ function verifyPayload(dir) {
   if (has26Features(packaged.version)) releaseFiles.push('renderer/select-menu-ui.js', 'renderer/select-menu.css',
     'renderer/ui-motion.js', 'renderer/ui-motion.css', 'renderer/dom-patch.js',
     'src/profile-shortcut.js', 'src/window-shortcut.js', 'src/theme-rotation.js');
+  if (has27Features(packaged.version)) releaseFiles.push('renderer/ui-glisten.css');
   for (const file of releaseFiles) assert(entries.includes('/' + file), `Release feature included: ${file}`);
   const html = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
   assert(html.includes('<script src="../src/classification-explanation.js"></script>'), 'Shared explanation formatter loaded');
@@ -69,6 +74,9 @@ function verifyPayload(dir) {
     for (const file of ['select-menu.css', 'ui-motion.css']) {
       assert(html.includes(`<link rel="stylesheet" href="${file}" />`), `2.6 renderer stylesheet loaded: ${file}`);
     }
+  }
+  if (has27Features(packaged.version)) {
+    assert(html.includes('<link rel="stylesheet" href="ui-glisten.css" />'), '2.7 glisten stylesheet loaded');
   }
   const sourceFiles = ['src', 'renderer'].flatMap(folder => filesIn(path.join(workspace, folder)));
   for (const file of sourceFiles) {
@@ -311,6 +319,46 @@ async function launch(executable, userData, label, existing = false, expectedTot
     await emulateReducedMotion('reduce'); await emulateReducedMotion('no-preference');
     await emulateReducedMotion(null);
     console.log(`${label}: packaged 2.6 motion/rotation/shortcut/custom-select restart passed`);
+  }
+  async function verify27Glisten() {
+    await renderer(`document.querySelector('.nav-btn[data-tab="settings"]').click(); document.querySelector('[data-settings-tab="tracking"]').click()`);
+    await emulateReducedMotion('reduce');
+    try {
+      assert.equal(await renderer(`!document.getElementById('ui-glisten-toggle').checked &&
+        document.documentElement.dataset.uiGlisten === 'off' &&
+        document.documentElement.dataset.uiMotion === 'off' &&
+        [...document.styleSheets].some(sheet => sheet.href === 'sydtrack://app/renderer/ui-glisten.css' && sheet.cssRules.length > 0)`), true,
+      'Glisten defaults off and its CSS parses through the production protocol');
+      await renderer(`document.getElementById('ui-glisten-toggle').click()`);
+      await waitFor(`!appearanceSaving && latestGoalSettings.uiGlistenEnabled === true && document.documentElement.dataset.uiGlisten === 'on'`, 'Glisten opt-in did not settle');
+      const settings = (await renderer('window.sydtrack.getState()')).stats.settings;
+      assert.equal(settings.uiGlistenEnabled, true, 'Glisten opt-in saves through production IPC');
+      assert.equal(settings.uiMotionEnabled, true, 'Glisten does not change the saved motion preference');
+      assert.equal(await renderer(`document.getElementById('ui-glisten-toggle').checked && document.documentElement.dataset.uiMotion === 'off' &&
+        (matchMedia('(forced-colors: active)').matches || getComputedStyle(document.getElementById('settings-appearance-card')).backgroundImage.includes('linear-gradient'))`), true,
+      'Glisten applies its decorative finish while motion is suppressed');
+    } finally { await emulateReducedMotion(null); }
+  }
+  async function verify27Restart(settings) {
+    assert.equal(settings.uiGlistenEnabled, true, 'Glisten opt-in survives restart');
+    assert.equal(settings.resumeTrackingNextDay, false, 'Next-day resume defaults off');
+    assert.equal(settings.trackingPauseDate, '', 'Returning fixture has an undated legacy pause');
+    await renderer(`document.querySelector('.nav-btn[data-tab="settings"]').click(); document.querySelector('[data-settings-tab="tracking"]').click()`);
+    assert.equal(await renderer(`document.getElementById('ui-glisten-toggle').checked && document.documentElement.dataset.uiGlisten === 'on' &&
+      !document.getElementById('resume-tracking-next-day-toggle').checked &&
+      document.querySelector('#pause-settings-menu [data-pause-minutes="0"]').textContent === 'Until I resume'`), true, 'Restart restores Glisten and the default pause option');
+    // No valid pause date means enabling this option cannot schedule the legacy
+    // fixture to resume. Date boundaries are exercised by the isolated unit test.
+    await renderer(`document.getElementById('resume-tracking-next-day-toggle').click()`);
+    await waitFor(`latestGoalSettings.resumeTrackingNextDay === true && !document.getElementById('resume-tracking-next-day-toggle').disabled`, 'Next-day resume opt-in did not settle');
+    const saved = (await renderer('window.sydtrack.getState()')).stats.settings;
+    assert.equal(saved.resumeTrackingNextDay, true, 'Next-day resume saves through production IPC');
+    assert.equal(saved.trackingPaused, true, 'Enabling next-day resume does not unpause the legacy fixture');
+    assert.equal(saved.trackingPauseUntil, 0);
+    assert.equal(saved.trackingPauseDate, '');
+    assert.equal(await renderer(`document.getElementById('resume-tracking-next-day-toggle').checked &&
+      document.querySelector('#pause-settings-menu [data-pause-minutes="0"]').textContent === 'Until tomorrow'`), true, 'Untimed pause option reflects next-day resume');
+    console.log(`${label}: packaged 2.7 glisten opt-in/restart and next-day resume preference passed with tracking paused`);
   }
   async function verify261Transitions() {
     await emulateReducedMotion('no-preference');
@@ -673,6 +721,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
     const features25 = has25Features(packagedVersion);
     const features26 = has26Features(packagedVersion);
     const transitions261 = has261Transitions(packagedVersion);
+    const features27 = has27Features(packagedVersion);
     assert.equal(state.stats.settings.trackingPaused, true, 'Actual tracking stays paused before feature checks');
     const rendererModules = await renderer(`(() => ({
       page: location.href,
@@ -737,6 +786,10 @@ async function launch(executable, userData, label, existing = false, expectedTot
       assert(image.size.width > 0 && image.size.height > 0, `Packaged tray artwork has dimensions: ${image.name}`);
     }
     if (!existing) {
+      if (features27) {
+        assert.equal(state.stats.settings.uiGlistenEnabled, false, 'Fresh glisten defaults off in production settings');
+        assert.equal(state.stats.settings.resumeTrackingNextDay, false, 'Fresh next-day resume defaults off in production settings');
+      }
       await renderer(`window.sydtrack.updateSettings({onboardingComplete: true, trackingPaused: true, launchAtStartup: false, theme: 'linen'})`);
       assert.equal((await renderer(`window.sydtrack.getState()`)).stats.settings.trackingPaused, true, 'Feature checks remain paused');
       const profileSnapshot = await renderer(`window.sydtrack.getProfiles()`);
@@ -761,6 +814,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
       assert(!(await renderer(`window.sydtrack.getRules()`)).productive.includes('release smoke example'));
       if (features25) await verify25Settings();
       if (features26) await verify26Settings();
+      if (features27) await verify27Glisten();
       const network = await renderer(`window.sydtrack.checkUpdates()`);
       assert.equal(network.currentVersion, version);
       assert(['current', 'available', 'unavailable'].includes(network.phase));
@@ -801,6 +855,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
       const undone = await renderer(`window.sydtrack.undoCorrection(${JSON.stringify(corrected.undoToken)})`);
       assert.deepEqual(undone.stats.byCategory, expectedTotals, 'Analytics Undo restores fixture totals');
       if (features26) await verify26Restart(state);
+      if (features27) await verify27Restart(state.stats.settings);
       if (features25) await verify25ScoreNavigation(historicalDate);
       if (transitions261) await verify261Transitions();
     }
@@ -847,6 +902,7 @@ async function run() {
     const executable = path.join(destination, 'sydtrack.exe');
     await launch(executable, userData, kind);
     const fixture = require('../src/store').createStore(userData);
+    if (has27Features(payload.version)) fixture.updateSettings({ trackingPauseDate: '' });
     fixture.addSeconds('Chrome', 'productive', 90, { category: 'productive', reason: 'release smoke page' });
     fixture.addSeconds('Chrome', 'other', 45, { category: 'other', reason: 'No matching keyword' });
     fixture.addSeconds('Code', 'unproductive', 30, { category: 'unproductive', reason: 'release smoke native' });

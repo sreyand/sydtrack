@@ -5,12 +5,12 @@
     <p>
     <a href="https://github.com/sreyand/sydtrack/releases"><strong>Download for Windows</strong></a>
     ·
-    <a href="docs/release-notes-2.6.1.md">What’s new in v2.6.1</a>
+    <a href="docs/release-notes-2.7.0.md">What’s new in v2.7.0</a>
   </p>
   <p>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-5B7CFA?style=flat-square">
     <img alt="Local first" src="https://img.shields.io/badge/data-local--first-39C59D?style=flat-square">
-    <img alt="Version 2.6.1" src="https://img.shields.io/badge/version-2.6.1-8B7CF6?style=flat-square">
+    <img alt="Version 2.7.0" src="https://img.shields.io/badge/version-2.7.0-8B7CF6?style=flat-square">
     <img alt="GPL v3" src="https://img.shields.io/badge/license-GPL--3.0-EF6A6A?style=flat-square">
   </p>
 </div>
@@ -28,7 +28,7 @@ sydtrack watches the app in front of you, classifies the time, and turns the res
 | **FocusBoost** | Use a shorter reminder threshold when you want sydtrack to interrupt a distraction sooner. Optional schedules can arm it automatically, with themed, exact-minute time controls. |
 | **Daily goals** | Set a productive-time share target and, if useful, a limit for total active screen time. |
 | **Optional break nudges** | A configurable notification after a long stretch of active tracking, off by default. |
-| **Flexible pauses** | Pause for 15 minutes, 30 minutes, or an hour, with automatic resume—or pause until you choose to resume. |
+| **Flexible pauses** | Pause for 15 minutes, 30 minutes, an hour, or until you resume. Optionally end untimed pauses the next day. |
 | **Nine appearances** | Choose a built-in palette, including Forest, or enable daily rotation through dark, light, or all themes. Optional UI motion respects your system's reduced-motion preference. |
 | **Simple first run** | Choose a starting profile and decide whether sydtrack opens at sign-in. Tracking stays paused until you press Start. |
 
@@ -71,12 +71,12 @@ Changing profiles affects future tracking; it does not rewrite history. Analytic
 
 sydtrack currently targets **Windows 10/11 x64**.
 
-- `sydtrack-2.6.1-setup.exe` — standard installer
-- `sydtrack-2.6.1-portable.exe` — run without installation
+- `sydtrack-2.7.0-setup.exe` — standard installer
+- `sydtrack-2.7.0-portable.exe` — run without installation
 
-Version 2.6.1 is packaged and checked locally; manual acceptance and publication are pending. Downloads become available after publication. The [release validation report](docs/release-validation-2.6.1.md) records checks and remaining manual acceptance.
+Version 2.7.0 is packaged locally and downloads become available after publication. See the [release validation report](docs/release-validation-2.7.0.md) for checks and remaining manual acceptance.
 
-**In v2.6.1:** flicker-free analytics transitions and steadier layout, with UI motion on or off.
+**In v2.7.0:** optional next-day tracking resume and UI glisten, smoother sidebar motion, and clearer Analytics.
 
 Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/releases). Quit an older copy from the tray before upgrading. Existing activity and settings are preserved. Builds are currently unsigned, so Windows may show a SmartScreen warning.
 
@@ -91,7 +91,16 @@ Find published builds on [GitHub Releases](https://github.com/sreyand/sydtrack/r
 
 On an Intel Core Ultra 9 185H, tray tracking used about **281 MB of working memory** and an estimated **~1% total CPU** with the 3-second tracking cadence. The short Windows foreground probe accounts for most of that CPU time; results will vary with the machine and other activity.
 
-## What’s new in v2.6.1
+## What’s new in v2.7.0
+
+- **Resume tracking the next day** ends new untimed pauses at local midnight, or when sydtrack next wakes or opens. Off by default; timed pauses are unchanged.
+- **Enable UI glisten** adds a soft sheen to cards and selected controls. It is off by default; the one-pass hover sweep also requires UI motion and no reduced-motion preference.
+- With UI motion enabled, the sidebar slides and its caret turns. Rapid changes reverse smoothly.
+- Analytics hour guides are clearer in light themes. Peak Productivity and Roundup’s Peak Hour follow the system’s time format.
+
+Read the [v2.7.0 release notes](docs/release-notes-2.7.0.md) for upgrade details.
+
+## What changed in v2.6.1
 
 - Analytics keeps existing charts, timelines, and app lists visible during tab changes and loading.
 - Tab highlights transition continuously; headers, loading indicators, and scrollbars keep the layout stable.

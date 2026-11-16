@@ -831,11 +831,14 @@ if (timelineDateInput) {
 const navToggle = $('nav-toggle');
 if (navToggle) {
   navToggle.addEventListener('click', () => {
-    document.body.classList.toggle('nav-collapsed');
-    const collapsed = document.body.classList.contains('nav-collapsed');
-    navToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    navToggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-    navToggle.setAttribute('aria-label', navToggle.title);
+    const change = () => {
+      const collapsed = document.body.classList.toggle('nav-collapsed');
+      navToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      navToggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+      navToggle.setAttribute('aria-label', navToggle.title);
+    };
+    if (uiMotion) uiMotion.toggleSidebar(change);
+    else change();
   });
 }
 
@@ -1677,6 +1680,13 @@ function syncAppearanceUi(settings = latestGoalSettings || {}) {
     $('ui-motion-toggle').disabled = appearanceSaving;
   }
   uiMotion?.setEnabled(settings.uiMotionEnabled === true);
+  const glisten = $('ui-glisten-toggle');
+  const glistenMode = settings.uiGlistenEnabled === true ? 'on' : 'off';
+  if (glisten) {
+    glisten.checked = glistenMode === 'on';
+    glisten.disabled = appearanceSaving;
+  }
+  if (document.documentElement.dataset.uiGlisten !== glistenMode) document.documentElement.dataset.uiGlisten = glistenMode;
   const rotate = $('theme-rotation-toggle'), cycle = $('theme-rotation-cycle');
   if (rotate) {
     rotate.setAttribute('aria-pressed', String(enabled));
@@ -1703,6 +1713,7 @@ async function saveAppearance(partial) {
   // Busy state only: do not confirm the select's optimistic value before saving.
   $('theme-rotation-toggle').disabled = true;
   $('ui-motion-toggle').disabled = true;
+  if ($('ui-glisten-toggle')) $('ui-glisten-toggle').disabled = true;
   document.querySelectorAll('[data-theme-id]').forEach(btn => { btn.disabled = true; });
   $('theme-rotation-cycle').disabled = true;
   settingsSelectMenu?.refresh();
@@ -3010,6 +3021,12 @@ $('theme-rotation-cycle')?.addEventListener('click', async () => {
 });
 $('ui-motion-toggle')?.addEventListener('change', async (event) => {
   try { await saveAppearance({ uiMotionEnabled: event.currentTarget.checked }); } catch (_) {}
+});
+$('ui-glisten-toggle')?.addEventListener('change', async (event) => {
+  const toggle = event.currentTarget;
+  const restoreFocus = document.activeElement === toggle;
+  try { await saveAppearance({ uiGlistenEnabled: toggle.checked }); } catch (_) {}
+  if (restoreFocus && document.activeElement === document.body) toggle.focus({ preventScroll: true });
 });
 
 if ($('ignore-reset')) {

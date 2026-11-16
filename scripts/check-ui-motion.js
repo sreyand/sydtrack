@@ -31,7 +31,7 @@ app.whenReady().then(async () => {
     onboardingComplete: true, trackingPaused: false, trackingPauseUntil: 0, launchAtStartup: false,
     updateChecksEnabled: false, notificationsEnabled: false, theme: 'midnight', pollMs: 3000,
     profileShortcut: '', windowShortcut: '', themeRotationEnabled: false, themeRotationMode: 'dark',
-    themeRotationAnchorDate: '', themeRotationAnchorTheme: '', uiMotionEnabled: false,
+    themeRotationAnchorDate: '', themeRotationAnchorTheme: '', uiMotionEnabled: false, uiGlistenEnabled: false,
     thresholdSec: 600, focusBoost: false, focusBoostScheduleEnabled: true,
     focusBoostScheduleStart: '09:07', focusBoostScheduleEnd: '23:59', focusShareGoalPct: 80,
     focusShareIncludeOther: false
@@ -178,12 +178,173 @@ app.whenReady().then(async () => {
       document.getElementById('ui-motion-toggle').checked === ${enabled} && !document.getElementById('ui-motion-toggle').disabled`, 'Motion save did not settle');
     assert.equal(settings.uiMotionEnabled, enabled);
   }
+  async function expectInstantSidebar(reason, compact = false) {
+    const state = await render(`(() => {
+      const rail=document.querySelector('.rail'),toggle=document.getElementById('nav-toggle');
+      const width=()=>rail.getBoundingClientRect().width, before=width();
+      window.__motionRecords.length=0;
+      toggle.click();
+      const after=width(), collapsed=document.body.classList.contains('nav-collapsed'), expanded=toggle.getAttribute('aria-expanded');
+      toggle.click();
+      return {before,after,finalWidth:width(),collapsed,expanded,
+        hidden:getComputedStyle(toggle).display==='none',
+        animated:window.__motionRecords.some(record=>record.target===rail || rail.contains(record.target))};
+    })()`);
+    assert.equal(state.animated, false, `${reason}: sidebar never starts an animation: ${JSON.stringify(state)}`);
+    if (compact) {
+      assert(state.hidden && Math.abs(state.before-state.after)<1 && Math.abs(state.before-state.finalWidth)<1,
+        `${reason}: narrow-window top rail does not shift: ${JSON.stringify(state)}`);
+    } else {
+      assert(state.collapsed && state.expanded === 'false' && Math.abs(state.before-240)<1 && Math.abs(state.after-72)<1 && Math.abs(state.finalWidth-240)<1,
+        `${reason}: sidebar commits both widths and ARIA immediately: ${JSON.stringify(state)}`);
+    }
+  }
+  async function sidebarMotionChecks() {
+    const transition = await render(`(() => {
+      const rail=document.querySelector('.rail'), button=document.getElementById('nav-toggle');
+      const caret=button.querySelector('.nav-caret'), main=document.querySelector('.main');
+      const width=()=>rail.getBoundingClientRect().width, contentLeft=()=>main.getBoundingClientRect().left;
+      const active=()=>rail.getAnimations().find(animation=>animation.id==='sydtrack-ui-motion');
+      const span=animation=>animation.effect.getKeyframes().map(frame=>parseFloat(frame.width));
+      const icons=[...rail.querySelectorAll('.logo-mark, .nav-ico, .pause-power')];
+      const view=()=>({width:width(),left:contentLeft(),icons:icons.map(icon=>{
+        const r=icon.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2];
+      })});
+      const pauseAt=time=>{for(const animation of rail.getAnimations({subtree:true})) {
+        if(animation.id==='sydtrack-ui-motion') {animation.pause();animation.currentTime=time;}
+      }};
+      button.focus({preventScroll:true});
+      const start=view(), caretBefore=getComputedStyle(caret).transform;
+      button.click();
+      const collapsed=document.body.classList.contains('nav-collapsed') && button.getAttribute('aria-expanded')==='false' &&
+        button.getAttribute('aria-label')==='Expand sidebar' && document.activeElement===button;
+      const collapse=active();
+      if (!collapse) return {missing:'collapse',collapsed};
+      pauseAt(0);
+      const first=view(), collapseFrames=span(collapse), duration=Number(collapse.effect.getTiming().duration);
+      pauseAt(duration*.32);
+      const middle=view();
+      button.click();
+      const expanded=!document.body.classList.contains('nav-collapsed') && button.getAttribute('aria-expanded')==='true' &&
+        button.getAttribute('aria-label')==='Collapse sidebar' && document.activeElement===button;
+      const expand=active();
+      if (!expand || expand===collapse) return {missing:'retarget',collapsed,expanded};
+      pauseAt(0);
+      const reversed=view(), expandFrames=span(expand);
+      expand.finish();
+      for (const animation of rail.getAnimations({subtree:true})) if (animation.id==='sydtrack-ui-motion') animation.finish();
+      return {collapsed,expanded,start,first,middle,reversed,end:view(),collapseFrames,expandFrames,duration,caretBefore,
+        noMainTransform:getComputedStyle(main).transform==='none'};
+    })()`);
+    assert(transition.collapsed && transition.expanded && !transition.missing && transition.noMainTransform,
+      'Actual sidebar toggle updates class, accessibility and focus immediately, without transforming the main view: ' + JSON.stringify(transition));
+    const near = (a, b) => Math.abs(a-b) < 1;
+    const sameIcons = (a,b) => a.icons.every(([x,y],i)=>near(x,b.icons[i][0]) && near(y,b.icons[i][1]));
+    assert(transition.duration >= 120 && transition.duration <= 220 && near(transition.start.width,240) &&
+      near(transition.collapseFrames[0],240) && near(transition.collapseFrames.at(-1),72) &&
+      near(transition.first.width,240) && near(transition.first.left,transition.start.left) &&
+      transition.middle.width>72 && transition.middle.width<240 && transition.middle.left<transition.start.left &&
+      near(transition.expandFrames[0],transition.middle.width) && near(transition.expandFrames.at(-1),240) &&
+      near(transition.reversed.width,transition.middle.width) && near(transition.reversed.left,transition.middle.left) &&
+      near(transition.end.width,240) && near(transition.end.left,transition.start.left) &&
+      sameIcons(transition.start,transition.first) && sameIcons(transition.middle,transition.reversed),
+      'Brief rail-width movement pushes content smoothly and reverses from its displayed position: ' + JSON.stringify(transition));
+    await frame();
+    await render(`document.getElementById('nav-toggle').click()`); await settle();
+    const terminal = await render(`(() => {const rail=document.querySelector('.rail'),button=document.getElementById('nav-toggle');
+      return {width:rail.getBoundingClientRect().width,button:getComputedStyle(button).transform,
+        caret:getComputedStyle(button.querySelector('.nav-caret')).transform,
+        ranStructuralTransition:[...document.querySelectorAll('.rail, .rail .logo-copy, .rail .nav-label, .rail .tiny, .rail .status-pill')].some(element=>
+          getComputedStyle(element).transitionDuration.split(',').some(duration=>parseFloat(duration)>0))};})()`);
+    assert(near(terminal.width,72) && terminal.button==='none' && terminal.caret!==transition.caretBefore && !terminal.ranStructuralTransition,
+      'Collapsed width settles at 72px and the caret alone flips without legacy layout transitions: ' + JSON.stringify(terminal));
+    const arrowPress = await pressScale('#nav-toggle');
+    assert(arrowPress.active && arrowPress.scale>=.97 && arrowPress.scale<.995,
+      'Sidebar action keeps the same small press compression');
+    await settle();
+    assert.equal(await render(`document.getElementById('nav-toggle').getAttribute('aria-expanded')`), 'true', 'Pressing the collapsed toggle expands it');
+    console.log('Sidebar motion checks passed: real control, short width slide, interrupted reversal, caret direction and stable focus.');
+  }
   async function reload() {
     await new Promise(resolve => { win.webContents.once('did-finish-load', resolve); win.webContents.reload(); });
     await wait(`document.readyState === 'complete' && typeof window.sydtrackUIMotion?.create === 'function' &&
       document.getElementById('ui-motion-toggle') && typeof latestGoalSettings === 'object'`, 'Motion renderer did not initialize');
     await render('new Promise(resolve => requestAnimationFrame(resolve))');
     await instrument();
+  }
+  async function glistenChecks() {
+    const toggle = "document.getElementById('ui-glisten-toggle')";
+    const swatch = '.theme-swatch[aria-pressed="true"]';
+    const coating = () => render(`[...document.querySelectorAll('#settings-appearance-card, #rules-save, .nav-btn.active, ${swatch}')]
+      .map(element => getComputedStyle(element).backgroundImage)`);
+    const expectGlisten = async enabled => {
+      await wait(`!appearanceSaving && latestGoalSettings?.uiGlistenEnabled === ${enabled} && ${toggle}.checked === ${enabled} &&
+        !${toggle}.disabled && (document.documentElement.dataset.uiGlisten === 'on') === ${enabled}`, 'Glisten preference did not settle');
+      assert.equal(settings.uiGlistenEnabled, enabled);
+    };
+    const toggleGlisten = async () => {
+      await render(`${toggle}.scrollIntoView({block:'center'}); ${toggle}.focus({preventScroll:true})`);
+      await key('Space');
+    };
+    assert.equal(await render(`${toggle}.tagName === 'INPUT' && ${toggle}.type === 'checkbox' &&
+      ${toggle}.getAttribute('role') === 'switch' && !!${toggle}.closest('#settings-appearance-card label')`), true,
+    'Glisten uses a labeled native switch in Appearance');
+    await expectGlisten(false);
+    const original = await coating();
+    const before = writes.length;
+    await toggleGlisten(); await expectGlisten(true);
+    assert.deepEqual(writes.slice(before), [{ uiGlistenEnabled: true }], 'One trusted Space writes only the glisten preference');
+    const enabled = await coating();
+    assert.equal(enabled.length, 4, 'Appearance card, primary action, active nav and selected theme are sampled');
+    assert(enabled.every((image, index) => image.includes('gradient(') && image !== original[index]),
+      'Enabled glisten adds distinct static finishes to the sampled surfaces: ' + JSON.stringify(enabled));
+    const originalTheme = await render('document.documentElement.dataset.theme');
+    for (const theme of ['plum', 'graphite']) {
+      await render(`applyTheme(${JSON.stringify(theme)})`);
+      const sample = await coating();
+      assert(sample.every(image => image.includes('gradient(')), `Glisten finish carries through ${theme}`);
+    }
+    await render(`applyTheme(${JSON.stringify(originalTheme)})`);
+
+    failNext = true;
+    await toggleGlisten();
+    await wait(`!appearanceSaving && document.getElementById('appearance-status').textContent.includes('Could not save')`,
+      'Failed glisten save did not settle/report');
+    await expectGlisten(true);
+    assert.deepEqual(await coating(), enabled, 'Failed disable restores the confirmed static finish');
+
+    const debug = win.webContents.debugger;
+    await debug.sendCommand('DOM.enable');
+    await debug.sendCommand('CSS.enable');
+    const { root } = await debug.sendCommand('DOM.getDocument');
+    const { nodeId } = await debug.sendCommand('DOM.querySelector', { nodeId: root.nodeId, selector: swatch });
+    assert(nodeId, 'Selected theme is available for hover');
+    const forceHover = value => debug.sendCommand('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: value ? ['hover'] : [] });
+    const sweepState = () => render(`(() => {
+      const style=getComputedStyle(document.querySelector(${JSON.stringify(swatch)}));
+      return {name:style.animationName,iterations:style.animationIterationCount};
+    })()`);
+    const sweep = 'sydtrack-glisten-sweep';
+    await forceHover(true);
+    assert(!(await sweepState()).name.includes(sweep), 'Glisten stays static when UI motion is off, even on hover');
+    await forceHover(false);
+    await toggleWithSpace(); await expectSaved(true);
+    assert(!(await sweepState()).name.includes(sweep), 'Glisten does not animate continuously');
+    await forceHover(true);
+    assert.deepEqual(await sweepState(), { name: sweep, iterations: '1' }, 'Hover plays exactly one sweep with both preferences on');
+    await render(`document.querySelector(${JSON.stringify(swatch)}).disabled=true`);
+    assert(!(await sweepState()).name.includes(sweep), 'Disabled controls do not animate a glisten sweep');
+    await render(`document.querySelector(${JSON.stringify(swatch)}).disabled=false`);
+    await media('reduce');
+    assert(!(await sweepState()).name.includes(sweep), 'Reduced motion cancels the sweep without changing the saved finish');
+    await expectGlisten(true);
+    assert.deepEqual(await coating(), enabled, 'Reduced motion preserves the static finish');
+    await forceHover(false);
+    await media('no-preference');
+    await toggleWithSpace(); await expectSaved(false);
+    await toggleGlisten(); await expectGlisten(false);
+    assert.deepEqual(await coating(), original, 'Disabling glisten restores the original surfaces');
+    console.log('UI glisten checks passed: opt-in native switch, light/dark static finish, rollback, single hover sweep and reduced motion.');
   }
   async function appearanceLayout(rotationEnabled) {
     const layout = await render(`(() => {
@@ -348,6 +509,7 @@ app.whenReady().then(async () => {
     'Press transform transitions are opt-in');
     const plainPress = await pressScale();
     assert.equal(plainPress.active, true); assert.equal(plainPress.scale, 1, 'Default-off trusted pointer press leaves the original geometry unchanged');
+    await glistenChecks();
 
     await render(`document.getElementById('theme-rotation-toggle').click()`);
     await wait(`!appearanceSaving && latestGoalSettings.themeRotationEnabled===true`, 'Header rotation button did not enable');
@@ -412,15 +574,7 @@ app.whenReady().then(async () => {
     assert.equal(actionPress.detail.transform,'none','Opt-in press neutralizes the session button legacy active transform instead of stacking two scales');
     await render(`document.getElementById('motion-action-probe').remove()`);
     await settle();
-    await render(`document.body.classList.add('nav-collapsed')`); await settle();
-    assert.equal(await render(`[...document.querySelectorAll('.rail, .rail .logo-copy, .rail .nav-label, .rail .tiny, .rail .status-pill')].every(element=>
-      getComputedStyle(element).transitionDuration.split(',').every(duration=>parseFloat(duration)===0))`),true,
-      'Collapsing the sidebar snaps structural widths and labels instead of reflowing the page on a slower legacy timeline');
-    const arrowTransform = await render(`getComputedStyle(document.getElementById('nav-toggle')).transform`);
-    const arrowPress = await pressScale('#nav-toggle');
-    assert.equal(arrowPress.active, true); assert(arrowPress.scale>=.97 && arrowPress.scale<.995,'Sidebar action keeps only a small press compression');
-    assert.equal(arrowPress.detail.transform, arrowTransform, 'Individual action scale preserves the collapsed arrow direction');
-    await render(`document.body.classList.remove('nav-collapsed')`); await settle();
+    await sidebarMotionChecks();
     const tabPress=await pressScale('[data-settings-tab="tracking"]');assert.equal(tabPress.scale,1,'Segment tabs use their highlight rather than press scaling');
     await render(`document.getElementById('poll-mode-select-trigger').scrollIntoView({block:'center'})`); await frame();
     const menuPress=await pressScale('#poll-mode-select-trigger');assert.equal(menuPress.scale,1,'Menu triggers do not scale while the menu opens');
@@ -576,6 +730,7 @@ app.whenReady().then(async () => {
     assert.equal((await moduleAnimations()).length, 0, 'Reduced motion cancels already-running interactions');
     assert.equal(await render(`document.querySelectorAll('.ui-motion-indicator').length`), 0, 'Reduced motion restores original static highlights');
     assert.equal(await render(`document.activeElement.id || document.activeElement.dataset.settingsTab || document.activeElement.tagName`), focusBeforeReduction, 'Reduced-motion change does not alter focus');
+    await expectInstantSidebar('Reduced motion');
     await render(`window.__motionRecords.length=0; document.querySelector('[data-settings-tab="tracking"]').click();
       document.getElementById('poll-mode-select-trigger').click()`); await frame();
     assert.equal((await records()).length, 0, 'Reduced-motion pages, tabs, and menus are instant');
@@ -602,6 +757,7 @@ app.whenReady().then(async () => {
       const a=active.getBoundingClientRect(), b=pill.getBoundingClientRect(); return Math.abs(a.left-b.left)<2 && Math.abs(a.width-b.width)<2; })()`), true,
       'Responsive resize snaps the indicator to its current selected tab');
     assert.equal((await moduleAnimations()).some(record => String(record.target).includes('ui-motion-indicator')), false, 'Resize does not animate a stale pill position');
+    await expectInstantSidebar('Compact top rail', true);
 
     await showSettings(); await settle();
     for (const theme of THEME_IDS) {
@@ -677,6 +833,7 @@ app.whenReady().then(async () => {
       'Failed disabling restores the confirmed on state');
     assert.equal(motionWrites().length, before + 1);
     await toggleWithSpace(); await expectSaved(false); await settle();
+    await expectInstantSidebar('UI motion disabled');
     await render('window.__motionRecords.length=0; document.querySelector(".nav-btn[data-tab=home]").click()'); await frame();
     assert.equal((await records()).length, 0, 'Disabled interactions return completely to instant presentation');
     await render('uiMotion.setEnabled(true); document.querySelector(".nav-btn[data-tab=settings]").click()'); await frame();

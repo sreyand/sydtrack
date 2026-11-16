@@ -19,6 +19,7 @@ function copy(value) { return JSON.parse(JSON.stringify(value)); }
 
 try {
   assert.equal(defaultSettings().uiMotionEnabled, false, 'UI motion is opt-in');
+  assert.equal(defaultSettings().uiGlistenEnabled, false, 'UI glisten is opt-in');
   const firstRun = createStore(directory('first-run'), { onboardingForNewInstall: true });
   assert.equal(firstRun.getSettings().uiMotionEnabled, false);
   assert.equal(firstRun.getSettings().onboardingComplete, false);
@@ -27,9 +28,11 @@ try {
   const legacyDirectory = directory('legacy');
   const legacySettings = { ...defaultSettings(), theme: 'forest' };
   delete legacySettings.uiMotionEnabled;
+  delete legacySettings.uiGlistenEnabled;
   fs.writeFileSync(path.join(legacyDirectory, 'settings.json'), JSON.stringify(legacySettings));
   const legacyStore = createStore(legacyDirectory);
   assert.equal(legacyStore.getSettings().uiMotionEnabled, false, 'older installations keep instant interactions');
+  assert.equal(legacyStore.getSettings().uiGlistenEnabled, false, 'older installations keep their original finish');
   assert.equal(legacyStore.getSettings().theme, 'forest', 'adding UI motion does not change the chosen appearance');
 
   const malformed = [undefined, null, 0, 1, 'true', 'false', [], {}];
@@ -126,7 +129,33 @@ try {
   rollbackStore.updateSettings({ uiMotionEnabled: true });
   rollbackStore.eraseActivityAndSettings();
   assert.equal(rollbackStore.getSettings().uiMotionEnabled, false, 'a full data reset restores the opt-in default');
-  console.log('UI motion settings checks passed');
+
+  const glistenDirectory = directory('glisten');
+  const glistenStore = createStore(glistenDirectory);
+  assert.equal(glistenStore.getSettings().uiGlistenEnabled, false);
+  for (const value of malformed) {
+    assert.throws(() => validateIpcPayload('settings:update', { uiGlistenEnabled: value }));
+    assert.equal(glistenStore.updateSettings({ uiGlistenEnabled: value }).uiGlistenEnabled, false);
+  }
+  for (const enabled of [true, false]) {
+    const patch = validateIpcPayload('settings:update', { uiGlistenEnabled: enabled });
+    assert.deepEqual(patch, { uiGlistenEnabled: enabled });
+    glistenStore.updateSettings(patch);
+    const reloaded = createStore(glistenDirectory);
+    assert.equal(reloaded.getSettings().uiGlistenEnabled, enabled);
+    assert.equal(reloaded.getSettings().uiMotionEnabled, false, 'glisten does not turn motion on');
+
+    const json = copy(buildExport(reloaded, { includeSettings: true }));
+    const csv = buildCsvExport(reloaded, { includeSettings: true });
+    const restored = createStore(directory('glisten-restore-' + enabled));
+    restored.updateSettings({ uiGlistenEnabled: !enabled });
+    assert.equal(importBackup(restored, json).ok, true);
+    assert.equal(restored.getSettings().uiGlistenEnabled, enabled);
+    restored.updateSettings({ uiGlistenEnabled: !enabled });
+    assert.equal(importCsv(restored, csv).ok, true);
+    assert.equal(restored.getSettings().uiGlistenEnabled, enabled);
+  }
+  console.log('UI motion and glisten settings checks passed');
 } finally {
   const resolvedRoot = path.resolve(temporaryRoot);
   assert.equal(path.dirname(resolvedRoot), path.resolve(os.tmpdir()));

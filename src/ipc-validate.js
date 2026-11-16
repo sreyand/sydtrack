@@ -281,6 +281,7 @@ const SETTINGS = {
   },
   themeRotationEnabled: bool,
   uiMotionEnabled: bool,
+  uiGlistenEnabled: bool,
   themeRotationMode: (value) => {
     if (!['dark', 'light', 'any'].includes(value)) invalid();
     return value;

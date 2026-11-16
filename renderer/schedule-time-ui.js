@@ -69,6 +69,17 @@
     control.trigger.setAttribute('aria-expanded', 'false');
     if (restoreFocus && !control.trigger.disabled && control.trigger.getClientRects().length) control.trigger.focus({ preventScroll: true });
   }
+  function position(control) {
+    control.popover.style.width = Math.min(hour12 ? 264 : 204, window.innerWidth - 24) + 'px';
+    control.popover.style.maxHeight = Math.max(0, window.innerHeight - 24) + 'px';
+    const anchor = control.trigger.getBoundingClientRect();
+    const height = control.popover.getBoundingClientRect().height;
+    const below = window.innerHeight - anchor.bottom - 12;
+    const above = anchor.top - 12;
+    const top = below < height && above > below ? anchor.top - height - 4 : anchor.bottom + 4;
+    control.popover.style.top = Math.max(12, Math.min(top, window.innerHeight - height - 12)) + 'px';
+    control.popover.style.left = Math.max(12, Math.min(anchor.right - control.popover.getBoundingClientRect().width, window.innerWidth - control.popover.getBoundingClientRect().width - 12)) + 'px';
+  }
   function open(control) {
     if (saving || control.input.disabled || control.trigger.disabled) return;
     if (opened === control) { close(); return; }
@@ -82,15 +93,7 @@
     control.openHeight = window.innerHeight;
     control.popover.hidden = false;
     control.trigger.setAttribute('aria-expanded', 'true');
-    control.popover.style.width = Math.min(hour12 ? 264 : 204, window.innerWidth - 24) + 'px';
-    control.popover.style.maxHeight = Math.max(0, window.innerHeight - 24) + 'px';
-    const anchor = control.trigger.getBoundingClientRect();
-    const height = control.popover.getBoundingClientRect().height;
-    const below = window.innerHeight - anchor.bottom - 12;
-    const above = anchor.top - 12;
-    const top = below < height && above > below ? anchor.top - height - 4 : anchor.bottom + 4;
-    control.popover.style.top = Math.max(12, Math.min(top, window.innerHeight - height - 12)) + 'px';
-    control.popover.style.left = Math.max(12, Math.min(anchor.right - control.popover.getBoundingClientRect().width, window.innerWidth - control.popover.getBoundingClientRect().width - 12)) + 'px';
+    position(control);
     renderDraft(control, true);
     control.groups[0].focus({ preventScroll: true });
   }
@@ -242,6 +245,7 @@
   document.addEventListener('click', event => {
     if (event.target.closest('.nav-btn, [data-settings-tab]')) close();
   });
+  document.addEventListener('sydtrack:sidebar-settled', () => { if (opened) position(opened); });
   window.addEventListener('resize', () => {
     // A queued resize can arrive after opening at its final dimensions. Only a
     // viewport change since placement makes this popover's position stale.

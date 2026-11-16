@@ -71,6 +71,16 @@
       }
     }
   }
+  function position(control) {
+    const anchor = control.trigger.getBoundingClientRect();
+    const below = Math.max(0, innerHeight - anchor.bottom - 12), above = Math.max(0, anchor.top - 12);
+    control.list.style.width = Math.max(0, Math.min(Math.max(anchor.width, 224), innerWidth - 24)) + 'px';
+    control.list.style.maxHeight = Math.min(296, Math.max(above, below, 44), Math.max(0, innerHeight - 24)) + 'px';
+    const rect = control.list.getBoundingClientRect();
+    const top = below < rect.height && above > below ? anchor.top - rect.height - 4 : anchor.bottom + 4;
+    control.list.style.top = Math.max(12, Math.min(top, innerHeight - rect.height - 12)) + 'px';
+    control.list.style.left = Math.max(12, Math.min(anchor.left, innerWidth - rect.width - 12)) + 'px';
+  }
   function open(control, edge) {
     if (pending || control.trigger.disabled) return;
     if (opened === control) { close(true); return; }
@@ -82,14 +92,7 @@
     control.resetSearch();
     control.list.hidden = false;
     control.trigger.setAttribute('aria-expanded', 'true');
-    const anchor = control.trigger.getBoundingClientRect();
-    const below = Math.max(0, innerHeight - anchor.bottom - 12), above = Math.max(0, anchor.top - 12);
-    control.list.style.width = Math.max(0, Math.min(Math.max(anchor.width, 224), innerWidth - 24)) + 'px';
-    control.list.style.maxHeight = Math.min(296, Math.max(above, below, 44), Math.max(0, innerHeight - 24)) + 'px';
-    const rect = control.list.getBoundingClientRect();
-    const top = below < rect.height && above > below ? anchor.top - rect.height - 4 : anchor.bottom + 4;
-    control.list.style.top = Math.max(12, Math.min(top, innerHeight - rect.height - 12)) + 'px';
-    control.list.style.left = Math.max(12, Math.min(anchor.left, innerWidth - rect.width - 12)) + 'px';
+    position(control);
     const preferred = edge === 'first' ? options[0] : edge === 'last' ? options[options.length - 1] :
       options.find(option => option.value === (control.retry ?? control.confirmed)) || options[0];
     setActive(control, preferred.value);
@@ -262,6 +265,7 @@
     if (opened && !opened.root.contains(event.target)) close();
   });
   document.addEventListener('click', event => { if (event.target.closest('.nav-btn, [data-settings-tab]')) close(); });
+  document.addEventListener('sydtrack:sidebar-settled', () => { if (opened) position(opened); });
   window.addEventListener('resize', () => {
     // A resize notification can arrive after the menu was already positioned
     // at the new size. Dismiss only an actual change since this menu opened.

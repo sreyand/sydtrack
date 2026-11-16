@@ -15,9 +15,10 @@ html:not([data-ui-motion="on"]) *::after { transition: none !important; animatio
   html[data-ui-motion="on"] .ui-motion-segment > button.segment-btn {
     transition: color 90ms ease;
   }
-  /* Snap structural layout instead of reflowing the whole page on collapse. */
+  /* The controller moves the rail and its anchors on one timeline, not through legacy transitions. */
   html[data-ui-motion="on"] .rail,
   html[data-ui-motion="on"] .rail :is(.logo-copy, .nav-label, .tiny, .status-pill) { transition: none; }
+  html[data-ui-motion="on"] .nav-caret { transition: transform 170ms cubic-bezier(.22,1,.36,1); }
   html[data-ui-motion="on"] .session-play:active { transform: none; }
   html[data-ui-motion="on"] .switch-row input[type="checkbox"] { transition: background-color 120ms ease, border-color 120ms ease; }
   html[data-ui-motion="on"] .switch-row input[type="checkbox"]::after { transition: transform 130ms cubic-bezier(.22,1,.36,1); }
