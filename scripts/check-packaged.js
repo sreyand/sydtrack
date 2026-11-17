@@ -559,7 +559,7 @@ async function launch(executable, userData, label, existing = false, expectedTot
         timelineDayData.byCategory.other === 600 && !document.getElementById('timeline-precision').textContent.includes('Loading')`,
       'Score click did not finish loading historical Day Analytics');
       assert.equal(await renderer(`document.getElementById('timeline-date').value === ${JSON.stringify(date)} &&
-        document.getElementById('day-total').textContent === '1 hour 30 minutes' &&
+        document.getElementById('day-total').textContent === '1h 30m' &&
         document.getElementById('day-focus-share').textContent === '75%' &&
         !document.getElementById('focus-score-back').classList.contains('hidden') && timelineFollowsToday === false`), true, 'Drill-down retains selected date and metrics');
       await renderer(`document.getElementById('focus-score-back').click()`);

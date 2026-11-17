@@ -18,24 +18,28 @@ function fmtDuration(s) {
   return m + 'm';
 }
 
+// Keep the existing card precision: h/m, or m/s for durations below an hour.
 function fmtFriendly(s) {
-  s = Math.max(0, Math.floor(+s || 0));
+  s = Number.isFinite(Number(s)) ? Math.max(0, Math.floor(Number(s))) : 0;
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  if (h >= 1) {
-    const hp = h === 1 ? '1 hour' : h + ' hours';
-    if (m <= 0) return hp;
-    const mp = m === 1 ? '1 minute' : m + ' minutes';
-    return hp + ' ' + mp;
-  }
-  if (m >= 1) {
-    if (sec <= 0) return m === 1 ? '1 min' : m + ' min';
-    const sp = sec === 1 ? '1 second' : sec + ' seconds';
-    return (m === 1 ? '1 min' : m + ' min') + ' ' + sp;
-  }
-  if (sec <= 0) return '0 min';
-  return sec === 1 ? '1 second' : sec + ' seconds';
+  if (h) return h + 'h' + (m ? ' ' + m + 'm' : '');
+  if (m) return m + 'm' + (sec ? ' ' + sec + 's' : '');
+  return sec ? sec + 's' : '0m';
+}
+
+// Full units and second precision for descriptions and duration tooltips.
+function fmtDurationLong(s) {
+  s = Number.isFinite(Number(s)) ? Math.max(0, Math.floor(Number(s))) : 0;
+  const parts = [[Math.floor(s / 3600), 'hour'], [Math.floor((s % 3600) / 60), 'minute'], [s % 60, 'second']];
+  return parts.filter(([value]) => value).map(([value, unit]) => value + ' ' + unit + (value === 1 ? '' : 's')).join(' ') || '0 seconds';
+}
+
+function fmtDurationExact(s) {
+  s = Number.isFinite(Number(s)) ? Math.max(0, Math.floor(Number(s))) : 0;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return [h ? h + 'h' : '', m ? m + 'm' : '', sec ? sec + 's' : ''].filter(Boolean).join(' ') || '0s';
 }
 
 /** Compact goal display: 1h 12m, 2h, 45m */
@@ -829,13 +833,20 @@ if (timelineDateInput) {
 }
 
 const navToggle = $('nav-toggle');
+function syncSidebarToggle() {
+  if (!navToggle) return;
+  const collapsed = document.body.classList.contains('nav-collapsed');
+  navToggle.setAttribute('aria-expanded', String(!collapsed));
+  navToggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  navToggle.setAttribute('aria-label', navToggle.title);
+}
+syncSidebarToggle();
 if (navToggle) {
   navToggle.addEventListener('click', () => {
     const change = () => {
       const collapsed = document.body.classList.toggle('nav-collapsed');
-      navToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      navToggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-      navToggle.setAttribute('aria-label', navToggle.title);
+      syncSidebarToggle();
+      window.sydtrackSidebarState?.set(collapsed);
     };
     if (uiMotion) uiMotion.toggleSidebar(change);
     else change();
@@ -863,20 +874,27 @@ function showBanner(text, kicker) {
 }
 $('banner-dismiss').addEventListener('click', hideBanner);
 
+let trackingStatusNow = null;
 function updateSourcePill(now) {
-  if (!now) return;
+  trackingStatusNow = now || null;
+  refreshTrackingStatus();
+}
+
+function refreshTrackingStatus() {
   const pill = $('source-pill');
-  const source = now.source || 'idle';
-  const labels = {
-    real: 'Live tracking',
-    demo: 'Demo mode',
-    paused: 'Paused',
-    idle: 'Waiting',
-    'fallback-demo': 'Fallback'
-  };
-  pill.textContent = labels[source] || source;
-  pill.title = pill.textContent;
-  pill.className = 'status-pill ' + source;
+  if (!pill || !window.sydtrackTrackingStatus) return;
+  const settings = pauseUiSettings || latestGoalSettings || {};
+  const model = window.sydtrackTrackingStatus.describe(trackingStatusNow, settings);
+  let label = model.label;
+  if (model.key === 'paused' && settings.trackingPauseUntil > 0) {
+    label += ' · ' + fmtCountdown(Math.max(0, Math.ceil((settings.trackingPauseUntil - Date.now()) / 1000)));
+  }
+  if (pill.textContent !== label) pill.textContent = label;
+  pill.title = label + ' · Show tracking details';
+  pill.setAttribute('aria-label', label + '. Show tracking details');
+  const classes = 'status-pill ' + model.tone;
+  if (pill.className !== classes) pill.className = classes;
+  window.sydtrackTrackingStatusUI?.update(model);
 }
 
 
@@ -1163,8 +1181,8 @@ function renderPie(stats) {
   pie.setAttribute('role', total > 0 ? 'button' : 'img');
   pie.tabIndex = total > 0 ? 0 : -1;
   pie.setAttribute('aria-label', total > 0
-    ? 'Time breakdown: ' + fmtDuration(prod) + ' productive, ' + fmtDuration(unp) + ' unproductive, ' +
-      fmtDuration(oth) + ' other. Press Enter for today’s apps.'
+    ? 'Time breakdown: ' + fmtDurationLong(prod) + ' productive, ' + fmtDurationLong(unp) + ' unproductive, ' +
+      fmtDurationLong(oth) + ' other. Press Enter for today’s apps.'
     : 'No time tracked yet');
 
   const token = (name, fallback) => {
@@ -1242,8 +1260,8 @@ function showPieTip(ev) {
             esc(a.name) +
             '">' +
             esc(a.name) +
-            '</span><span class="pt-secs">' +
-            fmt(a.seconds) +
+            '</span><span class="pt-secs" title="' + esc(fmtDurationLong(a.seconds)) + '">' +
+            fmtDurationExact(a.seconds) +
             '</span></li>'
         )
         .join('') +
@@ -1400,16 +1418,20 @@ function renderWeek(stats) {
     if (sub) sub.textContent = ANALYTICS_SUBTITLES.week;
   }
 
-  const setMetrics = (bestVal, bestSub, totalVal, totalSub, shareVal, shareSub) => {
+  const setMetrics = (bestVal, bestSub, totalVal, totalSub, shareVal, shareSub, bestSeconds = null, totalSeconds = 0) => {
     const bv = $('week-best-value');
     const bs = $('week-best-sub');
     const tv = $('week-total');
     const ts = $('week-total-sub');
     const sv = $('week-focus-share');
     const ss = $('week-focus-sub');
-    if (bv) bv.textContent = bestVal;
+    if (bv) {
+      bv.textContent = bestVal;
+      if (bestSeconds == null) bv.removeAttribute('title');
+      else bv.title = fmtDurationLong(bestSeconds);
+    }
     if (bs) bs.textContent = bestSub;
-    if (tv) tv.textContent = totalVal;
+    if (tv) { tv.textContent = totalVal; tv.title = fmtDurationLong(totalSeconds); }
     if (ts) ts.textContent = totalSub;
     if (sv) sv.textContent = shareVal;
     if (ss) ss.textContent = shareSub;
@@ -1418,7 +1440,7 @@ function renderWeek(stats) {
   if (!week.length) {
     patchChartMarkup(chart, '<div class="week-empty muted">No week data yet</div>');
     renderChartYAxis('week-y-axis', 60 * 60);
-    setMetrics('—', 'No productive time yet', '0 min', 'All categories · last 7 days', '—', 'Of productive + unproductive');
+    setMetrics('—', 'No productive time yet', '0m', 'All categories · last 7 days', '—', 'Of productive + unproductive');
     return;
   }
 
@@ -1514,7 +1536,7 @@ function renderWeek(stats) {
 
   refreshChartTip('week-tip', showWeekChartTip);
   if (total <= 0) {
-    setMetrics('—', 'No productive time yet', '0 min', 'All categories · last 7 days', '—', 'Of productive + unproductive');
+    setMetrics('—', 'No productive time yet', '0m', 'All categories · last 7 days', '—', 'Of productive + unproductive');
     return;
   }
 
@@ -1539,7 +1561,9 @@ function renderWeek(stats) {
     fmtFriendly(total),
     'All categories · last 7 days',
     focusShare,
-    focusSub
+    focusSub,
+    bestProd > 0 ? bestProd : null,
+    total
   );
 }
 
@@ -1648,7 +1672,7 @@ function syncPauseUi(settings) {
   };
   applyPauseBtn($('pause-btn'));
   if (pauseUiSettings && (pauseUiSettings.trackingPaused !== paused || pauseUiSettings.trackingPauseUntil !== pauseUntil)) pauseActionError = '';
-  pauseUiSettings = { trackingPaused: paused, trackingPauseUntil: pauseUntil, onboardingComplete: !settings || settings.onboardingComplete !== false };
+  pauseUiSettings = { ...settings, trackingPaused: paused, trackingPauseUntil: pauseUntil, onboardingComplete: !settings || settings.onboardingComplete !== false };
   const control = $('pause-settings-btn');
   if (control) {
     control.dataset.paused = paused ? 'on' : 'off';
@@ -1736,20 +1760,7 @@ async function saveAppearance(partial) {
 }
 
 function renderPauseRemaining() {
-  const pill = $('source-pill');
-  if (!pill || !pauseUiSettings) return;
-  if (pauseUiSettings.trackingPaused) {
-    const until = pauseUiSettings.trackingPauseUntil;
-    const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
-    const label = until > 0 ? 'Paused · ' + fmtCountdown(remaining) : 'Paused';
-    if (pill.textContent !== label) pill.textContent = label;
-    pill.title = until > 0 ? label + ' · resumes automatically' : label;
-    pill.className = 'status-pill paused';
-  } else if (pill.classList.contains('paused')) {
-    pill.textContent = 'Waiting';
-    pill.title = 'Waiting for the next tracking update';
-    pill.className = 'status-pill idle';
-  }
+  refreshTrackingStatus();
 }
 
 function syncFocusBoostUi(settings) {
@@ -1899,8 +1910,8 @@ function tipAppsHtml(apps) {
             esc(a.name) +
             '">' +
             esc(a.name) +
-            '</span><span class="pt-secs">' +
-          fmt(a.seconds) +
+            '</span><span class="pt-secs" title="' + esc(fmtDurationLong(a.seconds)) + '">' +
+          fmtDurationExact(a.seconds) +
           '</span></li>'
       )
       .join('') +
@@ -1932,11 +1943,11 @@ function showDayChartTip(ev) {
     ' tracked';
   const meta =
     '<div class="pt-empty" style="margin-bottom:6px">P ' +
-    fmt(h.productive) +
+    fmtDurationExact(h.productive) +
     ' · U ' +
-    fmt(h.unproductive) +
+    fmtDurationExact(h.unproductive) +
     ' · O ' +
-    fmt(h.other) +
+    fmtDurationExact(h.other) +
     '</div>';
   tip.innerHTML =
     '<div class="pt-cat">Hour · top apps</div>' + meta + tipAppsHtml(h.topApps);
@@ -1963,11 +1974,11 @@ function showWeekChartTip(ev) {
   const head = (d.label || d.date || 'Day') + ' · ' + fmtFriendly(sum) + ' tracked';
   const meta =
     '<div class="pt-empty" style="margin-bottom:6px">P ' +
-    fmt(d.productive) +
+    fmtDurationExact(d.productive) +
     ' · U ' +
-    fmt(d.unproductive) +
+    fmtDurationExact(d.unproductive) +
     ' · O ' +
-    fmt(d.other) +
+    fmtDurationExact(d.other) +
     '</div>';
   tip.innerHTML =
     '<div class="pt-cat">' +
@@ -2053,6 +2064,8 @@ function renderDay(stats) {
   const peakSub = $('day-peak-sub');
   if (peakVal) {
     peakVal.textContent = peakProd > 0 ? fmtFriendly(peakProd) : '—';
+    if (peakProd > 0) peakVal.title = fmtDurationLong(peakProd);
+    else peakVal.removeAttribute('title');
   }
   if (peakSub) {
     peakSub.textContent = peakProd > 0 ? hourLabel(peakHour) : 'No productive time yet';
@@ -2061,7 +2074,7 @@ function renderDay(stats) {
   const coarseTotal = (Number(coarse.productive) || 0) + (Number(coarse.unproductive) || 0) + (Number(coarse.other) || 0);
   if (total === 0 && coarseTotal > 0) total = coarseTotal;
   const totalEl = $('day-total');
-  if (totalEl) totalEl.textContent = fmtFriendly(total);
+  if (totalEl) { totalEl.textContent = fmtFriendly(total); totalEl.title = fmtDurationLong(total); }
   const totalSub = $('day-total-sub');
   if (totalSub) totalSub.textContent = 'All categories on this day';
 
@@ -3326,6 +3339,8 @@ if ($('data-delete-all')) {
     if (!confirm('Delete all local sydtrack data on this device?\n\nThis removes activity, daily rollups, sessions, settings, Focus profiles, tags, error logs, migration backups, and the leftover focusflow data folder. Nothing is uploaded. This cannot be undone.')) return;
     const res = await api.deleteAllMyData();
     if (res && res.ok) {
+      window.sydtrackSidebarState?.clear();
+      syncSidebarToggle();
       $('data-status').textContent = 'All local data deleted';
       invalidateHistoryViews();
       setLiveStats(res.stats, null);

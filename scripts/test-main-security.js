@@ -13,6 +13,7 @@ const { poolForMode, resolveDailyTheme } = require('../src/theme-rotation');
 let updateRequests = 0;
 const releasePagesOpened = [];
 let trackerCreates = 0, trackerStarts = 0, pauseBoundaries = 0;
+let trackerCallbacks;
 let expireTimedPause = null;
 let pauseClock;
 
@@ -36,6 +37,8 @@ async function throws(fn, msg) {
 }
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sydtrack-main-sec-'));
+const rememberedBounds = { x: 140, y: 100, width: 1180, height: 780 };
+fs.writeFileSync(path.join(userData, 'window-state.json'), JSON.stringify({ bounds: rememberedBounds, maximized: false }));
 if (!process.resourcesPath) process.resourcesPath = path.join(__dirname, '..');
 const handlers = new Map();
 const switches = [];
@@ -51,7 +54,7 @@ let appliedAppId = null;
 let loginItemSettings = null;
 let windowShowCount = 0;
 const windowActions = [];
-const windowState = { visible: true, minimized: false, focused: true, destroyed: false };
+const windowState = { visible: true, minimized: false, focused: true, destroyed: false, bounds: null };
 const windowListeners = new Map();
 const powerListeners = new Map();
 const nativeBackgrounds = [], nativeOverlays = [];
@@ -91,6 +94,8 @@ const fakeWindow = {
   restore() { windowActions.push('restore'); windowState.minimized = false; },
   isVisible: () => windowState.visible,
   isMinimized: () => windowState.minimized,
+  isMaximized: () => false,
+  getNormalBounds: () => ({ ...windowState.bounds }),
   isFocused: () => windowState.focused,
   on(event, fn) { windowListeners.set(event, fn); },
   once() {},
@@ -133,8 +138,13 @@ const electron = {
   },
   BrowserWindow: Object.assign(function BrowserWindow(opts) {
     windowOpts = opts;
+    windowState.bounds = { x: opts.x, y: opts.y, width: opts.width, height: opts.height };
     return fakeWindow;
   }, { getAllWindows: () => (windowOpts ? [fakeWindow] : []) }),
+  screen: {
+    getAllDisplays: () => [{ id: 1, workArea: { x: 0, y: 0, width: 1920, height: 1040 } }],
+    getPrimaryDisplay: () => ({ id: 1 })
+  },
   ipcMain: {
     handle(channel, fn) { handlers.set(channel, fn); }
   },
@@ -193,7 +203,8 @@ Module._load = function load(request, parent, isMain) {
     } };
   }
   if (request === './tracker' && parent.filename === path.join(__dirname, '..', 'src', 'main.js')) {
-    return { createTracker: () => {
+    return { createTracker: options => {
+      trackerCallbacks = options;
       trackerCreates++;
       return { start() { trackerStarts++; }, stop() {}, setSystemPresence() {}, getLastFocused: () => null,
         invalidateClassification() {}, refreshCadence() {}, markPauseBoundary() { pauseBoundaries++; } };
@@ -243,6 +254,8 @@ async function run() {
     assert(loginItemSettings === null, 'unsupported platforms do not register a login item');
   }
   assert(!!windowOpts, 'createWindow constructed a BrowserWindow');
+  assert(['x', 'y', 'width', 'height'].every(key => windowOpts[key] === rememberedBounds[key]),
+    'main restores remembered window size and position before constructing the native window');
   assert(windowOpts.webPreferences.sandbox === true, 'BrowserWindow sandbox stays on');
   assert(windowOpts.webPreferences.contextIsolation === true, 'BrowserWindow contextIsolation stays on');
   assert(windowOpts.webPreferences.nodeIntegration === false, 'BrowserWindow nodeIntegration stays off');
@@ -339,6 +352,26 @@ async function run() {
 
   await handlers.get('settings:update')(goodEvent, { onboardingComplete: true, trackingPaused: false });
   assert(trackerCreates === 1 && trackerStarts === 1, 'completed onboarding starts one tracking service');
+  const sampledAt = Date.now() - 1000;
+  const livePayload = { now: { app: 'Synthetic app', title: 'Private synthetic title', source: 'real', category: 'productive',
+    lastSuccessfulSampleAt: sampledAt }, stats: (await handlers.get('state:get')(goodEvent)).stats, lastFocused: null };
+  trackerCallbacks.onTick(livePayload);
+  trackerCallbacks.onStateInvalidated('unavailable');
+  const failedReading = (await handlers.get('state:get')(goodEvent)).now;
+  assert(failedReading.idleReason === 'unavailable' && failedReading.source === 'idle' &&
+    failedReading.lastSuccessfulSampleAt === sampledAt && failedReading.title === '' && !failedReading.category,
+  'tracking failure immediately clears stale live status while preserving only the last successful reading time');
+  assert(sentMessages.some(({ channel, payload }) => channel === 'tracker:update' && payload?.now?.idleReason === 'unavailable'),
+    'tracking invalidation reaches the sidebar without waiting for another successful sample');
+  trackerCallbacks.onTick(livePayload);
+  assert((await handlers.get('state:get')(goodEvent)).now.source === 'real', 'a fresh sample restores live status');
+  const oldMotion = livePayload.stats.settings.uiMotionEnabled;
+  await handlers.get('settings:update')(goodEvent, { uiMotionEnabled: !oldMotion });
+  trackerCallbacks.onStateInvalidated('waiting');
+  const invalidation = sentMessages.filter(message => message.channel === 'tracker:update').at(-1).payload;
+  assert(invalidation.stats.settings.uiMotionEnabled === !oldMotion && invalidation.sessionCompleted === null,
+    'status invalidation sends current settings and never replays a completed session');
+  await handlers.get('settings:update')(goodEvent, { uiMotionEnabled: oldMotion });
   const boundaries = pauseBoundaries;
   await handlers.get('tracking:pauseFor')(goodEvent, 30);
   assert(pauseBoundaries === boundaries + 1, 'flexible pause uses the existing tracker pause boundary');
@@ -554,7 +587,13 @@ async function run() {
 
   await handlers.get('settings:update')(goodEvent, { windowShortcut: 'Alt+S', profileShortcut: 'Alt+B' });
   const quittingToggle = registeredShortcuts.get('Alt+S');
+  windowState.bounds = { x: 160, y: 130, width: 1250, height: 820 };
+  windowState.minimized = false; windowState.destroyed = false;
+  windowListeners.get('move')();
   appListeners['before-quit']();
+  const savedWindow = JSON.parse(fs.readFileSync(path.join(userData, 'window-state.json'), 'utf8'));
+  assert(['x', 'y', 'width', 'height'].every(key => savedWindow.bounds[key] === windowState.bounds[key]),
+    'quitting flushes a pending layout change into the separate machine-local memory file');
   assert(registeredShortcuts.size === 0, 'quitting disposes show/hide and profile shortcut bindings');
   windowActions.length = 0; quittingToggle();
   assert(windowActions.length === 0, 'a late show/hide callback cannot surface the quitting window');

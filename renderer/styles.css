@@ -1534,7 +1534,7 @@ body.nav-collapsed .status-pill {
   border: 0;
   transition: width 240ms ease, height 240ms ease, padding 240ms ease, font-size 0ms linear 120ms, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
-/* A status light, not a third button. The slot keeps the vertical rhythm even. */
+/* The collapsed status light keeps the same hit area as the footer controls. */
 body.nav-collapsed .status-pill::before {
   content: "";
   width: 8px;
@@ -3113,6 +3113,33 @@ h4 {
   color: var(--color-accent);
 }
 .status-pill.paused { background: var(--color-surface-sunken); color: var(--color-ink-muted); }
+.status-pill { appearance: none; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-pill:hover, .status-pill[aria-expanded="true"] { border-color: var(--color-border-strong); }
+.status-pill.unavailable { background: var(--color-surface); color: var(--color-data-unproductive); }
+.tracking-status-popover {
+  position: fixed;
+  z-index: 110;
+  box-sizing: border-box;
+  width: 296px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-overlay);
+  font: var(--body);
+}
+.tracking-status-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tracking-status-header h2 { margin: 0; font: var(--label); font-weight: 700; }
+.tracking-status-close { appearance: none; display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-ink-muted); font: inherit; font-size: 20px; cursor: pointer; }
+.tracking-status-close:hover { color: var(--color-ink); background: var(--color-surface-sunken); }
+.tracking-status-popover p { margin: 10px 0 0; font: var(--caption); line-height: 1.5; color: var(--color-ink-muted); }
+.tracking-status-popover .btn { margin-top: 14px; padding: 8px 10px; font: var(--caption); }
+.tracking-status-popover .tracking-status-last-reading { font-size: 11px; }
+.tracking-status-popover .tracking-status-error { color: var(--color-data-unproductive); }
 .pause-power { color: var(--color-ink-muted); border-color: var(--color-border); }
 .pause-power[data-paused="on"] {
   color: var(--color-accent);

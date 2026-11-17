@@ -147,6 +147,8 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
   };
   /** Last non-ignored, non-sydtrack window — survives while user looks at sydtrack. */
   let lastFocused = null;
+  // Session-only health metadata, independent of which apps are logged.
+  let lastSuccessfulSampleAt = null;
 
   function invalidateLiveState(reason = 'waiting') {
     if (typeof onStateInvalidated !== 'function') return;
@@ -226,6 +228,9 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
     if (pollGeneration !== generation && !discontinuous && !sleeping && !locked) return;
     settings = store.getSettings();
     if (!skipProbe && !!settings.demoMode !== startedDemo) return;
+    if (!skipProbe && !startedDemo && win && !trackingError && !settings.trackingPaused && !sleeping && !locked) {
+      lastSuccessfulSampleAt = now;
+    }
     if (startedPaused || discontinuous) elapsed = 0;
     const activity = win ? classifyWithReason(win, rHolder.rules) : null;
     const rowCorrection = win && store.getActivityCorrection ? store.getActivityCorrection(appLabel(win), activity) : null;
@@ -387,7 +392,8 @@ function createTracker({ store, rulesHolder, rules, ignoreHolder, ignore, sessio
           idleSec,
           url: (win && win.url) || '',
           elapsedSec: Math.round((now - current.since) / 1000),
-          trackingError
+          trackingError,
+          lastSuccessfulSampleAt
         },
         lastFocused,
         stats: store.snapshot([], { includeWeek: false }),

@@ -3,13 +3,14 @@
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
-const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme, globalShortcut, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, dialog, powerMonitor, protocol, net, nativeTheme, globalShortcut, shell, screen } = require('electron');
 const { bindTrackingLifecycle } = require('./tracking-lifecycle');
 const { createErrorLog, installErrorLogging } = require('./error-log');
 let errorLog;
 const { createFocusProfiles } = require('./focus-profiles');
 const { createProfileShortcut } = require('./profile-shortcut');
 const { createWindowShortcut, toggleWindowVisibility } = require('./window-shortcut');
+const { createWindowState } = require('./window-state');
 const { initializeThemeRotation, resolveDailyTheme, millisecondsUntilNextDay } = require('./theme-rotation');
 const { createQuickCorrections } = require('./quick-corrections');
 const { createUpdateChecker } = require('./updates');
@@ -86,6 +87,7 @@ if (process.platform === 'win32') {
 }
 
 let mainWindow = null;
+let windowMemory = null;
 let tracker = null;
 let store = null;
 let sessionManager = null;
@@ -247,7 +249,11 @@ function createWindow() {
     backgroundColor: windowBackgroundColor(activeTheme),
     theme: activeTheme
   });
+  windowMemory = createWindowState({ filePath: path.join(dataDir(), 'window-state.json'), screenApi: screen,
+    onError: error => console.warn('[window] could not remember window layout:', error.message) });
+  Object.assign(winOpts, windowMemory.restore(winOpts));
   mainWindow = new BrowserWindow(winOpts);
+  windowMemory.attach(mainWindow);
   mainWindow.on('focus', syncDailyAppearance);
   installNavigationGuards(mainWindow.webContents);
   applyContentSecurityPolicy(mainWindow.webContents.session);
@@ -290,6 +296,7 @@ function createWindow() {
     if (store.getSettings().onboardingComplete !== false) ensureTrackerStarted();
   });
   mainWindow.on('close', (e) => {
+    if (windowMemory) windowMemory.flush();
     if (isQuitting) return;
     if (appTray) {
       e.preventDefault();
@@ -297,6 +304,8 @@ function createWindow() {
     }
   });
   mainWindow.on('closed', () => {
+    if (windowMemory) windowMemory.dispose();
+    windowMemory = null;
     mainWindow = null;
   });
 }
@@ -506,6 +515,22 @@ function ensureTrackerStarted() {
     },
     onStateInvalidated: (reason) => {
       if (appTray) appTray.invalidate(reason);
+      // The sidebar must stop advertising an old successful sample while a
+      // read is pending, tracking is suspended, or a sample failed.
+      // A preference/correction may have changed since the last sample. Never
+      // replay that sample's old settings or totals while clearing its status.
+      let stats = null;
+      try { stats = store.snapshot([], { includeWeek: false }); }
+      catch (_) {} // A storage failure must still clear stale live status.
+      lastPayload = { ...lastPayload, stats,
+        session: sessionManager ? sessionManager.getActiveSession() : null,
+        sessionCompleted: null,
+        lastFocused: tracker?.getLastFocused?.() || null,
+        now: {
+          app: '—', title: '', source: 'idle', idle: true, idleReason: reason,
+          lastSuccessfulSampleAt: lastPayload.now?.lastSuccessfulSampleAt || null
+        } };
+      sendTrackerUpdateToRenderer(lastPayload);
     },
     onReminder: fireReminder,
     readIdleTime: () => {
@@ -611,6 +636,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (windowMemory) windowMemory.dispose();
   profileShortcut.dispose();
   windowShortcut.dispose();
   if (themeRotationTimer) clearTimeout(themeRotationTimer);
@@ -1201,6 +1227,7 @@ ipcMain.handle('data:deleteAll', async (event, payload) => {
     saveAppIdentities,
     DEFAULT_APP_IDENTITIES_PATH
   } = require('./classifier');
+  if (windowMemory) windowMemory.forget();
   const deleted = deleteAllMyData({
     dataDir: dataDir(),
     store,

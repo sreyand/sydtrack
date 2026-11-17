@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="ui-glisten.css" />
 </head>
 <body>
+  <script src="sidebar-state.js"></script>
   <div class="window-drag-region" aria-hidden="true"></div>
   <div class="shell">
     <aside class="rail">
@@ -54,7 +55,7 @@
           <button type="button" id="pause-btn" class="pause-power" data-paused="off" title="Pause tracking" aria-label="Pause tracking" aria-pressed="false">
             <svg class="pause-power-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M7.5 6.2a7 7 0 1 0 9 0"/></svg>
           </button>
-          <div id="source-pill" class="status-pill idle" title="Waiting">Waiting</div>
+          <button type="button" id="source-pill" class="status-pill idle" title="Show tracking details" aria-label="Waiting. Show tracking details" aria-haspopup="dialog" aria-expanded="false" aria-controls="tracking-status-popover">Waiting</button>
         </div>
       </div>
     </aside>
@@ -303,7 +304,7 @@
             </article>
             <article class="card day-metric">
               <div class="lf-kicker">Total tracked</div>
-              <div id="day-total" class="day-metric-value">0 min</div>
+              <div id="day-total" class="day-metric-value">0m</div>
               <div id="day-total-sub" class="day-metric-sub muted">All categories today</div>
             </article>
             <article class="card day-metric">
@@ -341,7 +342,7 @@
             </article>
             <article class="card day-metric">
               <div class="lf-kicker">Week total tracked</div>
-              <div id="week-total" class="day-metric-value">0 min</div>
+              <div id="week-total" class="day-metric-value">0m</div>
               <div id="week-total-sub" class="day-metric-sub muted">All categories · last 7 days</div>
             </article>
             <article class="card day-metric">
@@ -909,6 +910,16 @@
       <p id="onboarding-error" class="onboarding-error hidden" role="alert"></p>
     </div>
   </section>
+  <section id="tracking-status-popover" class="tracking-status-popover hidden" role="dialog" aria-labelledby="tracking-status-heading" aria-describedby="tracking-status-description">
+    <div class="tracking-status-header">
+      <h2 id="tracking-status-heading">Tracking</h2>
+      <button type="button" id="tracking-status-close" class="tracking-status-close" aria-label="Close tracking details">×</button>
+    </div>
+    <p id="tracking-status-description"></p>
+    <p id="tracking-status-last-reading" class="tracking-status-last-reading hidden"></p>
+    <button type="button" id="tracking-status-action" class="btn ghost hidden"></button>
+    <p id="tracking-status-error" class="tracking-status-error hidden" role="status"></p>
+  </section>
   <div id="name-tip" class="name-tip pie-tip hidden" role="tooltip"></div>
   <div id="lf-explanation" class="lf-explanation hidden" role="tooltip">
     <div class="lf-explanation-heading">Why this category?</div>
@@ -926,12 +937,14 @@
   <script src="lib/insights.js"></script>
   <script src="lib/day-timeline.js"></script>
   <script src="lib/apps-analytics.js"></script>
+  <script src="lib/tracking-status.js"></script>
   <script src="dom-patch.js"></script>
   <script src="wellbeing-ui.js"></script>
   <script src="schedule-time-ui.js"></script>
   <script src="select-menu-ui.js"></script>
   <script src="ui-motion.js"></script>
   <script src="renderer.js"></script>
+  <script src="tracking-status-ui.js"></script>
   <script src="category-explanation-ui.js"></script>
   <script src="quick-corrections-ui.js"></script>
   <script src="updates-ui.js"></script>

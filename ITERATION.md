@@ -2,6 +2,14 @@
 
 This is the single product and engineering handoff for future work. It describes what sydtrack is, what makes it worth using, and what should happen next. Release history belongs in `docs/release-notes-*.md`; validation procedures belong in the existing manual guides.
 
+## Unreleased usability improvements — 2026-11-17
+
+- Analytics and Roundup durations use compact units such as `7h 53m` and `25m 19s`; key duration tooltips retain full wording and chart details retain seconds. Session clocks and pause countdowns keep their existing format.
+- The sidebar tracking status opens a keyboard-accessible popover with the current state, pause/resume details, automatic retry information and the last successful reading when available. Resume and Tracking settings actions reuse existing controls. Reading timestamps stay in memory; no activity titles are added to storage. Lifecycle invalidation clears stale live status immediately.
+- Window size, position and maximized state are remembered in the machine-local `window-state.json`, separately from portable exports. Saved bounds are checked against monitor work areas on launch, show and display changes; hidden startup stays hidden. Sidebar collapse state is restored before initial layout from local browser storage. Delete all my data clears both preferences.
+- Focused checks cover duration boundaries, status privacy and recovery, resume-save failure, keyboard/focus behavior, sidebar restart state, native window persistence and display changes. The isolated tracking-status UI harness uses temporary data and synthetic IPC.
+- Validation passed: core suite, focused checks after final window/status changes, and all nine UI harnesses. Tracking details were visually checked in Midnight and Graphite. Version and packaged artifacts remain at the existing v2.7.0 build baseline until the next release is requested.
+
 ## The product thesis
 
 **sydtrack helps people see patterns in their digital work without creating a replay of their life.**

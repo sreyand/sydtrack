@@ -303,7 +303,7 @@ app.whenReady().then(async () => {
           stable: footer.top === before.top && footer.height === before.height,
           contained: controls.every(r => r.top >= rail.top && r.bottom <= rail.bottom),
           dot: dot.width === '8px' && dot.height === '8px' && getComputedStyle(pill).backgroundColor === 'rgba(0, 0, 0, 0)',
-          labeled: pill.title === pill.textContent && !!pill.title });
+          labeled: pill.title.startsWith(pill.textContent) && pill.getAttribute('aria-label').includes('Show tracking details') });
       }
       syncNotifUi({ notificationsEnabled: true }); syncPauseUi({ trackingPaused: false }); updateSourcePill({ source: 'real' });
       return checks;

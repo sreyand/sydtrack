@@ -4,7 +4,7 @@
 (() => {
   const instances = new WeakMap();
   const panels = '.view, .analytics-panel, .settings-panel';
-  const popups = '.select-menu-listbox, .schedule-time-popover, .pause-settings-menu, .profile-menu, .quick-rule-picker';
+  const popups = '.select-menu-listbox, .schedule-time-popover, .pause-settings-menu, .profile-menu, .quick-rule-picker, .tracking-status-popover';
   const groups = '.segment-control, .apps-range';
   const easing = 'cubic-bezier(.22,1,.36,1)';
   let sweepSupported = false;

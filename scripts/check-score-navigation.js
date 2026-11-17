@@ -222,7 +222,7 @@ app.whenReady().then(async () => {
 
     await period('week');
     const first = await open(scored.date, 'week');
-    assert.equal(first.total, '1 hour 30 minutes'); assert.equal(first.share, '75%');
+    assert.equal(first.total, '1h 30m'); assert.equal(first.share, '75%');
     win.webContents.send('tracker:update', { stats: { ...store.snapshot(), byCategory: { productive: 7200, unproductive: 0, other: 0 },
       settings: { ...store.getSettings(), thresholdSec: 777 } }, now: null, lastFocused: null });
     await waitFor(`latestGoalSettings?.thresholdSec === 777`, 'Synthetic live update did not settle');
@@ -256,17 +256,17 @@ app.whenReady().then(async () => {
     const emptyTile = await render(`document.querySelector(${JSON.stringify(tileSelector(empty.date, 'month'))}).textContent`);
     assert(emptyTile.includes('—'), 'Empty day remains an unscored tile');
     const emptyState = await open(empty.date, 'month');
-    assert.equal(emptyState.total, '0 min'); assert.equal(emptyState.share, '—');
+    assert.equal(emptyState.total, '0m'); assert.equal(emptyState.share, '—');
     assert(emptyState.precision.includes('No activity'), 'Empty Day explains missing activity');
     await back(empty.date, 'month');
     const limitedTile = await render(`document.querySelector(${JSON.stringify(tileSelector(limited.date, 'month'))}).textContent`);
     assert(limitedTile.includes('—'), 'Other-heavy day is not falsely scored');
     const limitedState = await open(limited.date, 'month');
-    assert.equal(limitedState.total, '1 hour');
+    assert.equal(limitedState.total, '1h');
     assert(limitedState.precision.includes('hourly totals'), 'Hourly-only Day uses existing coarse-history explanation');
     await back(limited.date, 'month');
     const coarseState = await open(coarse.date, 'month');
-    assert.equal(coarseState.total, '30 min'); assert.equal(coarseState.share, '67%');
+    assert.equal(coarseState.total, '30m'); assert.equal(coarseState.share, '67%');
     assert(coarseState.precision.includes('Only daily totals'), 'Daily-only history does not invent precise segments');
     await back(coarse.date, 'month');
 
@@ -291,7 +291,7 @@ app.whenReady().then(async () => {
     resolveHeld(scored); heldDays.delete(scored.date);
     await render('new Promise(resolve => setTimeout(resolve, 80))');
     const settled = await snapshot();
-    assert.equal(settled.date, empty.date); assert.equal(settled.dataDate, empty.date); assert.equal(settled.total, '0 min');
+    assert.equal(settled.date, empty.date); assert.equal(settled.dataDate, empty.date); assert.equal(settled.total, '0m');
     await back(empty.date, 'month');
     console.log('Score navigation: empty/Other-heavy/coarse days, invalid dates and late responses passed.');
 
